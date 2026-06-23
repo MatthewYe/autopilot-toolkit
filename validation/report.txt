@@ -1,7 +1,7 @@
 ======================================================================
 FRONTMATTER VALIDATION REPORT — reasonix compatibility
 ======================================================================
-Date: 2026-06-23T08:52:35.487Z
+Date: 2026-06-23T09:13:26.000Z
 Total skills validated: 19 | Passed: 19 | Failed: 0
 
 --- Upstream Skills (14) ---
@@ -93,11 +93,10 @@ Check: 0 opencode-specific fields across all 19 skills
 Result: ✓ PASS
 
 Check: All subagent skills have allowed-tools defined
-Result: ✓ PASS — 2 subagent skill(s) all have allowed-tools:
-       autopilot-implementer: read_file, write_file, edit_file, multi_edit, glob, grep, ls, bash, todo_write, web_fetch, code_index
-       autopilot-reviewer: read_file, glob, grep, ls, code_index, bash
+Result: ✓ PASS
 
 ======================================================================
 OVERALL RESULT
 ======================================================================
 All skills PASS validation.
+
