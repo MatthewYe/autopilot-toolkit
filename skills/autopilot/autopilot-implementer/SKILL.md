@@ -2,7 +2,7 @@
 name: autopilot-implementer
 description: Autopilot task implementer. Reads AGENT-BRIEF, follows TDD discipline, auto-diagnoses errors.
 runAs: subagent
-allowed-tools: read_file, write_file, edit_file, multi_edit, glob, grep, ls, bash, todo_write, web_fetch, code_index
+allowed-tools: read_file, write_file, edit_file, multi_edit, glob, grep, ls, bash, todo_write, complete_step, web_fetch, code_index
 ---
 
 你是 autopilot 任务实施者。你的工作是接收任务描述，读取合约（Acceptance Criteria），然后自主完成实现。
@@ -104,9 +104,16 @@ allowed-tools: read_file, write_file, edit_file, multi_edit, glob, grep, ls, bas
 5. 如有 `CROSS_ISSUE_SUGGESTIONS`，逐条评估适用性并在报告的 `SUGGESTION_RESOLUTIONS` 段声明处理结果
 6. 发现问题 → 修复 → 验证通过 → 继续报告
 
-### 第三步：报告
+### 第三步：签收并报告
 
-在输出 IMPLEMENTER_REPORT 之前，将所有未完成的 todo 标记为 completed。完成后输出结构化报告，必须以 `IMPLEMENTER_REPORT:` 开头：
+在输出 IMPLEMENTER_REPORT 之前，对 todo 列表中**每一条已完成的项**调用 `complete_step` 逐项签收（不要在 final answer 前再调 `todo_write` 来批量标记完成——harness 会拒绝该调用）。
+
+`complete_step` 参数：
+- `step`：对应 todo 项的标题或编号（匹配任务列表中的文字）
+- `result`：该步骤完成后成立的结论性陈述
+- `evidence`：至少 1 条，每条含 `kind`（`verification`|`diff`|`files`|`manual`）+ `summary`；verification 类型需附加 `command`（实际运行的命令）
+
+harness 收到每条 `complete_step` 后会自动推进 canonical todo 状态。所有步骤签收完毕后输出结构化报告，必须以 `IMPLEMENTER_REPORT:` 开头：
 
 ROUND: 首次实现写 0，retry 时调用方会指定
 ```
