@@ -42,10 +42,12 @@ install_link() {
   local name="$2"   # skill name (basename)
   local target="$SKILLS_DIR/$name"
 
-  # If a real directory (not a symlink) exists at target, remove it
+  # If a real directory (not a symlink) exists at target, warn and skip
   if [ -e "$target" ] && [ ! -L "$target" ]; then
-    warn "$target exists as a real directory, removing"
-    rm -rf "$target" 2>/dev/null || warn "could not remove $target"
+    warn "$target exists as a real directory (not a symlink) — skipping to avoid destructive overwrite"
+    skipped=$((skipped + 1))
+    echo "skipped"
+    return
   fi
 
   if [ -L "$target" ]; then
@@ -116,7 +118,7 @@ if [ -f "$LOCKFILE" ]; then
       python3 -c "
 import json, sys
 try:
-    with open('$LOCKFILE') as f:
+    with open(sys.argv[1]) as f:
         data = json.load(f)
     for name, info in data.get('skills', {}).items():
         sp = info.get('skillPath', '')
@@ -125,7 +127,7 @@ try:
 except Exception as e:
     print(f'error: {e}', file=sys.stderr)
     sys.exit(0)
-"
+" "$LOCKFILE"
     elif command -v jq &>/dev/null; then
       jq -r '.skills // {} | to_entries[] | "\(.key)\t\(.value.skillPath // empty)"' "$LOCKFILE" 2>/dev/null || true
     else

@@ -100,14 +100,13 @@ description: A test
 # Test"
 
 # ── Check 3: No opencode fields ──
-assert_fail "fails when disable-model-invocation is present" \
+assert_pass "accepts disable-model-invocation (valid reasonix field)" \
 "---
 name: test-skill
 description: A test
 disable-model-invocation: true
 ---
-# Test" \
-"disable-model-invocation"
+# Test"
 
 assert_fail "fails when compatibility is present" \
 "---

@@ -50,7 +50,7 @@ assert_symlink_target() {
 }
 
 cleanup() {
-  for d in "${TMPDIR:-}" "${TMPDIR2:-}" "${TMPDIR3:-}" "${TMPDIR4:-}"; do
+  for d in "${TMPDIR:-}" "${TMPDIR2:-}" "${TMPDIR3:-}" "${TMPDIR4:-}" "${TMPDIR5:-}"; do
     if [ -n "$d" ] && [ -d "$d" ]; then
       chmod -R 755 "$d" 2>/dev/null || true
       rm -rf "$d"
@@ -225,24 +225,50 @@ assert "handles empty skills dirs without crashing" "true"
 
 echo ""
 
-# ── Test 7: Permission issues ──
-echo "Test 7: Permission issues"
-TMPDIR4="$(mktemp -d /tmp/install-test-perm-XXXXX)"
+# ── Test 7: Real directory conflict (warn + skip, not rm) ──
+echo "Test 7: Real directory conflict"
+TMPDIR4="$(mktemp -d /tmp/install-test-dirconflict-XXXXX)"
 MOCK_PROJECT4="$TMPDIR4/autopilot-toolkit"
-MOCK_HOME="$TMPDIR4/readonly-home"
+MOCK_AGENTS4="$TMPDIR4/home/.agents"
+
+mkdir -p "$MOCK_PROJECT4/skills/autopilot/test-skill"
+echo "# Test Skill" > "$MOCK_PROJECT4/skills/autopilot/test-skill/SKILL.md"
+echo '{"version":3,"skills":{},"dismissed":{}}' > "$MOCK_PROJECT4/.skill-lock.json"
+
+mkdir -p "$MOCK_AGENTS4/skills"
+# Create a real directory (not symlink) at the target location
+mkdir -p "$MOCK_AGENTS4/skills/test-skill"
+echo "foreign content" > "$MOCK_AGENTS4/skills/test-skill/some-file.txt"
+
+HOME="$TMPDIR4/home" PROJECT_ROOT="$MOCK_PROJECT4" AGENTS_SKILLS_DIR="$MOCK_AGENTS4/skills" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR4/output7.txt"
+
+output7="$(cat "$TMPDIR4/output7.txt")"
+assert "real dir conflict emits WARNING" "echo '$output7' | grep -q 'real directory'"
+assert "real dir still exists (not deleted)" "[ -d '$MOCK_AGENTS4/skills/test-skill' ]"
+assert "foreign content preserved" "[ -f '$MOCK_AGENTS4/skills/test-skill/some-file.txt' ]"
+assert "no symlink created over real dir" "[ ! -L '$MOCK_AGENTS4/skills/test-skill' ]"
+
+echo ""
+
+# ── Test 8: Permission issues ──
+echo "Test 8: Permission issues"
+TMPDIR5="$(mktemp -d /tmp/install-test-perm-XXXXX)"
+MOCK_PROJECT5="$TMPDIR5/autopilot-toolkit"
+MOCK_HOME="$TMPDIR5/readonly-home"
 
 # Create a mock project with a skill
-mkdir -p "$MOCK_PROJECT4/skills/autopilot/perm-skill"
-echo "# Perm Skill" > "$MOCK_PROJECT4/skills/autopilot/perm-skill/SKILL.md"
-echo '{"version":3,"skills":{},"dismissed":{}}' > "$MOCK_PROJECT4/.skill-lock.json"
+mkdir -p "$MOCK_PROJECT5/skills/autopilot/perm-skill"
+echo "# Perm Skill" > "$MOCK_PROJECT5/skills/autopilot/perm-skill/SKILL.md"
+echo '{"version":3,"skills":{},"dismissed":{}}' > "$MOCK_PROJECT5/.skill-lock.json"
 
 # Create a read-only home directory — mkdir -p should fail inside it
 mkdir -p "$MOCK_HOME"
 chmod 555 "$MOCK_HOME"
 
 exit_code=0
-HOME="$MOCK_HOME" PROJECT_ROOT="$MOCK_PROJECT4" AGENTS_SKILLS_DIR="$MOCK_HOME/.agents/skills" \
-  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR4/output7.txt" || exit_code=$?
+HOME="$MOCK_HOME" PROJECT_ROOT="$MOCK_PROJECT5" AGENTS_SKILLS_DIR="$MOCK_HOME/.agents/skills" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR5/output8.txt" || exit_code=$?
 
 assert "script exits non-zero on permission error" "[ '$exit_code' -ne 0 ]"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validation/run.sh — validate all 19 SKILL.md frontmatter files
+# validation/run.sh — validate all toolkit SKILL.md frontmatter files
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -8,6 +8,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/validate.sh"
 
 # ── skill inventory ──
+# Derived from SSOT: .skill-lock.json (upstream) + skills/autopilot/*/SKILL.md (autopilot)
 # Parallel arrays for bash 3.2 compatibility
 SKILL_NAMES=()
 SKILL_PATHS_ARR=()
@@ -19,28 +20,34 @@ add_skill() {
   SKILL_SOURCES_ARR+=("$3")
 }
 
-# Upstream (14)
-add_skill diagnose     "skills/upstream/skills/engineering/diagnosing-bugs/SKILL.md" upstream
-add_skill grill-with-docs "skills/upstream/skills/engineering/grill-with-docs/SKILL.md" upstream
-add_skill improve-codebase-architecture "skills/upstream/skills/engineering/improve-codebase-architecture/SKILL.md" upstream
-add_skill prototype    "skills/upstream/skills/engineering/prototype/SKILL.md" upstream
-add_skill setup-matt-pocock-skills "skills/upstream/skills/engineering/setup-matt-pocock-skills/SKILL.md" upstream
-add_skill tdd          "skills/upstream/skills/engineering/tdd/SKILL.md" upstream
-add_skill to-issues    "skills/upstream/skills/engineering/to-issues/SKILL.md" upstream
-add_skill to-prd       "skills/upstream/skills/engineering/to-prd/SKILL.md" upstream
-add_skill triage       "skills/upstream/skills/engineering/triage/SKILL.md" upstream
-add_skill caveman      "skills/upstream/skills/productivity/grilling/SKILL.md" upstream
-add_skill grill-me     "skills/upstream/skills/productivity/grill-me/SKILL.md" upstream
-add_skill handoff      "skills/upstream/skills/productivity/handoff/SKILL.md" upstream
-add_skill write-a-skill "skills/upstream/skills/productivity/writing-great-skills/SKILL.md" upstream
-add_skill teach        "skills/upstream/skills/productivity/teach/SKILL.md" upstream
+# Upstream: parse .skill-lock.json (same pattern as install.sh)
+LOCKFILE="$PROJECT_ROOT/.skill-lock.json"
+if [ -f "$LOCKFILE" ] && command -v python3 &>/dev/null; then
+  while IFS=$'\t' read -r name skill_path; do
+    [ -n "$name" ] || continue
+    [ -n "$skill_path" ] || continue
+    add_skill "$name" "skills/upstream/$skill_path" upstream
+  done < <(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+for name, info in data.get('skills', {}).items():
+    sp = info.get('skillPath', '')
+    if sp:
+        print(f'{name}\t{sp}')
+" "$LOCKFILE")
+fi
 
-# Autopilot (5)
-add_skill audit-autopilot        "skills/autopilot/audit-autopilot/SKILL.md" autopilot
-add_skill autopilot-implementer  "skills/autopilot/autopilot-implementer/SKILL.md" autopilot
-add_skill autopilot-orchestrator "skills/autopilot/autopilot-orchestrator/SKILL.md" autopilot
-add_skill autopilot-reviewer     "skills/autopilot/autopilot-reviewer/SKILL.md" autopilot
-add_skill toolkit-selfcheck      "skills/autopilot/toolkit-selfcheck/SKILL.md" autopilot
+# Autopilot: scan skills/autopilot/*/SKILL.md
+AUTOPILOT_DIR="$PROJECT_ROOT/skills/autopilot"
+if [ -d "$AUTOPILOT_DIR" ]; then
+  for skill_md in "$AUTOPILOT_DIR"/*/SKILL.md; do
+    [ -f "$skill_md" ] || continue
+    name="$(basename "$(dirname "$skill_md")")"
+    rel="skills/autopilot/$name/SKILL.md"
+    add_skill "$name" "$rel" autopilot
+  done
+fi
 
 TOTAL=${#SKILL_NAMES[@]}
 
@@ -76,7 +83,7 @@ for ((idx=0; idx<TOTAL; idx++)); do
     PASS_COUNT=$((PASS_COUNT + 1))
   else
     RESULT_PASSED_ARR+=("false")
-    local joined=""
+    joined=""
     for issue in "${VALIDATE_ISSUES[@]}"; do
       joined="${joined}${issue}"$'\n'
     done
@@ -105,7 +112,8 @@ section "Date: $(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 section "Total skills validated: $TOTAL | Passed: $PASS_COUNT | Failed: $FAIL_COUNT"
 section ""
 
-section "--- Upstream Skills (14) ---"
+UPSTREAM_TOTAL=$((UPSTREAM_PASS + UPSTREAM_FAIL))
+section "--- Upstream Skills ($UPSTREAM_TOTAL) ---"
 section "Passed: $UPSTREAM_PASS / Failed: $UPSTREAM_FAIL"
 section ""
 
@@ -130,7 +138,8 @@ for ((idx=0; idx<TOTAL; idx++)); do
   section ""
 done
 
-section "--- Autopilot Skills (5) ---"
+AUTOPILOT_TOTAL=$((AUTOPILOT_PASS + AUTOPILOT_FAIL))
+section "--- Autopilot Skills ($AUTOPILOT_TOTAL) ---"
 section "Passed: $AUTOPILOT_PASS / Failed: $AUTOPILOT_FAIL"
 section ""
 

@@ -12,7 +12,7 @@
 # ── helpers ──
 
 OPENCODE_FIELDS=(
-  compatibility mode disable-model-invocation
+  compatibility mode
   permission hidden arguments
 )
 NAME_REGEX='^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'

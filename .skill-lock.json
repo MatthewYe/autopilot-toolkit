@@ -121,16 +121,6 @@
       "installedAt": "2026-05-13T05:30:53.429Z",
       "updatedAt": "2026-05-13T05:30:53.429Z"
     },
-    "zoom-out": {
-      "source": "reasonix-builtin",
-      "sourceType": "local",
-      "sourceUrl": "",
-      "skillPath": "skills/zoom-out/SKILL.md",
-      "skillFolderHash": "6ecebabdea814d12888f56a611da7bf182b5fb26",
-      "pluginName": "reasonix-builtin",
-      "installedAt": "2026-06-23T10:00:00.000Z",
-      "updatedAt": "2026-06-23T10:00:00.000Z"
-    },
     "write-a-skill": {
       "source": "mattpocock/skills",
       "sourceType": "github",
