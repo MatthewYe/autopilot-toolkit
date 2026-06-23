@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { validateSkill } from './validate.js';
 
 // 14 upstream skills: paths relative to project root
-const projectRoot = new URL('..', import.meta.url).pathname;
+const projectRoot = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 
 const skills = [
   // --- Upstream (14) ---
