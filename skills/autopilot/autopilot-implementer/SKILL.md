@@ -106,7 +106,7 @@ allowed-tools: read_file, write_file, edit_file, multi_edit, glob, grep, ls, bas
 
 ### 第三步：报告
 
-完成后输出结构化报告，必须以 `IMPLEMENTER_REPORT:` 开头：
+在输出 IMPLEMENTER_REPORT 之前，将所有未完成的 todo 标记为 completed。完成后输出结构化报告，必须以 `IMPLEMENTER_REPORT:` 开头：
 
 ROUND: 首次实现写 0，retry 时调用方会指定
 ```

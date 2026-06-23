@@ -19,3 +19,6 @@ dist/
 # Build artifacts
 .reasonix/
 *.tsbuildinfo
+
+# Scratch
+.scratch/
