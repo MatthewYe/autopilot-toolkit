@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install.sh — Link project skills into ~/.agents/skills/
+# install.sh — Link project skills and principles into ~/.agents/
 #
 # Discovery:
 #   - Upstream: reads .skill-lock.json for installed skills
 #   - Autopilot: scans skills/autopilot/*/SKILL.md
+#   - Principles: links principles/ directory to ~/.agents/principles/
 #
 # Idempotent: valid symlinks are skipped; broken ones are replaced.
 # Output: summary with created / skipped / replaced counts.
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
+PRINCIPLES_DIR="${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}"
 
-created=0
-skipped=0
-replaced=0
+skills_created=0
+skills_skipped=0
+skills_replaced=0
+principles_created=0
+principles_skipped=0
+principles_replaced=0
+principles_deployed=false
 
 # ── helpers ──
 
@@ -45,7 +51,7 @@ install_link() {
   # If a real directory (not a symlink) exists at target, warn and skip
   if [ -e "$target" ] && [ ! -L "$target" ]; then
     warn "$target exists as a real directory (not a symlink) — skipping to avoid destructive overwrite"
-    skipped=$((skipped + 1))
+    skills_skipped=$((skills_skipped + 1))
     echo "skipped"
     return
   fi
@@ -55,7 +61,7 @@ install_link() {
     existing="$(resolve_link "$target")"
     if [ "$existing" = "$src" ] && [ -d "$target" ]; then
       # Valid symlink pointing to correct source — skip
-      skipped=$((skipped + 1))
+      skills_skipped=$((skills_skipped + 1))
       echo "skipped"
       return
     else
@@ -67,24 +73,24 @@ install_link() {
   # Check if source directory exists
   if [ ! -d "$src" ]; then
     warn "source directory does not exist: $src (skipping $name)"
-    skipped=$((skipped + 1))
+    skills_skipped=$((skills_skipped + 1))
     echo "skipped"
     return
   fi
 
   ln -sfn "$src" "$target" || {
     warn "failed to create symlink: $target -> $src"
-    skipped=$((skipped + 1))
+    skills_skipped=$((skills_skipped + 1))
     echo "skipped"
     return
   }
 
   # Determine if this was a new creation or replacement
   if [ -n "${existing:-}" ]; then
-    replaced=$((replaced + 1))
+    skills_replaced=$((skills_replaced + 1))
     echo "replaced"
   else
-    created=$((created + 1))
+    skills_created=$((skills_created + 1))
     echo "created"
   fi
 }
@@ -144,6 +150,40 @@ except Exception as e:
   done < <(parse_lockfile)
 fi
 
+# ── deploy principles/ ──
+
+PRINCIPLES_SRC="$PROJECT_ROOT/principles"
+if [ -d "$PRINCIPLES_SRC" ]; then
+  principles_deployed=true
+  # Create parent directory for the symlink target (e.g. ~/.agents/)
+  if ! mkdir -p "$(dirname "$PRINCIPLES_DIR")"; then
+    warn "Failed to create parent directory for $PRINCIPLES_DIR — skipping principles deployment"
+  else
+    if [ -e "$PRINCIPLES_DIR" ] && [ ! -L "$PRINCIPLES_DIR" ]; then
+      # Real directory exists at target — warn and skip
+      warn "$PRINCIPLES_DIR exists as a real directory (not a symlink) — skipping to avoid destructive overwrite"
+      principles_skipped=$((principles_skipped + 1))
+    elif [ -L "$PRINCIPLES_DIR" ]; then
+      existing_principles="$(resolve_link "$PRINCIPLES_DIR")"
+      if [ "$existing_principles" = "$PRINCIPLES_SRC" ] && [ -d "$PRINCIPLES_DIR" ]; then
+        : # Valid symlink — nothing to do
+        principles_skipped=$((principles_skipped + 1))
+      else
+        rm -f "$PRINCIPLES_DIR"
+        ln -sfn "$PRINCIPLES_SRC" "$PRINCIPLES_DIR"
+        principles_replaced=$((principles_replaced + 1))
+      fi
+    else
+      ln -sfn "$PRINCIPLES_SRC" "$PRINCIPLES_DIR"
+      principles_created=$((principles_created + 1))
+    fi
+  fi
+fi
+
 # ── summary ──
 
-echo "Install complete: $created created, $skipped skipped, $replaced replaced"
+echo "Install complete:"
+echo "  Skills: $skills_created created, $skills_skipped skipped, $skills_replaced replaced"
+if $principles_deployed; then
+  echo "  Principles: $principles_created created, $principles_skipped skipped, $principles_replaced replaced"
+fi

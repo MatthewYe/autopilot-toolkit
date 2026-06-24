@@ -128,6 +128,9 @@ SELF_REVIEW:
 - 无问题
 CHANGED_FILES:
 - path/to/file (简要说明改了什么)
+- path/to/file (pre-existing) — 合约涉及但本次未编辑的文件
+
+CHANGED_FILES 必须列出合约涉及的所有文件路径。若某个文件未在本次任务中被编辑（变更已在关联任务中完成），仍须列出，并将变更说明替换为 `(pre-existing)`。编排器依赖完整路径列表做跨 issue suggestion 交集匹配，遗漏文件会破坏该机制。
 SUMMARY: 一句话总结
 ```
 

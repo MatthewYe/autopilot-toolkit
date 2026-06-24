@@ -50,7 +50,7 @@ assert_symlink_target() {
 }
 
 cleanup() {
-  for d in "${TMPDIR:-}" "${TMPDIR2:-}" "${TMPDIR3:-}" "${TMPDIR4:-}" "${TMPDIR5:-}"; do
+  for d in "${TMPDIR:-}" "${TMPDIR2:-}" "${TMPDIR3:-}" "${TMPDIR4:-}" "${TMPDIR5:-}" "${TMPDIR6:-}"; do
     if [ -n "$d" ] && [ -d "$d" ]; then
       chmod -R 755 "$d" 2>/dev/null || true
       rm -rf "$d"
@@ -118,9 +118,10 @@ assert_symlink_target "test-skill points to correct dir" \
 
 # Check summary output
 output1="$(cat "$TMPDIR/output1.txt")"
-assert "output contains 'created' count" "echo '$output1' | grep -q 'created'"
-assert "output contains 'skipped' count" "echo '$output1' | grep -q 'skipped'"
-assert "output contains 'replaced' count" "echo '$output1' | grep -q 'replaced'"
+assert "Skills summary shows 4 created, 0 skipped, 0 replaced" \
+  "echo '$output1' | grep -q 'Skills: 4 created, 0 skipped, 0 replaced'"
+assert "Principles line not shown (no principles/ dir)" \
+  "! echo '$output1' | grep -q 'Principles:'"
 
 echo ""
 
@@ -130,8 +131,8 @@ HOME="$TMPDIR/home" PROJECT_ROOT="$MOCK_PROJECT" AGENTS_SKILLS_DIR="$MOCK_AGENTS
   bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR/output2.txt"
 
 output2="$(cat "$TMPDIR/output2.txt")"
-assert "idempotent: existing valid symlinks are skipped" \
-  "echo '$output2' | grep -q 'skipped'"
+assert "idempotent: all 4 skills skipped, none created" \
+  "echo '$output2' | grep -q 'Skills: 0 created, 4 skipped, 0 replaced'"
 
 echo ""
 
@@ -274,6 +275,72 @@ assert "script exits non-zero on permission error" "[ '$exit_code' -ne 0 ]"
 
 # Restore writability for cleanup
 chmod 755 "$MOCK_HOME"
+
+echo ""
+
+# ── Test 9: Principles deployment ──
+echo "Test 9: Principles deployment"
+TMPDIR6="$(mktemp -d /tmp/install-test-principles-XXXXX)"
+MOCK_PROJECT6="$TMPDIR6/autopilot-toolkit"
+MOCK_AGENTS6="$TMPDIR6/home/.agents"
+
+mkdir -p "$MOCK_PROJECT6/principles"
+echo "# Karpathy Principles" > "$MOCK_PROJECT6/principles/karpathy.md"
+
+# Sub-test 9a: Fresh install creates principles symlink
+HOME="$TMPDIR6/home" PROJECT_ROOT="$MOCK_PROJECT6" AGENTS_PRINCIPLES_DIR="$MOCK_AGENTS6/principles" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR6/output9a.txt"
+
+output9a="$(cat "$TMPDIR6/output9a.txt")"
+assert "principles symlink created" "[ -L '$MOCK_AGENTS6/principles' ]"
+assert "principles symlink resolves to correct dir" "[ -f '$MOCK_AGENTS6/principles/karpathy.md' ]"
+assert_symlink_target "principles symlink points to project" \
+  "$MOCK_AGENTS6/principles" \
+  "$MOCK_PROJECT6/principles"
+assert "Principles summary shows 1 created, 0 skipped, 0 replaced" \
+  "echo '$output9a' | grep -q 'Principles: 1 created, 0 skipped, 0 replaced'"
+
+# Sub-test 9b: Idempotent re-run (valid symlink skipped)
+HOME="$TMPDIR6/home" PROJECT_ROOT="$MOCK_PROJECT6" AGENTS_PRINCIPLES_DIR="$MOCK_AGENTS6/principles" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR6/output9b.txt"
+
+output9b="$(cat "$TMPDIR6/output9b.txt")"
+assert "idempotent re-run does not error" "true"
+assert "principles symlink still exists after re-run" "[ -L '$MOCK_AGENTS6/principles' ]"
+assert "Principles summary shows 0 created, 1 skipped, 0 replaced" \
+  "echo '$output9b' | grep -q 'Principles: 0 created, 1 skipped, 0 replaced'"
+
+# Sub-test 9c: Real directory conflict (warn + skip, not rm)
+rm -f "$MOCK_AGENTS6/principles"
+mkdir -p "$MOCK_AGENTS6/principles"
+echo "manual content" > "$MOCK_AGENTS6/principles/manual.txt"
+
+HOME="$TMPDIR6/home" PROJECT_ROOT="$MOCK_PROJECT6" AGENTS_PRINCIPLES_DIR="$MOCK_AGENTS6/principles" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR6/output9c.txt"
+
+output9c="$(cat "$TMPDIR6/output9c.txt")"
+assert "real dir conflict emits WARNING" "echo '$output9c' | grep -q 'real directory'"
+assert "real dir still exists (not deleted)" "[ -d '$MOCK_AGENTS6/principles' ]"
+assert "manual content preserved" "[ -f '$MOCK_AGENTS6/principles/manual.txt' ]"
+assert "no symlink created over real dir" "[ ! -L '$MOCK_AGENTS6/principles' ]"
+assert "Principles summary shows 0 created, 1 skipped, 0 replaced" \
+  "echo '$output9c' | grep -q 'Principles: 0 created, 1 skipped, 0 replaced'"
+
+# Sub-test 9d: Broken symlink → replace
+rm -rf "$MOCK_AGENTS6/principles"
+ln -sfn "/nonexistent/path/to/principles" "$MOCK_AGENTS6/principles"
+
+HOME="$TMPDIR6/home" PROJECT_ROOT="$MOCK_PROJECT6" AGENTS_PRINCIPLES_DIR="$MOCK_AGENTS6/principles" \
+  bash "$INSTALL_SCRIPT" 2>&1 | tee "$TMPDIR6/output9d.txt" || true
+
+output9d="$(cat "$TMPDIR6/output9d.txt")"
+assert "broken symlink replaced by valid one" "[ -L '$MOCK_AGENTS6/principles' ]"
+assert "replaced symlink resolves to correct dir" "[ -f '$MOCK_AGENTS6/principles/karpathy.md' ]"
+assert_symlink_target "replaced symlink points to project" \
+  "$MOCK_AGENTS6/principles" \
+  "$MOCK_PROJECT6/principles"
+assert "Principles summary shows 0 created, 0 skipped, 1 replaced" \
+  "echo '$output9d' | grep -q 'Principles: 0 created, 0 skipped, 1 replaced'"
 
 echo ""
 

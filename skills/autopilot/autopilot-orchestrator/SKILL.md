@@ -3,6 +3,8 @@ name: autopilot-orchestrator
 description: Put issue resolution on autopilot — scans local .scratch/ files AND GitHub Issues for ready-for-agent issues, dispatches implementer → reviewer in a retry loop until resolved. After all issues complete, runs global meta-review against ADR/PRD and fixes cross-module issues. Use when processing autopilot issues from any source.
 ---
 
+Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "Think Before Analyzing" variant + Principles 2, 4.
+
 Execute the autopilot orchestrator workflow below. The implementer and reviewer subagents have methodology already inlined in their skill bodies — no `skill()` loading preamble is needed in dispatch prompts.
 
 ## Issue 来源识别

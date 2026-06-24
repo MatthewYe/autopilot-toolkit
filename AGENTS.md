@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-19 Reasonix skills — 14 upstream engineering/productivity skills from mattpocock/skills plus 5 autopilot workflow skills (orchestrator → implementer → reviewer). Deployed via symlinks to `~/.agents/skills/`.
+19 Reasonix skills — 13 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Deployed via symlinks to `~/.agents/skills/`.
 
 ## Project
 
