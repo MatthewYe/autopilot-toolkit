@@ -360,10 +360,10 @@ fn find_subagent_missing_allowed_tools(skills: &[Skill]) -> Vec<String> {
             Err(_) => continue,
         };
         if let Ok(fm) = parse_frontmatter(&content) {
-            if fm.get("runAs").map_or(false, |v| v == "subagent") {
-                if fm.get("allowed-tools").map_or(true, |v| v.is_empty()) {
-                    missing.push(skill.name.clone());
-                }
+            if fm.get("runAs").is_some_and(|v| v == "subagent")
+                && fm.get("allowed-tools").is_none_or(|v| v.is_empty())
+            {
+                missing.push(skill.name.clone());
             }
         }
     }
