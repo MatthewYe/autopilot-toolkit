@@ -16,7 +16,7 @@ jobs:
       - name: Install rust-script
         run: cargo install rust-script
       - name: Run SKILL.md frontmatter validation
-        run: ./validation/run.rs
+        run: rust-script validation/run.rs
 
   test:
     name: test
@@ -28,4 +28,4 @@ jobs:
       - name: Install rust-script
         run: cargo install rust-script
       - name: Run install.rs integration tests
-        run: ./tests/test_install.rs
+        run: rust-script tests/test_install.rs
