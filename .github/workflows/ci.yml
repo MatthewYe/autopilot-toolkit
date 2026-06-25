@@ -70,13 +70,20 @@ jobs:
       - name: Run clippy on rust-script files
         run: |
           set -e
-          for f in install.rs validation/run.rs scripts/check.rs scripts/env-check.rs \
-                   tests/test_install.rs tests/test_toolkit_setup.rs \
-                   tests/test_check.rs tests/test_github_verify.rs; do
+          for f in install.rs validation/run.rs scripts/check.rs scripts/env-check.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)
             rust-script --package --pkg-path "$tmpdir" "$f"
             cargo clippy --manifest-path "$tmpdir/Cargo.toml" -- -D warnings
+            rm -rf "$tmpdir"
+            echo "::endgroup::"
+          done
+          for f in tests/test_install.rs tests/test_toolkit_setup.rs \
+                   tests/test_check.rs tests/test_github_verify.rs; do
+            echo "::group::clippy $f"
+            tmpdir=$(mktemp -d)
+            rust-script --package --pkg-path "$tmpdir" "$f"
+            cargo clippy --manifest-path "$tmpdir/Cargo.toml" --tests -- -D warnings
             rm -rf "$tmpdir"
             echo "::endgroup::"
           done
