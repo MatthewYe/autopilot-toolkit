@@ -23,13 +23,13 @@ fn main() {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-/// Find the actual project root — the directory containing skills/autopilot/autopilot-orchestrator/SKILL.md.
+/// Find the actual project root — the directory containing skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md.
 fn project_root() -> PathBuf {
     let src = Path::new(file!());
     if let (Some(_tests_dir), Some(proj)) = (src.parent(), src.parent().and_then(|p| p.parent())) {
         let candidate = proj.to_path_buf();
         if candidate
-            .join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+            .join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
             .exists()
         {
             return candidate;
@@ -37,18 +37,18 @@ fn project_root() -> PathBuf {
     }
     if let Ok(root) = std::env::var("PROJECT_ROOT") {
         let p = PathBuf::from(&root);
-        if p.join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+        if p.join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
             .exists()
         {
             return p;
         }
     }
-    panic!("Cannot find project root (orchestrator SKILL.md not found)");
+    panic!("Cannot find project root (orchestrator reasonix SKILL.md not found)");
 }
 
 /// Read orchestrator SKILL.md content.
 fn orchestrator_skill_path() -> PathBuf {
-    project_root().join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+    project_root().join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
 }
 
 fn read_orchestrator_skill() -> String {

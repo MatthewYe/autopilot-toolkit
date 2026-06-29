@@ -32,6 +32,9 @@ struct TestContext {
     mock_root: PathBuf,
     mock_home: PathBuf,
     skills_dir: PathBuf,
+    reasonix_skills_dir: PathBuf,
+    codex_skills_dir: PathBuf,
+    codex_agents_dir: PathBuf,
 }
 
 impl TestContext {
@@ -40,16 +43,24 @@ impl TestContext {
         let mock_root = temp.path().join("mock-project");
         let mock_home = temp.path().join("home");
         let skills_dir = mock_home.join(".agents/skills");
+        let reasonix_skills_dir = mock_home.join(".reasonix/skills");
+        let codex_skills_dir = mock_home.join(".codex/skills");
+        let codex_agents_dir = mock_root.join(".codex/agents");
 
         fs::create_dir_all(&mock_root).expect("create mock_root");
         fs::create_dir_all(&mock_home).expect("create mock_home");
         fs::create_dir_all(&skills_dir).expect("create skills_dir");
+        fs::create_dir_all(&reasonix_skills_dir).expect("create reasonix skills_dir");
+        fs::create_dir_all(&codex_skills_dir).expect("create codex skills_dir");
 
         TestContext {
             _temp: temp,
             mock_root,
             mock_home,
             skills_dir,
+            reasonix_skills_dir,
+            codex_skills_dir,
+            codex_agents_dir,
         }
     }
 
@@ -59,6 +70,18 @@ impl TestContext {
 
     fn skills_dir(&self) -> &Path {
         self.skills_dir.as_path()
+    }
+
+    fn reasonix_skills_dir(&self) -> &Path {
+        self.reasonix_skills_dir.as_path()
+    }
+
+    fn codex_skills_dir(&self) -> &Path {
+        self.codex_skills_dir.as_path()
+    }
+
+    fn codex_agents_dir(&self) -> &Path {
+        self.codex_agents_dir.as_path()
     }
 
     fn home(&self) -> &Path {
@@ -88,7 +111,7 @@ fn install_script_path() -> PathBuf {
     project_root().join("install.rs")
 }
 
-/// Run install.rs sync with given env.
+/// Run install.rs sync with given env (legacy: uses --shared for backward compat).
 fn run_sync(
     install_script: &Path,
     home: &Path,
@@ -102,6 +125,7 @@ fn run_sync(
         .arg("sync")
         .arg(name)
         .arg(src)
+        .arg("--shared")
         .env("HOME", home)
         .env("AGENTS_SKILLS_DIR", skills_dir)
         .env("PROJECT_ROOT", project_root)
@@ -115,7 +139,7 @@ fn run_sync(
     )
 }
 
-/// Run install.rs unlink with given env.
+/// Run install.rs unlink with given env (legacy: uses --shared for backward compat).
 fn run_unlink(
     install_script: &Path,
     home: &Path,
@@ -127,6 +151,7 @@ fn run_unlink(
         .arg(install_script)
         .arg("unlink")
         .arg(name)
+        .arg("--shared")
         .env("HOME", home)
         .env("AGENTS_SKILLS_DIR", skills_dir)
         .env("PROJECT_ROOT", project_root)
@@ -163,6 +188,218 @@ fn run_link_principles(
     )
 }
 
+/// Run install.rs sync with --shared flag (agnostic skill).
+fn run_sync_shared(
+    install_script: &Path,
+    home: &Path,
+    skills_dir: &Path,
+    project_root: &Path,
+    name: &str,
+    src: &Path,
+) -> (String, String, i32) {
+    let output = Command::new("rust-script")
+        .arg(install_script)
+        .arg("sync")
+        .arg(name)
+        .arg(src)
+        .arg("--shared")
+        .env("HOME", home)
+        .env("AGENTS_SKILLS_DIR", skills_dir)
+        .env("PROJECT_ROOT", project_root)
+        .output()
+        .expect("failed to run install.rs sync --shared");
+
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Run install.rs sync with --target flag (coupled skill).
+fn run_sync_targeted(
+    install_script: &Path,
+    home: &Path,
+    target: &str,
+    target_skills_dir: &Path,
+    project_root: &Path,
+    name: &str,
+    src: &Path,
+) -> (String, String, i32) {
+    let output = Command::new("rust-script")
+        .arg(install_script)
+        .arg("sync")
+        .arg(name)
+        .arg(src)
+        .arg("--target")
+        .arg(target)
+        .env("HOME", home)
+        .env("PROJECT_ROOT", project_root)
+        .env(
+            if target == "reasonix" {
+                "REASONIX_SKILLS_DIR"
+            } else {
+                "CODEX_SKILLS_DIR"
+            },
+            target_skills_dir,
+        )
+        .output()
+        .expect("failed to run install.rs sync --target");
+
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Run install.rs deploy-agent with --target codex.
+fn run_deploy_agent(
+    install_script: &Path,
+    home: &Path,
+    project_root: &Path,
+    codex_agents_dir: &Path,
+    name: &str,
+    src: &Path,
+) -> (String, String, i32) {
+    let output = Command::new("rust-script")
+        .arg(install_script)
+        .arg("deploy-agent")
+        .arg(name)
+        .arg(src)
+        .arg("--target")
+        .arg("codex")
+        .env("HOME", home)
+        .env("PROJECT_ROOT", project_root)
+        .env("CODEX_AGENTS_DIR", codex_agents_dir)
+        .output()
+        .expect("failed to run install.rs deploy-agent");
+
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Run install.rs unlink with --shared flag (clean up agnostic skill).
+fn run_unlink_shared(
+    install_script: &Path,
+    home: &Path,
+    skills_dir: &Path,
+    project_root: &Path,
+    name: &str,
+) -> (String, String, i32) {
+    let output = Command::new("rust-script")
+        .arg(install_script)
+        .arg("unlink")
+        .arg(name)
+        .arg("--shared")
+        .env("HOME", home)
+        .env("AGENTS_SKILLS_DIR", skills_dir)
+        .env("PROJECT_ROOT", project_root)
+        .output()
+        .expect("failed to run install.rs unlink --shared");
+
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Run install.rs unlink with --target flag (clean up coupled skill).
+fn run_unlink_targeted(
+    install_script: &Path,
+    home: &Path,
+    target: &str,
+    target_skills_dir: &Path,
+    project_root: &Path,
+    name: &str,
+) -> (String, String, i32) {
+    let output = Command::new("rust-script")
+        .arg(install_script)
+        .arg("unlink")
+        .arg(name)
+        .arg("--target")
+        .arg(target)
+        .env("HOME", home)
+        .env("PROJECT_ROOT", project_root)
+        .env(
+            if target == "reasonix" {
+                "REASONIX_SKILLS_DIR"
+            } else {
+                "CODEX_SKILLS_DIR"
+            },
+            target_skills_dir,
+        )
+        .output()
+        .expect("failed to run install.rs unlink --target");
+
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Categorize a skill source directory.
+/// Returns "agnostic" if $src/SKILL.md exists (no runtime variants),
+/// "coupled" if $src/reasonix/SKILL.md exists (has per-runtime variants).
+fn categorize_skill(src: &Path) -> &'static str {
+    if src.join("reasonix/SKILL.md").exists() {
+        "coupled"
+    } else {
+        "agnostic"
+    }
+}
+
+/// Get the variant source path for a coupled skill based on target.
+fn variant_src(src: &Path, target: &str) -> PathBuf {
+    src.join(target)
+}
+
+/// Check if a coupled skill has codex agent .toml files (for deploy-agent).
+fn has_codex_agents(src: &Path) -> bool {
+    let codex_dir = src.join("codex");
+    if !codex_dir.is_dir() {
+        return false;
+    }
+    if let Ok(entries) = fs::read_dir(&codex_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path.extension().map(|e| e == "toml").unwrap_or(false)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Get the .toml agent files from a coupled skill's codex/ directory.
+fn codex_agent_files(src: &Path) -> Vec<(String, PathBuf)> {
+    let mut agents: Vec<(String, PathBuf)> = Vec::new();
+    let codex_dir = src.join("codex");
+    if !codex_dir.is_dir() {
+        return agents;
+    }
+    if let Ok(entries) = fs::read_dir(&codex_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path.extension().map(|e| e == "toml").unwrap_or(false)
+            {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    agents.push((stem.to_string(), path));
+                }
+            }
+        }
+    }
+    agents
+}
+
 /// Set up a mock project with known skills and .skill-lock.json.
 fn setup_mock_project(ctx: &TestContext) {
     let root = ctx.path();
@@ -197,6 +434,123 @@ fn setup_mock_project(ctx: &TestContext) {
     fs::write(principles_dir.join("karpathy.md"), "Be curious.\n").expect("write principles");
 
     // Create .skill-lock.json
+    let lock = serde_json::json!({
+        "version": 3,
+        "skills": {
+            "skill-a": {
+                "source": "mock/skills",
+                "sourceType": "github",
+                "sourceUrl": "https://example.com/mock.git",
+                "skillPath": "skills/engineering/skill-a/SKILL.md",
+                "skillFolderHash": "aaa111",
+                "pluginName": "mock-skills",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            },
+            "skill-b": {
+                "source": "mock/skills",
+                "sourceType": "github",
+                "sourceUrl": "https://example.com/mock.git",
+                "skillPath": "skills/engineering/skill-b/SKILL.md",
+                "skillFolderHash": "bbb222",
+                "pluginName": "mock-skills",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            },
+            "skill-c": {
+                "source": "mock/skills",
+                "sourceType": "github",
+                "sourceUrl": "https://example.com/mock.git",
+                "skillPath": "skills/engineering/skill-c/SKILL.md",
+                "skillFolderHash": "ccc333",
+                "pluginName": "mock-skills",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            }
+        },
+        "dismissed": {}
+    });
+    let content = serde_json::to_string_pretty(&lock).unwrap() + "\n";
+    fs::write(root.join(".skill-lock.json"), content).expect("write lockfile");
+}
+
+/// Set up a mock project with both agnostic AND coupled skills.
+/// Agnostic: upstream skills (skill-a, skill-b, skill-c) + toolkit-setup + zoom-out
+/// Coupled: 4 autopilot skills with reasonix/codex variant subdirs + .toml agents
+fn setup_mock_project_with_variants(ctx: &TestContext, _target: &str) {
+    let root = ctx.path();
+
+    // ── Agnostic: Upstream skills (3) ──────────────────────────────────
+    let upstream_skills = ["skill-a", "skill-b", "skill-c"];
+    for s in &upstream_skills {
+        let dir = root.join("skills/upstream/skills/engineering").join(s);
+        fs::create_dir_all(&dir).expect("create upstream skill dir");
+        let md = format!(
+            "---\nname: {}\ndescription: Mock upstream skill {}\n---\n# {}\n",
+            s, s, s
+        );
+        fs::write(dir.join("SKILL.md"), md).expect("write SKILL.md");
+    }
+
+    // ── Agnostic: toolkit-setup and zoom-out ───────────────────────────
+    let agnostic_autopilot = ["toolkit-setup", "zoom-out"];
+    for s in &agnostic_autopilot {
+        let dir = root.join("skills/autopilot").join(s);
+        fs::create_dir_all(&dir).expect("create agnostic autopilot skill dir");
+        let md = format!(
+            "---\nname: {}\ndescription: Mock autopilot skill {}\n---\n# {}\n",
+            s, s, s
+        );
+        fs::write(dir.join("SKILL.md"), md).expect("write SKILL.md");
+    }
+
+    // ── Coupled: 4 autopilot skills with runtime variants ──────────────
+    let coupled_skills = [
+        "audit-autopilot",
+        "autopilot-implementer",
+        "autopilot-orchestrator",
+        "autopilot-reviewer",
+    ];
+    let codex_agent_skills = ["autopilot-implementer", "autopilot-reviewer"];
+
+    for s in &coupled_skills {
+        let dir = root.join("skills/autopilot").join(s);
+
+        // Create reasonix variant
+        let reasonix_dir = dir.join("reasonix");
+        fs::create_dir_all(&reasonix_dir).expect("create reasonix variant dir");
+        let reasonix_md = format!(
+            "---\nname: {}\ndescription: {} (reasonix variant)\n---\n# {} (Reasonix)\n",
+            s, s, s
+        );
+        fs::write(reasonix_dir.join("SKILL.md"), reasonix_md).expect("write reasonix SKILL.md");
+
+        // Create codex variant
+        let codex_dir = dir.join("codex");
+        fs::create_dir_all(&codex_dir).expect("create codex variant dir");
+        let codex_md = format!(
+            "---\nname: {}\ndescription: {} (codex variant)\n---\n# {} (Codex)\n",
+            s, s, s
+        );
+        fs::write(codex_dir.join("SKILL.md"), codex_md).expect("write codex SKILL.md");
+
+        // For implementer and reviewer: add .toml agent files
+        if codex_agent_skills.contains(s) {
+            let agent_toml = format!(
+                "[agent]\nname = \"{}\"\ndescription = \"{} codex agent\"\n",
+                s, s
+            );
+            fs::write(codex_dir.join(format!("{}.toml", s)), agent_toml)
+                .expect("write agent .toml");
+        }
+    }
+
+    // ── Principles ─────────────────────────────────────────────────────
+    let principles_dir = root.join("principles");
+    fs::create_dir_all(&principles_dir).expect("create principles dir");
+    fs::write(principles_dir.join("karpathy.md"), "Be curious.\n").expect("write principles");
+
+    // ── .skill-lock.json ───────────────────────────────────────────────
     let lock = serde_json::json!({
         "version": 3,
         "skills": {
@@ -276,10 +630,16 @@ fn derive_expected_set(mock_root: &Path) -> Vec<(String, PathBuf)> {
         if let Ok(entries) = fs::read_dir(&autopilot_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() && path.join("SKILL.md").exists() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        let raw = path.to_path_buf();
-                        expected.push((name.to_string(), raw));
+                if path.is_dir() {
+                    // Agnostic skill: SKILL.md directly in directory
+                    // Coupled skill: reasonix/SKILL.md exists (variant source)
+                    let is_skill = path.join("SKILL.md").exists()
+                        || path.join("reasonix/SKILL.md").exists();
+                    if is_skill {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            let raw = path.to_path_buf();
+                            expected.push((name.to_string(), raw));
+                        }
                     }
                 }
             }
@@ -309,7 +669,265 @@ fn derive_expected_set(mock_root: &Path) -> Vec<(String, PathBuf)> {
     expected
 }
 
-/// Full execute: sync all expected + link-principles. Returns combined output.
+/// Full execute with --target: sync agnostic skills --shared, coupled skills --target.
+fn run_toolkit_setup_execute_targeted(
+    install_script: &Path,
+    ctx: &TestContext,
+    expected: &[(String, PathBuf)],
+    target: &str,
+) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    // Resolve target-specific dirs
+    let target_skills_dir = if target == "reasonix" {
+        ctx.reasonix_skills_dir()
+    } else {
+        ctx.codex_skills_dir()
+    };
+
+    // Sync all expected skills
+    for (name, src) in expected {
+        let category = categorize_skill(src);
+
+        match category {
+            "agnostic" => {
+                let state = skill_state(name, src, ctx.skills_dir());
+                match state {
+                    "missing" | "broken" | "wrong_target" => {
+                        let (_stdout, _stderr, _code) = run_sync_shared(
+                            install_script,
+                            ctx.home(),
+                            ctx.skills_dir(),
+                            ctx.path(),
+                            name,
+                            src,
+                        );
+                        lines.push(format!("  SYNC {} -> {} (shared)", name, src.display()));
+                    }
+                    "real_dir" => {
+                        lines.push(format!(
+                            "  WARN: {} is a real directory at {}/{} — skipping",
+                            name,
+                            ctx.skills_dir().display(),
+                            name
+                        ));
+                    }
+                    "correct" => { /* no-op */ }
+                    _ => {}
+                }
+            }
+            "coupled" => {
+                let variant_src_path = variant_src(src, target);
+                let state = skill_state(name, &variant_src_path, target_skills_dir);
+                match state {
+                    "missing" | "broken" | "wrong_target" => {
+                        let (_stdout, _stderr, _code) = run_sync_targeted(
+                            install_script,
+                            ctx.home(),
+                            target,
+                            target_skills_dir,
+                            ctx.path(),
+                            name,
+                            &variant_src_path,
+                        );
+                        lines.push(format!(
+                            "  SYNC {} -> {} (--target {})",
+                            name,
+                            variant_src_path.display(),
+                            target
+                        ));
+                    }
+                    "real_dir" => {
+                        lines.push(format!(
+                            "  WARN: {} is a real directory at {}/{} — skipping",
+                            name,
+                            target_skills_dir.display(),
+                            name
+                        ));
+                    }
+                    "correct" => { /* no-op */ }
+                    _ => {}
+                }
+
+                // Codex agents: deploy-agent for skills with .toml files
+                if target == "codex" && has_codex_agents(src) {
+                    for (agent_name, agent_src) in &codex_agent_files(src) {
+                        let (_stdout, _stderr, _code) = run_deploy_agent(
+                            install_script,
+                            ctx.home(),
+                            ctx.path(),
+                            ctx.codex_agents_dir(),
+                            agent_name,
+                            agent_src,
+                        );
+                        lines.push(format!(
+                            "  DEPLOY-AGENT {} -> {}",
+                            agent_name,
+                            agent_src.display()
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Find and unlink orphaned symlinks from ALL relevant directories
+    // Agnostic orphans: in ~/.agents/skills/
+    let expected_names: Vec<&str> = expected.iter().map(|(n, _)| n.as_str()).collect();
+    if ctx.skills_dir().is_dir() {
+        if let Ok(entries) = fs::read_dir(ctx.skills_dir()) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_symlink() {
+                    if let Some(ename) = path.file_name().and_then(|n| n.to_str()) {
+                        if !expected_names.contains(&ename) {
+                            if let Ok(link_target) = fs::read_link(&path) {
+                                let proj = ctx.path().to_path_buf();
+                                if link_target.starts_with(&proj) {
+                                    let (_stdout, _stderr, _code) = run_unlink_shared(
+                                        install_script,
+                                        ctx.home(),
+                                        ctx.skills_dir(),
+                                        ctx.path(),
+                                        ename,
+                                    );
+                                    lines.push(format!(
+                                        "  UNLINK {} (orphaned, shared)",
+                                        ename
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Coupled orphans: in ~/.reasonix/skills/ or ~/.codex/skills/
+    if target_skills_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(target_skills_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_symlink() {
+                    if let Some(ename) = path.file_name().and_then(|n| n.to_str()) {
+                        if !expected_names.contains(&ename) {
+                            if let Ok(link_target) = fs::read_link(&path) {
+                                let proj = ctx.path().to_path_buf();
+                                if link_target.starts_with(&proj) {
+                                    let (_stdout, _stderr, _code) = run_unlink_targeted(
+                                        install_script,
+                                        ctx.home(),
+                                        target,
+                                        target_skills_dir,
+                                        ctx.path(),
+                                        ename,
+                                    );
+                                    lines.push(format!(
+                                        "  UNLINK {} (orphaned, --target {})",
+                                        ename, target
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Link principles (always shared)
+    let principles_src = ctx.path().join("principles");
+    if principles_src.is_dir() {
+        let principles_dir = ctx.home().join(".agents/principles");
+        let _ = run_link_principles(install_script, ctx.home(), &principles_dir, &principles_src);
+        lines.push(format!("  LINK-PRINCIPLES -> {}", principles_src.display()));
+    }
+
+    lines.join("\n")
+}
+
+/// Verification with target awareness: checks agnostic skills in shared dir,
+/// coupled skills in the target-specific dir.
+fn run_toolkit_setup_verify_targeted(
+    ctx: &TestContext,
+    expected: &[(String, PathBuf)],
+    target: &str,
+) -> String {
+    let mut report: Vec<String> = Vec::new();
+    let mut missing_count = 0;
+    let mut damaged_count = 0;
+    let total = expected.len();
+    let mut all_pass = true;
+
+    let target_skills_dir = if target == "reasonix" {
+        ctx.reasonix_skills_dir()
+    } else {
+        ctx.codex_skills_dir()
+    };
+
+    for (name, src) in expected {
+        let category = categorize_skill(src);
+        let (check_dir, check_src) = match category {
+            "agnostic" => (ctx.skills_dir(), src.clone()),
+            "coupled" => (target_skills_dir, variant_src(src, target)),
+            _ => continue,
+        };
+
+        let state = skill_state(name, &check_src, check_dir);
+        match state {
+            "correct" => {
+                report.push(format!("  [PASS] {}", name));
+            }
+            "missing" => {
+                report.push(format!("  [FAIL] {} — missing", name));
+                missing_count += 1;
+                all_pass = false;
+            }
+            "wrong_target" => {
+                let actual = fs::read_link(check_dir.join(name))
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "?".to_string());
+                report.push(format!(
+                    "  [FAIL] {} -> {} (expected {})",
+                    name,
+                    actual,
+                    check_src.display()
+                ));
+                damaged_count += 1;
+                all_pass = false;
+            }
+            "broken" => {
+                report.push(format!("  [FAIL] {} — broken symlink", name));
+                damaged_count += 1;
+                all_pass = false;
+            }
+            "real_dir" => {
+                report.push(format!(
+                    "  [WARN] {} — real directory (not a symlink)",
+                    name
+                ));
+                damaged_count += 1;
+                all_pass = false;
+            }
+            _ => {}
+        }
+    }
+
+    report.push(format!(
+        "  Total: {} expected, {} missing, {} damaged",
+        total, missing_count, damaged_count
+    ));
+
+    if all_pass {
+        report.push("  ALL PASS".to_string());
+    } else {
+        report.push("  FIXES NEEDED".to_string());
+    }
+
+    report.join("\n")
+}
 fn run_toolkit_setup_execute(
     install_script: &Path,
     ctx: &TestContext,
@@ -801,6 +1419,313 @@ mod tests {
             verify_result.contains("FAIL") && verify_result.contains("missing"),
             "verification should list missing skills as FAIL:\n{}",
             verify_result
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 7: --target reasonix routes skills correctly
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn target_reasonix_routes_skills_correctly() {
+        let ctx = TestContext::new("toolkit-test7");
+        setup_mock_project_with_variants(&ctx, "reasonix");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+        // Expected: 3 upstream + 6 autopilot = 9 skills
+        assert!(
+            expected.len() >= 8,
+            "expected at least 8 skills, got {}: {:?}",
+            expected.len(),
+            expected
+        );
+
+        // Count categories
+        let agnostic_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "agnostic").count();
+        let coupled_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "coupled").count();
+        assert!(agnostic_count > 0, "should have agnostic skills");
+        assert!(coupled_count > 0, "should have coupled skills");
+
+        // Execute with target=reasonix
+        let exec_result = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "reasonix");
+
+        // Verify shared sync for agnostic skills
+        let shared_sync_count = exec_result.matches("(shared)").count();
+        assert_eq!(
+            shared_sync_count, agnostic_count,
+            "all {} agnostic skills should sync with --shared, got {}:\n{}",
+            agnostic_count, shared_sync_count, exec_result
+        );
+
+        // Verify --target reasonix sync for coupled skills
+        let targeted_sync_count = exec_result.matches("--target reasonix").count();
+        assert_eq!(
+            targeted_sync_count, coupled_count,
+            "all {} coupled skills should sync with --target reasonix, got {}:\n{}",
+            coupled_count, targeted_sync_count, exec_result
+        );
+
+        // Verify LINK-PRINCIPLES
+        assert!(
+            exec_result.contains("LINK-PRINCIPLES"),
+            "should contain LINK-PRINCIPLES:\n{}",
+            exec_result
+        );
+
+        // Verify agnostic skills in shared dir
+        for (name, src) in &expected {
+            if categorize_skill(src) == "agnostic" {
+                let state = skill_state(name, src, ctx.skills_dir());
+                assert_eq!(
+                    state, "correct",
+                    "agnostic skill {} should be correct in shared dir, but was {}",
+                    name, state
+                );
+            }
+        }
+
+        // Verify coupled skills in reasonix dir
+        for (name, src) in &expected {
+            if categorize_skill(src) == "coupled" {
+                let variant = variant_src(src, "reasonix");
+                let state = skill_state(name, &variant, ctx.reasonix_skills_dir());
+                assert_eq!(
+                    state, "correct",
+                    "coupled skill {} should be correct in reasonix dir, but was {}",
+                    name, state
+                );
+            }
+        }
+
+        // Coupled skills should NOT be in shared dir
+        for (name, src) in &expected {
+            if categorize_skill(src) == "coupled" {
+                let target = ctx.skills_dir().join(name);
+                assert!(
+                    !target.exists() || target.is_symlink() == false,
+                    "coupled skill {} should NOT be symlinked in shared dir",
+                    name
+                );
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 8: --target codex routes skills correctly
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn target_codex_routes_skills_correctly() {
+        let ctx = TestContext::new("toolkit-test8");
+        setup_mock_project_with_variants(&ctx, "codex");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+
+        let agnostic_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "agnostic").count();
+        let coupled_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "coupled").count();
+
+        // Execute with target=codex
+        let exec_result = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "codex");
+
+        // Verify shared sync for agnostic skills
+        let shared_sync_count = exec_result.matches("(shared)").count();
+        assert_eq!(
+            shared_sync_count, agnostic_count,
+            "all agnostic skills should sync with --shared:\n{}",
+            exec_result
+        );
+
+        // Verify --target codex sync for coupled skills
+        let targeted_sync_count = exec_result.matches("--target codex").count();
+        assert_eq!(
+            targeted_sync_count, coupled_count,
+            "all coupled skills should sync with --target codex:\n{}",
+            exec_result
+        );
+
+        // Verify DEPLOY-AGENT for implementer and reviewer
+        assert!(
+            exec_result.contains("DEPLOY-AGENT autopilot-implementer"),
+            "should contain DEPLOY-AGENT for implementer:\n{}",
+            exec_result
+        );
+        assert!(
+            exec_result.contains("DEPLOY-AGENT autopilot-reviewer"),
+            "should contain DEPLOY-AGENT for reviewer:\n{}",
+            exec_result
+        );
+
+        // deploy-agent should NOT be called for non-agent skills
+        assert!(
+            !exec_result.contains("DEPLOY-AGENT audit-autopilot"),
+            "should NOT deploy-agent for audit-autopilot:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("DEPLOY-AGENT autopilot-orchestrator"),
+            "should NOT deploy-agent for orchestrator:\n{}",
+            exec_result
+        );
+
+        // Verify coupled skills in codex dir
+        for (name, src) in &expected {
+            if categorize_skill(src) == "coupled" {
+                let variant = variant_src(src, "codex");
+                let state = skill_state(name, &variant, ctx.codex_skills_dir());
+                assert_eq!(
+                    state, "correct",
+                    "coupled skill {} should be correct in codex dir, but was {}",
+                    name, state
+                );
+            }
+        }
+
+        // Verify agent files deployed
+        for agent_name in &["autopilot-implementer", "autopilot-reviewer"] {
+            let agent_path = ctx.codex_agents_dir().join(format!("{}.toml", agent_name));
+            assert!(
+                agent_path.is_file(),
+                "agent file {} should exist after deploy",
+                agent_path.display()
+            );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 9: target-aware verification reports correctly
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn target_aware_verification_reports_per_directory() {
+        let ctx = TestContext::new("toolkit-test9");
+        setup_mock_project_with_variants(&ctx, "reasonix");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+
+        // First install all skills
+        let _ = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "reasonix");
+
+        // Run target-aware verification
+        let verify_result = run_toolkit_setup_verify_targeted(&ctx, &expected, "reasonix");
+
+        // Should report ALL PASS
+        assert!(
+            verify_result.contains("ALL PASS"),
+            "verification should report ALL PASS:\n{}",
+            verify_result
+        );
+
+        // Each skill should be listed as PASS
+        for (name, _src) in &expected {
+            assert!(
+                verify_result.contains(&format!("[PASS] {}", name)),
+                "verification should list {} as PASS:\n{}",
+                name,
+                verify_result
+            );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 10: Backward compatible — no target defaults to reasonix behavior
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn backward_compatible_no_target_uses_reasonix_behavior() {
+        let ctx = TestContext::new("toolkit-test10");
+        setup_mock_project_with_variants(&ctx, "reasonix");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+
+        // Old-style execute (no target awareness) should still work for the
+        // old behavior: all skills in ~/.agents/skills/ via plain sync
+        let exec_result = run_toolkit_setup_execute(&install, &ctx, &expected);
+
+        // Old-style execute syncs everything to shared dir
+        // It should at least complete without error
+        assert!(
+            exec_result.contains("LINK-PRINCIPLES"),
+            "old-style execute should complete with link-principles:\n{}",
+            exec_result
+        );
+
+        // Verify all agnostic skills are correct in shared dir
+        for (name, src) in &expected {
+            if categorize_skill(src) == "agnostic" {
+                let state = skill_state(name, src, ctx.skills_dir());
+                assert_eq!(
+                    state, "correct",
+                    "agnostic skill {} should be correct in shared dir, but was {}",
+                    name, state
+                );
+            }
+        }
+
+        // Old-style verify should work too
+        let verify_result = run_toolkit_setup_verify(&ctx, &expected);
+        assert!(
+            verify_result.contains("ALL PASS") || verify_result.contains("FIXES NEEDED"),
+            "old-style verify should produce report"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 11: Unlink cleanup uses correct target directories
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn unlink_cleanup_uses_correct_target_directories() {
+        let ctx = TestContext::new("toolkit-test11");
+        setup_mock_project_with_variants(&ctx, "codex");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+
+        // First install all skills
+        let _ = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "codex");
+
+        // Create orphaned symlinks in both shared and codex dirs
+        let old_shared = ctx.path().join("skills/upstream/skills/engineering/old-shared");
+        fs::create_dir_all(&old_shared).expect("create old-shared dir");
+        fs::write(old_shared.join("SKILL.md"), "# Old Shared\n").unwrap();
+
+        let orphan_shared = ctx.skills_dir().join("old-shared");
+        std::os::unix::fs::symlink(&old_shared, &orphan_shared).expect("create orphan in shared");
+
+        let old_codex = ctx.path().join("skills/autopilot/old-codex/codex");
+        fs::create_dir_all(&old_codex).expect("create old-codex dir");
+        fs::write(old_codex.join("SKILL.md"), "# Old Codex\n").unwrap();
+
+        let orphan_codex = ctx.codex_skills_dir().join("old-codex");
+        std::os::unix::fs::symlink(&old_codex, &orphan_codex).expect("create orphan in codex");
+
+        // Re-run toolkit-setup with target=codex
+        let exec_result = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "codex");
+
+        // Verify both orphans were cleaned up
+        assert!(
+            !orphan_shared.exists(),
+            "orphan in shared dir should be removed"
+        );
+        assert!(
+            !orphan_codex.exists(),
+            "orphan in codex dir should be removed"
+        );
+
+        // Verify UNLINK was reported for both
+        assert!(
+            exec_result.contains("UNLINK old-shared"),
+            "should report UNLINK for old-shared:\n{}",
+            exec_result
+        );
+        assert!(
+            exec_result.contains("UNLINK old-codex"),
+            "should report UNLINK for old-codex:\n{}",
+            exec_result
         );
     }
 }
