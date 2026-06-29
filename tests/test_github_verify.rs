@@ -3,8 +3,8 @@
 //! [dependencies]
 //! ```
 //!
-//! Integration tests verifying autopilot-orchestrator SKILL.md defines all
-//! required phases, state transitions, and dispatch chains (AC1, AC2, AC4, AC5).
+//! Integration tests verifying autopilot-orchestrator SKILL.md variants define
+//! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
 //! #[test] functions: 13
@@ -53,6 +53,15 @@ fn orchestrator_skill_path() -> PathBuf {
 
 fn read_orchestrator_skill() -> String {
     fs::read_to_string(orchestrator_skill_path()).expect("failed to read orchestrator SKILL.md")
+}
+
+fn codex_orchestrator_skill_path() -> PathBuf {
+    project_root().join("skills/autopilot/autopilot-orchestrator/codex/SKILL.md")
+}
+
+fn read_codex_orchestrator_skill() -> String {
+    fs::read_to_string(codex_orchestrator_skill_path())
+        .expect("failed to read Codex orchestrator SKILL.md")
 }
 
 /// Count occurrences of a pattern in text.
@@ -230,5 +239,62 @@ mod tests {
             has_unparseable,
             "SKILL.md must define unparseable reply handling (解析容错...不可解析)"
         );
+    }
+
+    #[test]
+    fn codex_variant_exists_with_valid_frontmatter() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            skill.starts_with("---\nname: autopilot-orchestrator\n"),
+            "Codex variant must start with valid frontmatter"
+        );
+        assert!(
+            skill.contains("description:"),
+            "Codex variant frontmatter must include description"
+        );
+    }
+
+    #[test]
+    fn codex_variant_uses_spawn_agent_dispatch() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            contains(&skill, "spawn agent autopilot-implementer"),
+            "Codex variant must dispatch implementer via spawn agent"
+        );
+        assert!(
+            contains(&skill, "spawn agent autopilot-reviewer"),
+            "Codex variant must dispatch reviewer via spawn agent"
+        );
+    }
+
+    #[test]
+    fn codex_variant_excludes_reasonix_dispatch_terms() {
+        let skill = read_codex_orchestrator_skill();
+        for forbidden in ["run_skill", "complete_step", "runAs"] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex variant must not contain Reasonix-specific term {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_variant_preserves_core_workflow_sections() {
+        let skill = read_codex_orchestrator_skill();
+        for required in [
+            "Issue 来源识别",
+            "PRD 检测与跳过",
+            "扫描模式",
+            "Phase 1: 调度循环",
+            "最多 3 轮",
+            "交叉 Issue Suggestion 匹配",
+            "Phase 2: 全局 Meta-Review",
+            "FINAL_ACCEPTANCE_REPORT",
+        ] {
+            assert!(
+                contains(&skill, required),
+                "Codex variant must preserve workflow section: {required}"
+            );
+        }
     }
 }

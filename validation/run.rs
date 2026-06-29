@@ -737,7 +737,6 @@ mod tests {
     fn variant_skills_use_correct_relative_path() {
         let root = project_root();
         let skills = discover_skills(&root);
-        // Find a reasonix variant
         let orchestrator = skills
             .iter()
             .find(|s| s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("reasonix"));
@@ -749,6 +748,24 @@ mod tests {
         assert_eq!(
             orch.relative_path,
             "skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn discovers_codex_orchestrator_variant() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let orchestrator = skills
+            .iter()
+            .find(|s| s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("codex"));
+        assert!(
+            orchestrator.is_some(),
+            "should find autopilot-orchestrator codex variant"
+        );
+        let orch = orchestrator.unwrap();
+        assert_eq!(
+            orch.relative_path,
+            "skills/autopilot/autopilot-orchestrator/codex/SKILL.md"
         );
     }
 
@@ -828,10 +845,12 @@ mod tests {
         let root = project_root();
         let skills = discover_skills(&root);
         let status = check_codex_status(&skills);
-        // Should have entries for all 4 coupled skills
         assert!(status.iter().any(|l| l.contains("autopilot-implementer") && l.contains("agent.toml")));
         assert!(status.iter().any(|l| l.contains("autopilot-reviewer") && l.contains("agent.toml")));
         assert!(status.iter().any(|l| l.contains("audit-autopilot") && l.contains("placeholder")));
-        assert!(status.iter().any(|l| l.contains("autopilot-orchestrator") && l.contains("placeholder")));
+        assert!(
+            !status.iter().any(|l| l.contains("autopilot-orchestrator") && l.contains("placeholder")),
+            "orchestrator has a codex/SKILL.md and should no longer be reported as a placeholder"
+        );
     }
 }
