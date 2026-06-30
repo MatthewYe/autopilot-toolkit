@@ -28,6 +28,9 @@ skills/
     ├── autopilot-orchestrator/        # runtime-coupled: both variants are inline skills
     │   ├── reasonix/SKILL.md          # → ~/.reasonix/skills/autopilot-orchestrator/
     │   └── codex/SKILL.md             # → ~/.codex/skills/autopilot-orchestrator/
+    │   └── references/                # shared references (meta-review.md, acceptance-report.md)
+    │                                  #   — symlink target is the whole variant dir; reasonix/
+    │                                  #     variant gets references/ via sibling symlink
     │
     ├── autopilot-implementer/         # runtime-coupled
     │   ├── reasonix/SKILL.md          # → ~/.reasonix/skills/autopilot-implementer/

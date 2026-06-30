@@ -13,11 +13,12 @@ Both agents scan `~/.agents/skills/` for skill discovery (Agent Skills standard)
 
 **Use per-runtime skill variants with agent-exclusive install directories.**
 
-1. **Source**: Each runtime-coupled skill maintains two variant sources — `SKILL.reasonix.md` and `SKILL.codex.md` — in its source directory under `skills/autopilot/<name>/`.
+1. **Source**: Each runtime-coupled skill maintains two variant sources in per-runtime subdirectories: `reasonix/SKILL.md` and `codex/SKILL.md` (or `codex/agent.toml` for implementer/reviewer) under `skills/autopilot/<name>/`.
 
 2. **Install**: `install.rs` accepts `--target reasonix|codex`. Runtime-agnostic skills (17) go to the shared `~/.agents/skills/`. Runtime-coupled skills (4) go to the agent-exclusive directory:
-   - `--target reasonix` → symlink `SKILL.reasonix.md` as `~/.reasonix/skills/<name>/SKILL.md`
-   - `--target codex` → symlink `SKILL.codex.md` as `~/.codex/skills/<name>/SKILL.md`
+   - `--target reasonix` → symlink `reasonix/` subdirectory as `~/.reasonix/skills/<name>/`
+   - `--target codex` → symlink `codex/` subdirectory as `~/.codex/skills/<name>/`
+   The directory-level symlink preserves the existing install model — `SKILL.md` is discovered by the agent inside the symlinked directory.
 
 3. **Codex custom agents**: For implementer and reviewer, the Codex install also deploys `~/.codex/agents/autopilot-implementer.toml` and `~/.codex/agents/autopilot-reviewer.toml` — Codex-native subagent definitions the orchestrator references via `spawn agent`.
 

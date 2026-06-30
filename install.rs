@@ -301,6 +301,9 @@ fn main() -> anyhow::Result<()> {
     // Resolve the target skills directory for sync
     let resolve_skills_dir = || -> PathBuf {
         if shared_flag {
+            if target_flag.is_some() {
+                warn("--shared overrides --target (shared directory takes precedence)");
+            }
             shared_skills_dir.clone()
         } else if let Some(ref t) = target_flag {
             match t.as_str() {
