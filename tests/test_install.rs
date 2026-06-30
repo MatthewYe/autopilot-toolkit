@@ -60,6 +60,7 @@ fn run_install(
 }
 
 /// Extended version of run_install with support for REASONIX_SKILLS_DIR and CODEX_SKILLS_DIR.
+#[allow(clippy::too_many_arguments)]
 fn run_install_ext(
     args: &[&str],
     home: &Path,

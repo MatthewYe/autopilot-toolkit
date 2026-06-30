@@ -547,7 +547,10 @@ compatibility: \">=1.0\"
 ---
 # Test";
         let result = validate_skill_with_variant(content, SkillVariant::Reasonix);
-        assert!(!result.passed, "reasonix variant should reject opencode fields");
+        assert!(
+            !result.passed,
+            "reasonix variant should reject opencode fields"
+        );
         assert!(
             result.issues.iter().any(|i| i.contains("compatibility")),
             "should report compatibility as opencode field"
@@ -563,7 +566,10 @@ hidden: true
 ---
 # Test";
         let result = validate_skill_with_variant(content, SkillVariant::Agnostic);
-        assert!(!result.passed, "agnostic variant should reject opencode fields");
+        assert!(
+            !result.passed,
+            "agnostic variant should reject opencode fields"
+        );
         assert!(
             result.issues.iter().any(|i| i.contains("hidden")),
             "should report hidden as opencode field"
@@ -581,7 +587,10 @@ compatibility: \">=1.0\"
 ---
 # Test",
         );
-        assert!(!result.passed, "default validate_skill should reject opencode fields");
+        assert!(
+            !result.passed,
+            "default validate_skill should reject opencode fields"
+        );
     }
 
     // ── Additional parse_frontmatter unit tests ────────────────────────
