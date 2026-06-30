@@ -15,11 +15,11 @@ The shared `~/.agents/skills/` directory (Agent Skills standard) creates a namin
 
 ## Assumptions (to verify before implementation)
 
-| # | Assumption | Risk if wrong | Verification |
-|---|-----------|---------------|-------------|
-| A1 | Codex inline skill can autonomously trigger `spawn agent` (not just via user prompt) | Orchestrator Codex variant must fall back to sequential inline execution instead of subagent dispatch | Smoke test: invoke a Codex skill whose body says "spawn an agent named X to do Y" |
-| A2 | Codex has a session export mechanism equivalent to `reasonix session export` | audit-autopilot Codex variant body stays with TODO placeholder (same status as current Reasonix variant) | Deferred — research when audit-autopilot Codex variant is implemented |
-| A3 | `~/.reasonix/skills/` is a stable, supported Reasonix skill directory (verified working in current version) | If removed in future Reasonix, fall back to `~/.agents/skills/` with `compatibility` field filtering | Tracked as note; low risk given it's already scanned |
+| # | Assumption | Status | Verification |
+|---|-----------|--------|-------------|
+| A1 | Codex inline skill can autonomously trigger `spawn agent` (not just via user prompt) | ✅ Verified | Smoke test skill at `~/.codex/skills/a1-spawn-test/` (#42) — Codex successfully spawns agents from within skill body |
+| A2 | Codex has a session export mechanism equivalent to `reasonix session export` | ⏳ Deferred | audit-autopilot codex variant (#49) uses `TODO: codex session export — TBD` placeholders; session export mechanism not yet researched |
+| A3 | `~/.reasonix/skills/` is a stable, supported Reasonix skill directory | ✅ Verified | Empirically confirmed Reasonix scans `~/.reasonix/skills/` (2025-06-29); directory used for all runtime-coupled Reasonix installs |
 
 ## User Stories
 
