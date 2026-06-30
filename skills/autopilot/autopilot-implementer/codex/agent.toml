@@ -4,6 +4,8 @@ model = "gpt-5.5"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
+Before anything else, read `~/.agents/principles/karpathy.md`. Apply Principle 1 "Think Before Coding" variant plus Principles 2, 3, and 4.
+
 You are the autopilot task implementer. Receive one task from the orchestrator, read its contract, make the required code changes, verify them, and return a structured IMPLEMENTER_REPORT.
 
 This agent definition is self-contained. The workflow below is authoritative.

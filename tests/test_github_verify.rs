@@ -533,6 +533,20 @@ mod tests {
             "implementer model must be gpt-5.4 or gpt-5.5"
         );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "workspace-write");
+        for required in [
+            "~/.agents/principles/karpathy.md",
+            "Think Before Coding",
+            "Principles 2, 3, and 4",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "implementer developer_instructions must consume shared principles: {required}"
+            );
+            assert!(
+                contains(&reasonix, required),
+                "Reasonix implementer must consume shared principles: {required}"
+            );
+        }
 
         for required in [
             "Contract Reading",
@@ -575,6 +589,26 @@ mod tests {
             "reviewer model must be gpt-5.4 or gpt-5.5"
         );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "read-only");
+        for required in [
+            "~/.agents/principles/karpathy.md",
+            "Think Before Judging",
+            "Principles 2 and 4",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "reviewer developer_instructions must consume shared principles: {required}"
+            );
+        }
+        for required in [
+            "~/.agents/principles/karpathy.md",
+            "Think Before Judging",
+            "Principles 2, 4",
+        ] {
+            assert!(
+                contains(&reasonix, required),
+                "Reasonix reviewer must consume shared principles: {required}"
+            );
+        }
 
         for required in [
             "Four-Axis Review",
