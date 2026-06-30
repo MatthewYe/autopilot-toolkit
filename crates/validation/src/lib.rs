@@ -34,6 +34,17 @@ fn name_is_valid(name: &str) -> bool {
 
 // ── Public types ────────────────────────────────────────────────────────────
 
+/// Which runtime variant a skill targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillVariant {
+    /// Reasonix runtime (rejects OpenCode-specific fields).
+    Reasonix,
+    /// Codex runtime (allows OpenCode-specific fields).
+    Codex,
+    /// Runtime-agnostic (rejects OpenCode-specific fields, same as Reasonix).
+    Agnostic,
+}
+
 /// Result of `validate_skill`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidationResult {
@@ -165,10 +176,19 @@ fn parse_key_value(line: &str) -> Option<(&str, &str)> {
 
 // ── validate_skill ──────────────────────────────────────────────────────────
 
-/// Validate SKILL.md frontmatter content.
+/// Validate SKILL.md frontmatter content (Reasonix-compatible default).
 ///
 /// Runs `parse_frontmatter` then applies 5 validation checks.
+/// Equivalent to `validate_skill_with_variant(content, SkillVariant::Reasonix)`.
 pub fn validate_skill(content: &str) -> ValidationResult {
+    validate_skill_with_variant(content, SkillVariant::Reasonix)
+}
+
+/// Validate SKILL.md frontmatter content for a specific runtime variant.
+///
+/// Codex variants skip the OpenCode-specific field check (Check 3).
+/// Reasonix and Agnostic variants include it.
+pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> ValidationResult {
     let mut issues: Vec<String> = Vec::new();
 
     // Parse first
@@ -199,11 +219,13 @@ pub fn validate_skill(content: &str) -> ValidationResult {
         }
     }
 
-    // Check 3: No opencode fields
-    for &field in OPENCODE_FIELDS {
-        if let Some(val) = fields.get(field) {
-            if !val.is_empty() {
-                issues.push(format!("OpenCode-specific field present: {field}"));
+    // Check 3: No opencode fields (skip for Codex variants)
+    if variant != SkillVariant::Codex {
+        for &field in OPENCODE_FIELDS {
+            if let Some(val) = fields.get(field) {
+                if !val.is_empty() {
+                    issues.push(format!("OpenCode-specific field present: {field}"));
+                }
             }
         }
     }
@@ -492,6 +514,82 @@ runAs: agent
             result.issues.len() >= 2,
             "expected multiple issues, got: {:?}",
             result.issues
+        );
+    }
+
+    // ── Variant-aware validation tests ─────────────────────────────────
+
+    #[test]
+    fn codex_variant_allows_opencode_fields() {
+        // Codex SKILL.md may legitimately contain compatibility, mode, etc.
+        let content = "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+mode: chat
+disable-model-invocation: true
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Codex);
+        assert!(
+            result.passed,
+            "codex variant should allow opencode fields, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn reasonix_variant_rejects_opencode_fields() {
+        let content = "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Reasonix);
+        assert!(
+            !result.passed,
+            "reasonix variant should reject opencode fields"
+        );
+        assert!(
+            result.issues.iter().any(|i| i.contains("compatibility")),
+            "should report compatibility as opencode field"
+        );
+    }
+
+    #[test]
+    fn agnostic_variant_rejects_opencode_fields() {
+        let content = "---
+name: test-skill
+description: A test
+hidden: true
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Agnostic);
+        assert!(
+            !result.passed,
+            "agnostic variant should reject opencode fields"
+        );
+        assert!(
+            result.issues.iter().any(|i| i.contains("hidden")),
+            "should report hidden as opencode field"
+        );
+    }
+
+    #[test]
+    fn default_validate_skill_still_rejects_opencode_fields() {
+        // Backward compatibility: validate_skill defaults to Reasonix behavior
+        let result = validate_skill(
+            "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+---
+# Test",
+        );
+        assert!(
+            !result.passed,
+            "default validate_skill should reject opencode fields"
         );
     }
 

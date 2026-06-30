@@ -3,11 +3,11 @@
 //! [dependencies]
 //! ```
 //!
-//! Integration tests verifying autopilot-orchestrator SKILL.md defines all
-//! required phases, state transitions, and dispatch chains (AC1, AC2, AC4, AC5).
+//! Integration tests verifying autopilot-orchestrator SKILL.md variants define
+//! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
-//! #[test] functions: 13
+//! #[test] functions: 26
 //!
 //! For environment diagnostics (gh installed, authenticated, git remote),
 //! run: ./scripts/env-check.rs
@@ -16,6 +16,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     println!("Run with: rust-script --test tests/test_github_verify.rs");
@@ -23,13 +24,13 @@ fn main() {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-/// Find the actual project root — the directory containing skills/autopilot/autopilot-orchestrator/SKILL.md.
+/// Find the actual project root — the directory containing skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md.
 fn project_root() -> PathBuf {
     let src = Path::new(file!());
     if let (Some(_tests_dir), Some(proj)) = (src.parent(), src.parent().and_then(|p| p.parent())) {
         let candidate = proj.to_path_buf();
         if candidate
-            .join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+            .join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
             .exists()
         {
             return candidate;
@@ -37,22 +38,114 @@ fn project_root() -> PathBuf {
     }
     if let Ok(root) = std::env::var("PROJECT_ROOT") {
         let p = PathBuf::from(&root);
-        if p.join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+        if p.join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
             .exists()
         {
             return p;
         }
     }
-    panic!("Cannot find project root (orchestrator SKILL.md not found)");
+    panic!("Cannot find project root (orchestrator reasonix SKILL.md not found)");
 }
 
 /// Read orchestrator SKILL.md content.
 fn orchestrator_skill_path() -> PathBuf {
-    project_root().join("skills/autopilot/autopilot-orchestrator/SKILL.md")
+    project_root().join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md")
 }
 
 fn read_orchestrator_skill() -> String {
     fs::read_to_string(orchestrator_skill_path()).expect("failed to read orchestrator SKILL.md")
+}
+
+fn codex_orchestrator_skill_path() -> PathBuf {
+    project_root().join("skills/autopilot/autopilot-orchestrator/codex/SKILL.md")
+}
+
+fn read_codex_orchestrator_skill() -> String {
+    fs::read_to_string(codex_orchestrator_skill_path())
+        .expect("failed to read Codex orchestrator SKILL.md")
+}
+
+fn codex_audit_skill_path() -> PathBuf {
+    project_root().join("skills/autopilot/audit-autopilot/codex/SKILL.md")
+}
+
+fn read_codex_audit_skill() -> String {
+    fs::read_to_string(codex_audit_skill_path())
+        .expect("failed to read Codex audit-autopilot SKILL.md")
+}
+
+fn reasonix_skill_path(name: &str) -> PathBuf {
+    project_root().join(format!("skills/autopilot/{name}/reasonix/SKILL.md"))
+}
+
+fn read_reasonix_skill(name: &str) -> String {
+    fs::read_to_string(reasonix_skill_path(name))
+        .unwrap_or_else(|e| panic!("failed to read Reasonix skill {name}: {e}"))
+}
+
+fn codex_agent_path(name: &str) -> PathBuf {
+    project_root().join(format!("skills/autopilot/{name}/codex/agent.toml"))
+}
+
+fn read_codex_agent(name: &str) -> String {
+    fs::read_to_string(codex_agent_path(name))
+        .unwrap_or_else(|e| panic!("failed to read Codex agent {name}: {e}"))
+}
+
+fn frontmatter_value(markdown: &str, key: &str) -> String {
+    let needle = format!("{key}: ");
+    markdown
+        .lines()
+        .find_map(|line| line.strip_prefix(&needle))
+        .unwrap_or_else(|| panic!("frontmatter key {key} not found"))
+        .to_string()
+}
+
+fn toml_string_value(toml: &str, key: &str) -> String {
+    let needle = format!("{key} = ");
+    let mut lines = toml.lines();
+    while let Some(line) = lines.next() {
+        let Some(value) = line.strip_prefix(&needle) else {
+            continue;
+        };
+        if let Some(body) = value.strip_prefix("\"\"\"") {
+            if let Some(end) = body.find("\"\"\"") {
+                return body[..end].to_string();
+            }
+            let mut output = String::new();
+            output.push_str(body);
+            for continuation in lines.by_ref() {
+                if let Some(end) = continuation.find("\"\"\"") {
+                    output.push('\n');
+                    output.push_str(&continuation[..end]);
+                    return output;
+                }
+                output.push('\n');
+                output.push_str(continuation);
+            }
+            panic!("unterminated multiline TOML string for {key}");
+        }
+        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            return value[1..value.len() - 1].to_string();
+        }
+        panic!("TOML key {key} is not a string value");
+    }
+    panic!("TOML key {key} not found");
+}
+
+fn assert_toml_parseable(path: &Path) {
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg("import sys, tomllib; tomllib.load(open(sys.argv[1], 'rb'))")
+        .arg(path)
+        .output()
+        .expect("failed to run python3 tomllib");
+    assert!(
+        output.status.success(),
+        "TOML should parse with tomllib: {}\n{}",
+        path.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Count occurrences of a pattern in text.
@@ -230,5 +323,293 @@ mod tests {
             has_unparseable,
             "SKILL.md must define unparseable reply handling (解析容错...不可解析)"
         );
+    }
+
+    #[test]
+    fn codex_variant_exists_with_valid_frontmatter() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            skill.starts_with("---\nname: autopilot-orchestrator\n"),
+            "Codex variant must start with valid frontmatter"
+        );
+        assert!(
+            skill.contains("description:"),
+            "Codex variant frontmatter must include description"
+        );
+    }
+
+    #[test]
+    fn codex_variant_uses_spawn_agent_dispatch() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            contains(&skill, "spawn agent autopilot-implementer"),
+            "Codex variant must dispatch implementer via spawn agent"
+        );
+        assert!(
+            contains(&skill, "spawn agent autopilot-reviewer"),
+            "Codex variant must dispatch reviewer via spawn agent"
+        );
+    }
+
+    #[test]
+    fn codex_variant_excludes_reasonix_dispatch_terms() {
+        let skill = read_codex_orchestrator_skill();
+        for forbidden in ["run_skill", "complete_step", "runAs"] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex variant must not contain Reasonix-specific term {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_variant_preserves_core_workflow_sections() {
+        let skill = read_codex_orchestrator_skill();
+        for required in [
+            "Issue 来源识别",
+            "PRD 检测与跳过",
+            "扫描模式",
+            "Phase 1: 调度循环",
+            "最多 3 轮",
+            "交叉 Issue Suggestion 匹配",
+            "Phase 2: 全局 Meta-Review",
+            "FINAL_ACCEPTANCE_REPORT",
+        ] {
+            assert!(
+                contains(&skill, required),
+                "Codex variant must preserve workflow section: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_orchestrator_references_are_loadable_from_variant_dir() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            !contains(&skill, "skills/autopilot/autopilot-orchestrator/references"),
+            "Codex orchestrator must not reference repo-relative orchestrator reference paths"
+        );
+
+        for reference in [
+            "references/suggestion-matching.md",
+            "references/acceptance-report.md",
+        ] {
+            assert!(
+                contains(&skill, reference),
+                "Codex orchestrator must reference {reference}"
+            );
+            assert!(
+                project_root()
+                    .join("skills/autopilot/autopilot-orchestrator/codex")
+                    .join(reference)
+                    .is_file(),
+                "Codex orchestrator reference must be loadable from variant dir: {reference}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_exists_with_valid_frontmatter_and_references() {
+        let skill = read_codex_audit_skill();
+        let reasonix = read_reasonix_skill("audit-autopilot");
+        assert!(
+            skill.starts_with("---\nname: audit-autopilot\n"),
+            "Codex audit variant must start with valid frontmatter"
+        );
+        assert_eq!(
+            frontmatter_value(&skill, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+
+        let references = project_root().join("skills/autopilot/audit-autopilot/codex/references");
+        assert!(
+            references.join("questions.md").is_file(),
+            "Codex audit variant must include references/questions.md"
+        );
+        assert!(
+            references.join("report-template.md").is_file(),
+            "Codex audit variant must include references/report-template.md"
+        );
+    }
+
+    #[test]
+    fn codex_audit_variant_preserves_reasonix_audit_methodology() {
+        let skill = read_codex_audit_skill();
+        for required in [
+            "three layers of fidelity",
+            "9 analysis questions",
+            "Layer 1 (Fidelity)",
+            "Layer 2 (Errors)",
+            "Layer 3 (Friction & Drift)",
+            "Phase 2",
+            "fidelity percentage",
+            "evidence anchor",
+        ] {
+            assert!(
+                contains(&skill, required),
+                "Codex audit variant must preserve audit method term: {required}"
+            );
+        }
+
+        let questions = fs::read_to_string(
+            project_root().join("skills/autopilot/audit-autopilot/codex/references/questions.md"),
+        )
+        .expect("failed to read Codex audit questions");
+        for question in [
+            "Q1: Intent Translation",
+            "Q2: AC Coverage",
+            "Q3: Report Credibility",
+            "Q4: Unfixed Criticals",
+            "Q5: Verdict Consistency",
+            "Q6: Suggestion Chain Integrity",
+            "Q7: Retry Efficacy",
+            "Q8: Scope Creep",
+            "Q9: TDD Discipline",
+        ] {
+            assert!(
+                contains(&questions, question),
+                "Codex audit references must preserve {question}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_uses_codex_session_placeholders() {
+        let skill = read_codex_audit_skill();
+        assert!(
+            count_matches(&skill, "TODO: codex session export — TBD") >= 2,
+            "Codex audit variant must mark unresolved Codex session mechanism with TODO placeholders"
+        );
+        for forbidden in [
+            "reasonix session export",
+            "reasonix session list",
+            "list_sessions",
+            "read_session",
+        ] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex audit variant must not reference Reasonix session tool {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_excludes_reasonix_workflow_terms() {
+        let skill = read_codex_audit_skill();
+        for forbidden in ["run_skill", "complete_step", "runAs"] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex audit variant must not contain Reasonix-specific term {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_agent_tomls_exist_and_parse() {
+        for name in ["autopilot-implementer", "autopilot-reviewer"] {
+            let path = codex_agent_path(name);
+            assert!(
+                path.is_file(),
+                "Codex custom agent TOML must exist at {}",
+                path.display()
+            );
+            assert_toml_parseable(&path);
+        }
+    }
+
+    #[test]
+    fn codex_implementer_agent_matches_contract() {
+        let agent = read_codex_agent("autopilot-implementer");
+        let instructions = toml_string_value(&agent, "developer_instructions");
+        let reasonix = read_reasonix_skill("autopilot-implementer");
+
+        assert_eq!(toml_string_value(&agent, "name"), "autopilot-implementer");
+        assert_eq!(
+            toml_string_value(&agent, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+        assert!(
+            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
+            "implementer model must be gpt-5.4 or gpt-5.5"
+        );
+        assert_eq!(toml_string_value(&agent, "sandbox_mode"), "workspace-write");
+
+        for required in [
+            "Contract Reading",
+            "red-green-refactor",
+            "Diagnose Flow",
+            "Self-review",
+            "IMPLEMENTER_REPORT",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "implementer developer_instructions must cover {required}"
+            );
+        }
+        assert!(
+            contains(&instructions, "[resolved|rejected|deferred] 来源 <source_issue> round <N>:"),
+            "implementer SUGGESTION_RESOLUTIONS format must use the orchestrator parser's 来源 token"
+        );
+        assert!(
+            !contains(
+                &instructions,
+                "[resolved|rejected|deferred] source <issue-slug> round <N>:"
+            ),
+            "implementer must not emit the old source-token SUGGESTION_RESOLUTIONS format"
+        );
+    }
+
+    #[test]
+    fn codex_reviewer_agent_matches_contract() {
+        let agent = read_codex_agent("autopilot-reviewer");
+        let instructions = toml_string_value(&agent, "developer_instructions");
+        let reasonix = read_reasonix_skill("autopilot-reviewer");
+
+        assert_eq!(toml_string_value(&agent, "name"), "autopilot-reviewer");
+        assert_eq!(
+            toml_string_value(&agent, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+        assert!(
+            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
+            "reviewer model must be gpt-5.4 or gpt-5.5"
+        );
+        assert_eq!(toml_string_value(&agent, "sandbox_mode"), "read-only");
+
+        for required in [
+            "Four-Axis Review",
+            "Behavior alignment",
+            "TDD discipline",
+            "code quality",
+            "plan fidelity",
+            "Critical",
+            "Important",
+            "Suggestion",
+            "REVIEWER_REPORT",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "reviewer developer_instructions must cover {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_agents_exclude_reasonix_terms_and_external_skill_dependencies() {
+        for name in ["autopilot-implementer", "autopilot-reviewer"] {
+            let agent = read_codex_agent(name);
+            for forbidden in ["run_skill", "complete_step", "runAs", "skill(name"] {
+                assert!(
+                    !contains(&agent, forbidden),
+                    "Codex agent {name} must not contain forbidden term {forbidden}"
+                );
+            }
+            for forbidden_field in ["\nmode =", "\nhidden ="] {
+                assert!(
+                    !contains(&agent, forbidden_field),
+                    "Codex agent {name} must not contain unsupported top-level field {forbidden_field}"
+                );
+            }
+        }
     }
 }

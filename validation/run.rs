@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use chrono::Utc;
-use validation::{parse_frontmatter, validate_skill, ValidationResult};
+use validation::{parse_frontmatter, validate_skill_with_variant, SkillVariant, ValidationResult};
 
 /// Write a line into a `String` via `fmt::Write`.  Allocation into a
 /// `String` is infallible, so we discard the `Result` to keep the
@@ -33,6 +33,8 @@ struct Skill {
     name: String,
     relative_path: String,
     source: String, // "upstream" | "autopilot"
+    /// Runtime variant: None for runtime-agnostic, Some("reasonix") or Some("codex").
+    variant: Option<String>,
 }
 
 struct SkillResult {
@@ -94,6 +96,7 @@ fn discover_upstream(root: &Path, skills: &mut Vec<Skill>) {
             name: name.clone(),
             relative_path,
             source: "upstream".to_string(),
+            variant: None,
         });
     }
 }
@@ -103,27 +106,45 @@ fn discover_autopilot(root: &Path, skills: &mut Vec<Skill>) {
     if !autopilot_dir.is_dir() {
         return;
     }
-    let mut entries: Vec<String> = Vec::new();
+    let mut entries: Vec<(String, String, Option<String>)> = Vec::new(); // (name, relative_path, variant)
     if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                let skill_md = path.join("SKILL.md");
-                if skill_md.is_file() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        entries.push(name.to_string());
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Check root-level SKILL.md (runtime-agnostic skills)
+                    let root_skill = path.join("SKILL.md");
+                    if root_skill.is_file() {
+                        let relative_path = format!("skills/autopilot/{}/SKILL.md", name);
+                        entries.push((name.to_string(), relative_path, None));
+                    }
+                    // Check reasonix variant
+                    let reasonix_skill = path.join("reasonix/SKILL.md");
+                    if reasonix_skill.is_file() {
+                        let relative_path = format!("skills/autopilot/{}/reasonix/SKILL.md", name);
+                        entries.push((
+                            name.to_string(),
+                            relative_path,
+                            Some("reasonix".to_string()),
+                        ));
+                    }
+                    // Check codex variant
+                    let codex_skill = path.join("codex/SKILL.md");
+                    if codex_skill.is_file() {
+                        let relative_path = format!("skills/autopilot/{}/codex/SKILL.md", name);
+                        entries.push((name.to_string(), relative_path, Some("codex".to_string())));
                     }
                 }
             }
         }
     }
-    entries.sort(); // alphabetical, matches bash glob order
-    for name in entries {
-        let relative_path = format!("skills/autopilot/{}/SKILL.md", name);
+    entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
+    for (name, relative_path, variant) in entries {
         skills.push(Skill {
             name,
             relative_path,
             source: "autopilot".to_string(),
+            variant,
         });
     }
 }
@@ -147,7 +168,12 @@ fn validate_all(root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
                     };
                 }
             };
-            let validation_result = validate_skill(&content);
+            let variant = match skill.variant.as_deref() {
+                Some("reasonix") => SkillVariant::Reasonix,
+                Some("codex") => SkillVariant::Codex,
+                _ => SkillVariant::Agnostic,
+            };
+            let validation_result = validate_skill_with_variant(&content, variant);
             let frontmatter = if skill.source == "autopilot" {
                 parse_frontmatter(&content).ok()
             } else {
@@ -218,16 +244,29 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
     wln!(report);
     write_skill_entries(&mut report, skills, results, "autopilot", false);
 
+    // ── Codex variant status ──
+    let codex_status = check_codex_status(skills);
+    if !codex_status.is_empty() {
+        wln!(report, "--- Codex Variant Status ---");
+        wln!(report);
+        for line in &codex_status {
+            wln!(report, "  {}", line);
+        }
+        wln!(report);
+    }
+
     // ── Global checks ──
     wln!(report, "{}", sep);
     wln!(report, "GLOBAL CHECKS");
     wln!(report, "{}", sep);
     wln!(report);
 
-    // Check 1: 0 opencode-specific fields
-    let oc_count: usize = results
+    // Check 1: 0 opencode-specific fields (exclude codex variants)
+    let oc_count: usize = skills
         .iter()
-        .map(|r| {
+        .zip(results.iter())
+        .filter(|(s, _)| s.variant.as_deref() != Some("codex"))
+        .map(|(_, r)| {
             r.result
                 .issues
                 .iter()
@@ -235,10 +274,15 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
                 .count()
         })
         .sum();
+    let non_codex_count = skills
+        .iter()
+        .filter(|s| s.variant.as_deref() != Some("codex"))
+        .count();
     wln!(
         report,
-        "Check: 0 opencode-specific fields across all {} skills",
-        total
+        "Check: 0 opencode-specific fields across {} skills ({} non-codex)",
+        non_codex_count,
+        non_codex_count
     );
     if oc_count == 0 {
         wln!(report, "Result: ✓ PASS");
@@ -322,8 +366,13 @@ fn write_skill_entries(
             continue;
         }
         let full_path = root.join(&skill.relative_path);
+        // Build display label: name + optional variant tag
+        let display_name = match skill.variant.as_deref() {
+            Some(v) => format!("{} ({})", skill.name, v),
+            None => skill.name.clone(),
+        };
         if result.result.passed {
-            wln!(report, "  [PASS] {}", skill.name);
+            wln!(report, "  [PASS] {}", display_name);
             wln!(report, "       File: {}", full_path.display());
             if show_checkmark {
                 wln!(report, "       ✓ All checks passed");
@@ -339,7 +388,7 @@ fn write_skill_entries(
                 }
             }
         } else {
-            wln!(report, "  [FAIL] {}", skill.name);
+            wln!(report, "  [FAIL] {}", display_name);
             wln!(report, "       File: {}", full_path.display());
             for issue in &result.result.issues {
                 wln!(report, "       Issue: {}", issue);
@@ -368,6 +417,51 @@ fn find_subagent_missing_allowed_tools(skills: &[Skill]) -> Vec<String> {
         }
     }
     missing
+}
+
+/// Check codex variant status for autopilot skills.
+/// Returns informational lines about which skills lack codex SKILL.md.
+fn check_codex_status(skills: &[Skill]) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let root = project_root();
+    let autopilot_dir = root.join("skills/autopilot");
+    if !autopilot_dir.is_dir() {
+        return lines;
+    }
+    // Find skill directories that have a codex/ subdirectory
+    if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let codex_skill = path.join("codex/SKILL.md");
+                let codex_dir = path.join("codex");
+                if codex_dir.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+                    let has_codex = codex_skill.is_file();
+                    // Check if this skill was already found as a codex variant
+                    let already_found = skills
+                        .iter()
+                        .any(|s| s.name == name && s.variant.as_deref() == Some("codex"));
+                    if !has_codex && !already_found {
+                        // Determine the reason
+                        if name == "autopilot-implementer" || name == "autopilot-reviewer" {
+                            lines.push(format!(
+                                "[INFO] {}: no codex/SKILL.md (uses agent.toml instead)",
+                                name
+                            ));
+                        } else {
+                            lines.push(format!(
+                                "[INFO] {}: no codex/SKILL.md (placeholder directory)",
+                                name
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    lines.sort();
+    lines
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -443,6 +537,7 @@ mod tests {
             name: name.to_string(),
             relative_path: format!("skills/{}/{}/SKILL.md", source, name),
             source: source.to_string(),
+            variant: None,
         }
     }
 
@@ -614,5 +709,165 @@ mod tests {
                 full_path
             );
         }
+    }
+
+    // ── Variant scanning tests ──────────────────────────────────────────
+
+    #[test]
+    fn discovers_reasonix_variants_for_coupled_skills() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let coupled_names = [
+            "audit-autopilot",
+            "autopilot-implementer",
+            "autopilot-orchestrator",
+            "autopilot-reviewer",
+        ];
+        for name in coupled_names {
+            let found = skills
+                .iter()
+                .any(|s| s.name == name && s.variant.as_deref() == Some("reasonix"));
+            assert!(found, "should discover reasonix variant for {}", name);
+        }
+    }
+
+    #[test]
+    fn variant_skills_use_correct_relative_path() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let orchestrator = skills.iter().find(|s| {
+            s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("reasonix")
+        });
+        assert!(
+            orchestrator.is_some(),
+            "should find autopilot-orchestrator reasonix variant"
+        );
+        let orch = orchestrator.unwrap();
+        assert_eq!(
+            orch.relative_path,
+            "skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn discovers_codex_skill_variants() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let orchestrator = skills
+            .iter()
+            .find(|s| s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("codex"));
+        assert!(
+            orchestrator.is_some(),
+            "should find autopilot-orchestrator codex variant"
+        );
+        let orch = orchestrator.unwrap();
+        assert_eq!(
+            orch.relative_path,
+            "skills/autopilot/autopilot-orchestrator/codex/SKILL.md"
+        );
+
+        let audit = skills
+            .iter()
+            .find(|s| s.name == "audit-autopilot" && s.variant.as_deref() == Some("codex"));
+        assert!(audit.is_some(), "should find audit-autopilot codex variant");
+        let audit = audit.unwrap();
+        assert_eq!(
+            audit.relative_path,
+            "skills/autopilot/audit-autopilot/codex/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn runtime_agnostic_skills_have_no_variant() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let toolkit = skills.iter().find(|s| s.name == "toolkit-setup");
+        assert!(toolkit.is_some(), "should find toolkit-setup");
+        assert_eq!(
+            toolkit.unwrap().variant,
+            None,
+            "toolkit-setup should have no variant"
+        );
+    }
+
+    // ── Report variant tests ────────────────────────────────────────────
+
+    #[test]
+    fn report_shows_variant_tag_in_skill_name() {
+        let skills = vec![Skill {
+            name: "my-skill".to_string(),
+            relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
+            source: "autopilot".to_string(),
+            variant: Some("reasonix".to_string()),
+        }];
+        let results = vec![pass_result()];
+        let report = generate_report(&skills, &results);
+        assert!(report.contains("[PASS] my-skill (reasonix)"));
+    }
+
+    #[test]
+    fn report_codex_variant_not_counted_in_opencode_global_check() {
+        // A codex skill with opencode fields should still pass global check
+        let skills = vec![Skill {
+            name: "my-skill".to_string(),
+            relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
+            source: "autopilot".to_string(),
+            variant: Some("codex".to_string()),
+        }];
+        // validate_all would not flag opencode for codex, so the result passes
+        let results = vec![pass_result()];
+        let report = generate_report(&skills, &results);
+        assert!(report.contains("✓ PASS"));
+    }
+
+    #[test]
+    fn report_shows_non_codex_count_in_global_check() {
+        let skills = vec![
+            Skill {
+                name: "reasonix-skill".to_string(),
+                relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
+                source: "autopilot".to_string(),
+                variant: Some("reasonix".to_string()),
+            },
+            Skill {
+                name: "codex-skill".to_string(),
+                relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
+                source: "autopilot".to_string(),
+                variant: Some("codex".to_string()),
+            },
+        ];
+        let results = vec![pass_result(), pass_result()];
+        let report = generate_report(&skills, &results);
+        // Should say "1 non-codex" since only reasonix is counted
+        assert!(
+            report.contains("1 non-codex"),
+            "global check should show 1 non-codex, got:\n{}",
+            report
+        );
+    }
+
+    // ── Codex status tests ──────────────────────────────────────────────
+
+    #[test]
+    fn check_codex_status_reports_missing_codex() {
+        let root = project_root();
+        let skills = discover_skills(&root);
+        let status = check_codex_status(&skills);
+        assert!(status
+            .iter()
+            .any(|l| l.contains("autopilot-implementer") && l.contains("agent.toml")));
+        assert!(status
+            .iter()
+            .any(|l| l.contains("autopilot-reviewer") && l.contains("agent.toml")));
+        assert!(
+            !status.iter().any(|l| l.contains("audit-autopilot") && l.contains("placeholder")),
+            "audit-autopilot has a codex/SKILL.md and should no longer be reported as a placeholder"
+        );
+        assert!(
+            !status
+                .iter()
+                .any(|l| l.contains("autopilot-orchestrator") && l.contains("placeholder")),
+            "orchestrator has a codex/SKILL.md and should no longer be reported as a placeholder"
+        );
     }
 }
