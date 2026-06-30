@@ -1547,26 +1547,27 @@ mod tests {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // deploy-agent: basic deploy
+    // sync --agent: basic agent symlink (replaces deploy-agent)
     // ═══════════════════════════════════════════════════════════════════════
 
     #[test]
-    fn deploy_agent_basic_to_codex() {
+    fn sync_agent_basic_to_codex() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
         let project_root = tmp.path().to_path_buf();
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (_out, err, code) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1579,75 +1580,33 @@ mod tests {
             },
         );
 
-        assert_eq!(code, 0, "deploy-agent should exit 0, got stderr: {}", err);
-        let deployed = home.join(".codex/agents/my-agent.toml");
-        assert!(
-            deployed.is_file(),
-            "~/.codex/agents/my-agent.toml should exist"
-        );
+        assert_eq!(code, 0, "sync --agent should exit 0, got stderr: {}", err);
+        let target = home.join(".codex/agents/my-agent.toml");
+        assert!(target.is_symlink(), "~/.codex/agents/my-agent.toml should be a symlink");
         assert!(
             !project_root.join(".codex/agents/my-agent.toml").exists(),
-            "default deploy-agent should not write project-local .codex/agents"
+            "default sync --agent should not write project-local .codex/agents"
         );
-        let content = fs::read_to_string(&deployed).unwrap();
-        assert_eq!(content, "[agent]\nname = \"test\"\n");
+        assert_eq!(fs::read_link(&target).unwrap(), src);
     }
 
     #[test]
-    fn deploy_agent_user_flag() {
+    fn sync_agent_target_reasonix_errors() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
-        let src = tmp.path().join("my-agent.toml");
-        fs::write(&src, "[agent]\nname = \"user-agent\"\n").unwrap();
-
-        let (_out, _err, code) = run_install_ext(
-            &[
-                "deploy-agent",
-                "my-agent",
-                &src.to_string_lossy(),
-                "--target",
-                "codex",
-                "--user",
-            ],
-            &home,
-            None,
-            None,
-            None,
-            DualDirs {
-                reasonix_skills_dir: None,
-                codex_skills_dir: None,
-                codex_agents_dir: None,
-            },
-        );
-
-        assert_eq!(code, 0, "deploy-agent --user should exit 0");
-        let deployed = home.join(".codex/agents/my-agent.toml");
-        assert!(
-            deployed.is_file(),
-            "~/.codex/agents/my-agent.toml should exist"
-        );
-        let content = fs::read_to_string(&deployed).unwrap();
-        assert_eq!(content, "[agent]\nname = \"user-agent\"\n");
-    }
-
-    #[test]
-    fn deploy_agent_target_reasonix_errors() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let home = tmp.path().join("home");
-        fs::create_dir_all(&home).unwrap();
-
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (out, err, code) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "reasonix",
+                "--agent",
             ],
             &home,
             None,
@@ -1660,30 +1619,26 @@ mod tests {
             },
         );
 
-        assert_ne!(
-            code, 0,
-            "deploy-agent --target reasonix should exit non-zero"
-        );
+        assert_ne!(code, 0, "--agent with --target reasonix should exit non-zero");
         let combined = format!("{}{}", out, err);
         assert!(
-            combined.contains("requires --target codex")
-                || combined.to_lowercase().contains("reasonix"),
-            "should error about --target reasonix being wrong, got: {}",
+            combined.contains("--agent requires --target codex"),
+            "should error about --agent requiring --target codex, got: {}",
             combined
         );
     }
 
     #[test]
-    fn deploy_agent_no_target_errors() {
+    fn sync_agent_no_target_errors() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (out, err, code) = run_install_ext(
-            &["deploy-agent", "my-agent", &src.to_string_lossy()],
+            &["sync", "my-agent", &src.to_string_lossy(), "--agent"],
             &home,
             None,
             None,
@@ -1695,36 +1650,34 @@ mod tests {
             },
         );
 
-        assert_ne!(
-            code, 0,
-            "deploy-agent with no --target should exit non-zero"
-        );
+        assert_ne!(code, 0, "--agent without --target should exit non-zero");
         let combined = format!("{}{}", out, err);
         assert!(
-            combined.to_lowercase().contains("requires --target codex"),
+            combined.contains("--agent requires --target codex"),
             "should error about missing --target codex, got: {}",
             combined
         );
     }
 
     #[test]
-    fn deploy_agent_idempotent() {
+    fn sync_agent_idempotent() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
         let project_root = tmp.path().to_path_buf();
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
-        // First deploy
+        // First sync
         let (_out, _err, code1) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1736,19 +1689,21 @@ mod tests {
                 codex_agents_dir: None,
             },
         );
-        assert_eq!(code1, 0, "first deploy should exit 0");
+        assert_eq!(code1, 0, "first sync should exit 0");
 
-        let deployed = home.join(".codex/agents/my-agent.toml");
-        let first_mtime = fs::metadata(&deployed).unwrap().modified().unwrap();
+        let target = home.join(".codex/agents/my-agent.toml");
+        assert!(target.is_symlink());
+        assert_eq!(fs::read_link(&target).unwrap(), src);
 
-        // Second deploy with same content
+        // Second sync — idempotent, no change
         let (_out, _err, code2) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1760,36 +1715,32 @@ mod tests {
                 codex_agents_dir: None,
             },
         );
-        assert_eq!(code2, 0, "second deploy should exit 0");
-
-        let second_mtime = fs::metadata(&deployed).unwrap().modified().unwrap();
-        // Idempotent: file should NOT be modified again (same mtime)
-        assert_eq!(
-            first_mtime, second_mtime,
-            "idempotent deploy should not modify file"
-        );
-        let content = fs::read_to_string(&deployed).unwrap();
-        assert_eq!(content, "[agent]\nname = \"test\"\n");
+        assert_eq!(code2, 0, "second sync should exit 0");
+        assert!(target.is_symlink());
+        assert_eq!(fs::read_link(&target).unwrap(), src);
     }
 
     #[test]
-    fn deploy_agent_overwrite_different_content() {
+    fn sync_agent_wrong_target_repaired() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
         let project_root = tmp.path().to_path_buf();
-        let src = tmp.path().join("my-agent.toml");
-        fs::write(&src, "[agent]\nname = \"first\"\n").unwrap();
+        let src1 = tmp.path().join("agent-v1.toml");
+        let src2 = tmp.path().join("agent-v2.toml");
+        fs::write(&src1, "[agent]\nname = \"v1\"\n").unwrap();
+        fs::write(&src2, "[agent]\nname = \"v2\"\n").unwrap();
 
-        // First deploy
+        // First sync to src1
         let (_out, _err, code1) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
-                &src.to_string_lossy(),
+                &src1.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1801,24 +1752,20 @@ mod tests {
                 codex_agents_dir: None,
             },
         );
-        assert_eq!(code1, 0, "first deploy should exit 0");
-        let deployed = home.join(".codex/agents/my-agent.toml");
-        assert_eq!(
-            fs::read_to_string(&deployed).unwrap(),
-            "[agent]\nname = \"first\"\n"
-        );
+        assert_eq!(code1, 0);
 
-        // Change source content
-        fs::write(&src, "[agent]\nname = \"second\"\n").unwrap();
+        let target = home.join(".codex/agents/my-agent.toml");
+        assert_eq!(fs::read_link(&target).unwrap(), src1);
 
-        // Second deploy with different content
+        // Second sync to src2 — should repair symlink
         let (_out, _err, code2) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
-                &src.to_string_lossy(),
+                &src2.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1830,18 +1777,12 @@ mod tests {
                 codex_agents_dir: None,
             },
         );
-        assert_eq!(
-            code2, 0,
-            "second deploy with different content should exit 0"
-        );
-        assert_eq!(
-            fs::read_to_string(&deployed).unwrap(),
-            "[agent]\nname = \"second\"\n"
-        );
+        assert_eq!(code2, 0);
+        assert_eq!(fs::read_link(&target).unwrap(), src2);
     }
 
     #[test]
-    fn deploy_agent_source_missing() {
+    fn sync_agent_source_missing() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
@@ -1851,11 +1792,12 @@ mod tests {
 
         let (out, err, code) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1868,10 +1810,7 @@ mod tests {
             },
         );
 
-        assert_ne!(
-            code, 0,
-            "deploy-agent with missing source should exit non-zero"
-        );
+        assert_ne!(code, 0, "sync --agent with missing source should exit non-zero");
         let combined = format!("{}{}", out, err);
         assert!(
             combined.to_lowercase().contains("does not exist"),
@@ -1881,48 +1820,7 @@ mod tests {
     }
 
     #[test]
-    fn deploy_agent_source_not_toml() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let home = tmp.path().join("home");
-        fs::create_dir_all(&home).unwrap();
-
-        let project_root = tmp.path().to_path_buf();
-        let src = tmp.path().join("my-agent.txt");
-        fs::write(&src, "not a toml file\n").unwrap();
-
-        let (out, err, code) = run_install_ext(
-            &[
-                "deploy-agent",
-                "my-agent",
-                &src.to_string_lossy(),
-                "--target",
-                "codex",
-            ],
-            &home,
-            None,
-            None,
-            Some(&project_root),
-            DualDirs {
-                reasonix_skills_dir: None,
-                codex_skills_dir: None,
-                codex_agents_dir: None,
-            },
-        );
-
-        assert_ne!(
-            code, 0,
-            "deploy-agent with non-.toml source should exit non-zero"
-        );
-        let combined = format!("{}{}", out, err);
-        assert!(
-            combined.to_lowercase().contains(".toml"),
-            "should error about .toml requirement, got: {}",
-            combined
-        );
-    }
-
-    #[test]
-    fn deploy_agent_creates_dir() {
+    fn sync_agent_creates_dir() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
@@ -1932,19 +1830,20 @@ mod tests {
         let project_agents_dir = project_root.join(".codex/agents");
         assert!(
             !agents_dir.exists(),
-            "~/.codex/agents/ should not exist before deploy"
+            "~/.codex/agents/ should not exist before sync"
         );
 
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -1957,37 +1856,35 @@ mod tests {
             },
         );
 
-        assert_eq!(code, 0, "deploy-agent should exit 0");
+        assert_eq!(code, 0, "sync --agent should exit 0");
         assert!(agents_dir.is_dir(), "~/.codex/agents/ should be created");
         assert!(
             !project_agents_dir.exists(),
-            "default deploy-agent should not create project-local .codex/agents/"
+            "default sync --agent should not create project-local .codex/agents/"
         );
-        let deployed = agents_dir.join("my-agent.toml");
-        assert!(deployed.is_file(), "my-agent.toml should exist");
-        assert_eq!(
-            fs::read_to_string(&deployed).unwrap(),
-            "[agent]\nname = \"test\"\n"
-        );
+        let target = agents_dir.join("my-agent.toml");
+        assert!(target.is_symlink(), "my-agent.toml should be a symlink");
+        assert_eq!(fs::read_link(&target).unwrap(), src);
     }
 
     #[test]
-    fn deploy_agent_codex_agents_dir_env() {
+    fn sync_agent_codex_agents_dir_env() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         fs::create_dir_all(&home).unwrap();
 
         let custom_agents = tmp.path().join("custom-agents");
-        let src = tmp.path().join("my-agent.toml");
+        let src = tmp.path().join("agent.toml");
         fs::write(&src, "[agent]\nname = \"env-override\"\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
             &[
-                "deploy-agent",
+                "sync",
                 "my-agent",
                 &src.to_string_lossy(),
                 "--target",
                 "codex",
+                "--agent",
             ],
             &home,
             None,
@@ -2000,15 +1897,48 @@ mod tests {
             },
         );
 
-        assert_eq!(code, 0, "deploy-agent with CODEX_AGENTS_DIR should exit 0");
-        let deployed = custom_agents.join("my-agent.toml");
-        assert!(
-            deployed.is_file(),
-            "custom agents dir should contain my-agent.toml"
+        assert_eq!(code, 0, "sync --agent with CODEX_AGENTS_DIR should exit 0");
+        let target = custom_agents.join("my-agent.toml");
+        assert!(target.is_symlink(), "custom agents dir should contain symlink my-agent.toml");
+        assert_eq!(fs::read_link(&target).unwrap(), src);
+    }
+
+    #[test]
+    fn sync_agent_real_file_conflict() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let agents_dir = home.join(".codex/agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let target = agents_dir.join("my-agent.toml");
+        fs::write(&target, "pre-existing real file\n").unwrap();
+
+        let project_root = tmp.path().to_path_buf();
+        let src = tmp.path().join("agent.toml");
+        fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
+
+        let (_out, _err, code) = run_install_ext(
+            &[
+                "sync",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+                "--agent",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
         );
-        assert_eq!(
-            fs::read_to_string(&deployed).unwrap(),
-            "[agent]\nname = \"env-override\"\n"
-        );
+
+        assert_ne!(code, 0, "sync --agent should refuse to overwrite real file");
+        assert!(target.is_file() && !target.is_symlink(), "real file should still exist unchanged");
     }
 }

@@ -94,7 +94,7 @@ Categories:
 
 Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`) only when that target has a loadable `SKILL.md` variant.
 
-For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; deploy their TOML files via `install.rs deploy-agent` instead.
+For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; sync their TOML files via `install.rs sync --target codex --agent` instead.
 
 ### Also: Codex custom agents
 
@@ -107,7 +107,7 @@ has_codex_agents() {
 }
 ```
 
-If `.toml` files exist, they will be deployed to `~/.codex/agents/<name>.toml` via `install.rs deploy-agent`.
+If `.toml` files exist, they will be synced to `~/.codex/agents/<name>.toml` via `install.rs sync --target codex --agent`.
 
 ## Step 2: Diagnose
 
@@ -190,7 +190,7 @@ States:
 
 ### 2d. Diagnose codex agents (codex target only)
 
-For `--target codex`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `codex/` directory. If present, check whether `$CODEX_AGENTS_DIR/<name>.toml` exists with matching content. By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
+For `--target codex`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `codex/` directory. If present, treat them like symlinked skills: check whether `$CODEX_AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source `<skill_source_dir>/codex/agent.toml`. Use the same five states as skill diagnosis (correct / missing / wrong_target / broken / real_file). By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
 
 ### 2e. Find orphaned symlinks
 
@@ -273,15 +273,15 @@ Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant s
 
 ### Codex custom agents
 
-For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, deploy each:
+For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, sync each as a file symlink (not a copy — `install.rs sync --agent` uses symlinks like skills do):
 
 ```bash
-install.rs deploy-agent <agent_name> <agent_toml_path> --target codex
+install.rs sync <agent_name> <skill_source_dir>/codex/agent.toml --target codex --agent
 ```
 
-`deploy-agent` copies the `.toml` to `~/.codex/agents/<agent_name>.toml`. It is idempotent: skips if target exists with identical content, overwrites if content differs.
+This creates/repairs a file symlink `~/.codex/agents/<agent_name>.toml` → `<skill_source_dir>/codex/agent.toml`. Behaviour mirrors skill sync: creates if missing, replaces if broken/wrong, warns on real-file conflict. Symlinks ensure source updates take effect immediately without re-running setup.
 
-Agent names are derived from the `.toml` filename stem, except the canonical `codex/agent.toml` file uses its parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/codex/agent.toml` -> agent name `autopilot-implementer`).
+Agent names are derived from the parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/codex/agent.toml` -> agent name `autopilot-implementer`).
 
 ### Orphaned symlinks
 
@@ -311,7 +311,7 @@ This creates/repairs `~/.agents/principles` → `$PROJECT_ROOT/principles`. Beha
 
 1. Process all expected agnostic skills (sync to `$SHARED_DIR`)
 2. Process all expected coupled skills (sync to `$TARGET_DIR`)
-3. If codex target: deploy agent `.toml` files for implementer/reviewer
+3. If codex target: sync agent `.toml` files for implementer/reviewer via `sync --target codex --agent`
 4. Clean up orphaned symlinks from BOTH directories (unlink)
 5. Ensure principles symlink (link-principles)
 
@@ -321,7 +321,7 @@ Track each action taken — the report must list specific skill names, operation
 
 Re-run Step 2c diagnosis on all expected skills. Every skill should now be `correct`.
 
-For codex target, also verify that `$CODEX_AGENTS_DIR/<name>.toml` files exist for implementer and reviewer (if they had `.toml` sources). By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
+For codex target, also verify that `$CODEX_AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source file for implementer and reviewer (if they had `.toml` sources). Use `readlink` to verify the symlink target matches. By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
 
 Verify principles symlink:
 
@@ -360,9 +360,9 @@ After a successful setup, the expected directory layout per target:
 ├── audit-autopilot → .../skills/autopilot/audit-autopilot/codex
 ├── autopilot-orchestrator → .../skills/autopilot/autopilot-orchestrator/codex
 
-~/.codex/agents/            # Codex custom agents
-├── autopilot-implementer.toml
-├── autopilot-reviewer.toml
+~/.codex/agents/            # Codex custom agents (symlinked, not copied)
+├── autopilot-implementer.toml → .../autopilot-implementer/codex/agent.toml
+├── autopilot-reviewer.toml → .../autopilot-reviewer/codex/agent.toml
 
 ~/.agents/principles → $PROJECT_ROOT/principles
 ```
@@ -384,7 +384,7 @@ Target: reasonix | codex
 ## Actions Taken
   SYNC <name> → <src> (shared)
   SYNC <name> → <variant_src> (--target reasonix)
-  DEPLOY-AGENT <name> → <src>
+  SYNC <name> → <src> (--target codex --agent)
   UNLINK <name> (orphaned, shared)
   UNLINK <name> (orphaned, --target codex)
   LINK-PRINCIPLES → <src>
@@ -411,7 +411,8 @@ If any skill remains missing/broken/wrong_target after execute, report as FAIL a
 
 - **Skills directory missing**: Created automatically by `install.rs sync` on first use.
 - **Variant source directory missing**: Report as WARN and skip sync. Do not call `install.rs sync` for a missing target variant.
-- **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files. Skip skill sync explicitly; still deploy agents. If a stale toolkit-owned symlink for that name exists in `~/.codex/skills/`, unlink it as an invalid target skill entry.
+- **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files. Skip skill sync explicitly; still sync agents via `sync --target codex --agent`. If a stale toolkit-owned symlink for that name exists in `~/.codex/skills/`, unlink it as an invalid target skill entry.
+- **Real file conflict (agents)**: A real (non-symlink) file at `~/.codex/agents/<name>.toml`. Reported as WARN. install.rs refuses to overwrite real files. User must remove manually before sync can replace it with a symlink.
 - **Real directory conflict**: Reported as WARN. install.rs refuses to overwrite real directories. User must resolve manually.
 - **No changes needed**: Report "all skills already correct", ALL PASS.
 - **python3 unavailable**: Fall back to grep-based parsing of `.skill-lock.json`. Less robust but functional for standard JSON layouts.
