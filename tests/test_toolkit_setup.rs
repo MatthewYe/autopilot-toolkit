@@ -1541,7 +1541,7 @@ mod tests {
             if categorize_skill(src) == "coupled" {
                 let target = ctx.skills_dir().join(name);
                 assert!(
-                    !target.exists() || target.is_symlink() == false,
+                    !target.exists() || !target.is_symlink(),
                     "coupled skill {} should NOT be symlinked in shared dir",
                     name
                 );

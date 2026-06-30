@@ -197,7 +197,14 @@ fn link_principles(src: &Path, principles_dir: &Path) -> Result<(), anyhow::Erro
     Ok(())
 }
 
-fn deploy_agent(name: &str, src: &Path, codex_agents_dir: &Path, home: &str, user_flag: bool, target_flag: &Option<String>) -> Result<(), anyhow::Error> {
+fn deploy_agent(
+    name: &str,
+    src: &Path,
+    codex_agents_dir: &Path,
+    home: &str,
+    user_flag: bool,
+    target_flag: &Option<String>,
+) -> Result<(), anyhow::Error> {
     // Only valid with --target codex
     match target_flag.as_deref() {
         Some("codex") => {}
