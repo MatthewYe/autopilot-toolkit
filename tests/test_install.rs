@@ -1582,7 +1582,10 @@ mod tests {
 
         assert_eq!(code, 0, "sync --agent should exit 0, got stderr: {}", err);
         let target = home.join(".codex/agents/my-agent.toml");
-        assert!(target.is_symlink(), "~/.codex/agents/my-agent.toml should be a symlink");
+        assert!(
+            target.is_symlink(),
+            "~/.codex/agents/my-agent.toml should be a symlink"
+        );
         assert!(
             !project_root.join(".codex/agents/my-agent.toml").exists(),
             "default sync --agent should not write project-local .codex/agents"
@@ -1619,7 +1622,10 @@ mod tests {
             },
         );
 
-        assert_ne!(code, 0, "--agent with --target reasonix should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "--agent with --target reasonix should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
             combined.contains("--agent requires --target codex"),
@@ -1810,7 +1816,10 @@ mod tests {
             },
         );
 
-        assert_ne!(code, 0, "sync --agent with missing source should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "sync --agent with missing source should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
             combined.to_lowercase().contains("does not exist"),
@@ -1899,7 +1908,10 @@ mod tests {
 
         assert_eq!(code, 0, "sync --agent with CODEX_AGENTS_DIR should exit 0");
         let target = custom_agents.join("my-agent.toml");
-        assert!(target.is_symlink(), "custom agents dir should contain symlink my-agent.toml");
+        assert!(
+            target.is_symlink(),
+            "custom agents dir should contain symlink my-agent.toml"
+        );
         assert_eq!(fs::read_link(&target).unwrap(), src);
     }
 
@@ -1939,6 +1951,9 @@ mod tests {
         );
 
         assert_ne!(code, 0, "sync --agent should refuse to overwrite real file");
-        assert!(target.is_file() && !target.is_symlink(), "real file should still exist unchanged");
+        assert!(
+            target.is_file() && !target.is_symlink(),
+            "real file should still exist unchanged"
+        );
     }
 }

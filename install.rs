@@ -14,15 +14,21 @@ fn warn(msg: &str) {
 }
 
 fn usage() -> ! {
-    println!("Usage: install.rs <subcommand> [args...] [--target reasonix|codex] [--shared] [--agent]");
+    println!(
+        "Usage: install.rs <subcommand> [args...] [--target reasonix|codex] [--shared] [--agent]"
+    );
     println!();
     println!("Subcommands:");
     println!("  sync <name> <src>       Ensure a symlink exists at the appropriate location");
-    println!("                           Skills (default): ~/.reasonix/skills/<name> -> <src> (dir)");
+    println!(
+        "                           Skills (default): ~/.reasonix/skills/<name> -> <src> (dir)"
+    );
     println!("                           --target reasonix: ~/.reasonix/skills/<name>");
     println!("                           --target codex:   ~/.codex/skills/<name>");
     println!("                           --shared:         ~/.agents/skills/<name>");
-    println!("                           --agent:          ~/.codex/agents/<name>.toml -> <src> (file)");
+    println!(
+        "                           --agent:          ~/.codex/agents/<name>.toml -> <src> (file)"
+    );
     println!("                           Requires --target codex with --agent.");
     println!("  unlink <name>           Remove a toolkit-owned symlink from skills/agents dirs");
     println!("                           Default (no --target): all skill directories");
@@ -366,8 +372,9 @@ fn main() -> anyhow::Result<()> {
                     let link_target = std::fs::read_link(&target)
                         .with_context(|| format!("cannot read symlink {}", target.display()))?;
                     if link_target.starts_with(&project_root) {
-                        std::fs::remove_file(&target)
-                            .with_context(|| format!("cannot remove symlink {}", target.display()))?;
+                        std::fs::remove_file(&target).with_context(|| {
+                            format!("cannot remove symlink {}", target.display())
+                        })?;
                     }
                 }
             } else if target_flag.is_some() || shared_flag {
