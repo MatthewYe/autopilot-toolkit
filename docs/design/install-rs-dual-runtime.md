@@ -54,8 +54,8 @@ install.rs sync audit-autopilot skills/autopilot/audit-autopilot/reasonix --targ
 
 # Codex-coupled skills (4)
 install.rs sync autopilot-orchestrator skills/autopilot/autopilot-orchestrator/codex --target codex
-install.rs deploy-agent autopilot-implementer skills/autopilot/autopilot-implementer/agent.toml --target codex
-install.rs deploy-agent autopilot-reviewer skills/autopilot/autopilot-reviewer/agent.toml --target codex
+install.rs deploy-agent autopilot-implementer skills/autopilot/autopilot-implementer/codex/agent.toml --target codex
+install.rs deploy-agent autopilot-reviewer skills/autopilot/autopilot-reviewer/codex/agent.toml --target codex
 install.rs sync audit-autopilot skills/autopilot/audit-autopilot/codex --target codex
 ```
 

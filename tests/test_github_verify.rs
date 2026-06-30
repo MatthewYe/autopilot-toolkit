@@ -7,7 +7,7 @@
 //! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
-//! #[test] functions: 13
+//! #[test] functions: 21
 //!
 //! For environment diagnostics (gh installed, authenticated, git remote),
 //! run: ./scripts/env-check.rs
@@ -16,6 +16,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     println!("Run with: rust-script --test tests/test_github_verify.rs");
@@ -62,6 +63,80 @@ fn codex_orchestrator_skill_path() -> PathBuf {
 fn read_codex_orchestrator_skill() -> String {
     fs::read_to_string(codex_orchestrator_skill_path())
         .expect("failed to read Codex orchestrator SKILL.md")
+}
+
+fn reasonix_skill_path(name: &str) -> PathBuf {
+    project_root().join(format!("skills/autopilot/{name}/reasonix/SKILL.md"))
+}
+
+fn read_reasonix_skill(name: &str) -> String {
+    fs::read_to_string(reasonix_skill_path(name))
+        .unwrap_or_else(|e| panic!("failed to read Reasonix skill {name}: {e}"))
+}
+
+fn codex_agent_path(name: &str) -> PathBuf {
+    project_root().join(format!("skills/autopilot/{name}/codex/agent.toml"))
+}
+
+fn read_codex_agent(name: &str) -> String {
+    fs::read_to_string(codex_agent_path(name))
+        .unwrap_or_else(|e| panic!("failed to read Codex agent {name}: {e}"))
+}
+
+fn frontmatter_value(markdown: &str, key: &str) -> String {
+    let needle = format!("{key}: ");
+    markdown
+        .lines()
+        .find_map(|line| line.strip_prefix(&needle))
+        .unwrap_or_else(|| panic!("frontmatter key {key} not found"))
+        .to_string()
+}
+
+fn toml_string_value(toml: &str, key: &str) -> String {
+    let needle = format!("{key} = ");
+    let mut lines = toml.lines();
+    while let Some(line) = lines.next() {
+        let Some(value) = line.strip_prefix(&needle) else {
+            continue;
+        };
+        if let Some(body) = value.strip_prefix("\"\"\"") {
+            if let Some(end) = body.find("\"\"\"") {
+                return body[..end].to_string();
+            }
+            let mut output = String::new();
+            output.push_str(body);
+            for continuation in lines.by_ref() {
+                if let Some(end) = continuation.find("\"\"\"") {
+                    output.push('\n');
+                    output.push_str(&continuation[..end]);
+                    return output;
+                }
+                output.push('\n');
+                output.push_str(continuation);
+            }
+            panic!("unterminated multiline TOML string for {key}");
+        }
+        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            return value[1..value.len() - 1].to_string();
+        }
+        panic!("TOML key {key} is not a string value");
+    }
+    panic!("TOML key {key} not found");
+}
+
+fn assert_toml_parseable(path: &Path) {
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg("import sys, tomllib; tomllib.load(open(sys.argv[1], 'rb'))")
+        .arg(path)
+        .output()
+        .expect("failed to run python3 tomllib");
+    assert!(
+        output.status.success(),
+        "TOML should parse with tomllib: {}\n{}",
+        path.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Count occurrences of a pattern in text.
@@ -295,6 +370,101 @@ mod tests {
                 contains(&skill, required),
                 "Codex variant must preserve workflow section: {required}"
             );
+        }
+    }
+
+    #[test]
+    fn codex_agent_tomls_exist_and_parse() {
+        for name in ["autopilot-implementer", "autopilot-reviewer"] {
+            let path = codex_agent_path(name);
+            assert!(
+                path.is_file(),
+                "Codex custom agent TOML must exist at {}",
+                path.display()
+            );
+            assert_toml_parseable(&path);
+        }
+    }
+
+    #[test]
+    fn codex_implementer_agent_matches_contract() {
+        let agent = read_codex_agent("autopilot-implementer");
+        let instructions = toml_string_value(&agent, "developer_instructions");
+        let reasonix = read_reasonix_skill("autopilot-implementer");
+
+        assert_eq!(
+            toml_string_value(&agent, "name"),
+            "autopilot-implementer"
+        );
+        assert_eq!(
+            toml_string_value(&agent, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+        assert!(
+            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
+            "implementer model must be gpt-5.4 or gpt-5.5"
+        );
+        assert_eq!(toml_string_value(&agent, "sandbox_mode"), "workspace-write");
+
+        for required in [
+            "Contract Reading",
+            "red-green-refactor",
+            "Diagnose Flow",
+            "Self-review",
+            "IMPLEMENTER_REPORT",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "implementer developer_instructions must cover {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_reviewer_agent_matches_contract() {
+        let agent = read_codex_agent("autopilot-reviewer");
+        let instructions = toml_string_value(&agent, "developer_instructions");
+        let reasonix = read_reasonix_skill("autopilot-reviewer");
+
+        assert_eq!(toml_string_value(&agent, "name"), "autopilot-reviewer");
+        assert_eq!(
+            toml_string_value(&agent, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+        assert!(
+            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
+            "reviewer model must be gpt-5.4 or gpt-5.5"
+        );
+        assert_eq!(toml_string_value(&agent, "sandbox_mode"), "read-only");
+
+        for required in [
+            "Four-Axis Review",
+            "Behavior alignment",
+            "TDD discipline",
+            "code quality",
+            "plan fidelity",
+            "Critical",
+            "Important",
+            "Suggestion",
+            "REVIEWER_REPORT",
+        ] {
+            assert!(
+                contains(&instructions, required),
+                "reviewer developer_instructions must cover {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_agents_exclude_reasonix_terms_and_external_skill_dependencies() {
+        for name in ["autopilot-implementer", "autopilot-reviewer"] {
+            let agent = read_codex_agent(name);
+            for forbidden in ["run_skill", "complete_step", "runAs", "skill(name"] {
+                assert!(
+                    !contains(&agent, forbidden),
+                    "Codex agent {name} must not contain forbidden term {forbidden}"
+                );
+            }
         }
     }
 }

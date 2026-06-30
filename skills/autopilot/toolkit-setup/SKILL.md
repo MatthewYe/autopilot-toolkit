@@ -256,12 +256,12 @@ Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant s
 For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, deploy each:
 
 ```bash
-install.rs deploy-agent <agent_name> <src>/codex/<agent_name>.toml --target codex
+install.rs deploy-agent <agent_name> <agent_toml_path> --target codex
 ```
 
 `deploy-agent` copies the `.toml` to `.codex/agents/<agent_name>.toml`. It is idempotent: skips if target exists with identical content, overwrites if content differs.
 
-Agent names are derived from the `.toml` filename stem (e.g. `autopilot-implementer.toml` → agent name `autopilot-implementer`).
+Agent names are derived from the `.toml` filename stem, except the canonical `codex/agent.toml` file uses its parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/codex/agent.toml` -> agent name `autopilot-implementer`).
 
 ### Orphaned symlinks
 

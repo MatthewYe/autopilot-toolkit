@@ -392,7 +392,15 @@ fn codex_agent_files(src: &Path) -> Vec<(String, PathBuf)> {
                 && path.extension().map(|e| e == "toml").unwrap_or(false)
             {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    agents.push((stem.to_string(), path));
+                    let agent_name = if stem == "agent" {
+                        src.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(stem)
+                            .to_string()
+                    } else {
+                        stem.to_string()
+                    };
+                    agents.push((agent_name, path));
                 }
             }
         }
@@ -540,7 +548,7 @@ fn setup_mock_project_with_variants(ctx: &TestContext, _target: &str) {
                 "[agent]\nname = \"{}\"\ndescription = \"{} codex agent\"\n",
                 s, s
             );
-            fs::write(codex_dir.join(format!("{}.toml", s)), agent_toml)
+            fs::write(codex_dir.join("agent.toml"), agent_toml)
                 .expect("write agent .toml");
         }
     }
