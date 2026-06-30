@@ -63,7 +63,18 @@ fn run_install(
     agents_principles_dir: Option<&Path>,
     project_root: Option<&Path>,
 ) -> (String, String, i32) {
-    run_install_ext(args, home, agents_skills_dir, agents_principles_dir, project_root, DualDirs { reasonix_skills_dir: None, codex_skills_dir: None, codex_agents_dir: None })
+    run_install_ext(
+        args,
+        home,
+        agents_skills_dir,
+        agents_principles_dir,
+        project_root,
+        DualDirs {
+            reasonix_skills_dir: None,
+            codex_skills_dir: None,
+            codex_agents_dir: None,
+        },
+    )
 }
 
 /// Extended version of run_install with dual-runtime directory support.
@@ -445,7 +456,12 @@ mod tests {
         let nonexistent = tmp.path().join("nonexistent-src");
 
         let (out, err, code) = run_install(
-            &["sync", "ghost-skill", &nonexistent.to_string_lossy(), "--shared"],
+            &[
+                "sync",
+                "ghost-skill",
+                &nonexistent.to_string_lossy(),
+                "--shared",
+            ],
             &home,
             Some(&skills),
             None,
@@ -967,21 +983,30 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["sync", "my-skill", &src.to_string_lossy(), "--target", "reasonix"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "reasonix",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "sync --target reasonix should exit 0");
         let link = reasonix_skills.join("my-skill");
-        assert!(link.is_symlink(), "symlink should be in reasonix skills dir");
+        assert!(
+            link.is_symlink(),
+            "symlink should be in reasonix skills dir"
+        );
         assert_eq!(
             read_link_target(&link).unwrap(),
             src,
@@ -999,17 +1024,23 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["sync", "my-skill", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "sync --target codex should exit 0");
         let link = codex_skills.join("my-skill");
@@ -1069,7 +1100,10 @@ mod tests {
 
         assert_eq!(code, 0, "default sync should exit 0");
         let link = reasonix_skills.join("my-skill");
-        assert!(link.is_symlink(), "symlink should be in reasonix skills dir (default)");
+        assert!(
+            link.is_symlink(),
+            "symlink should be in reasonix skills dir (default)"
+        );
         assert_eq!(
             read_link_target(&link).unwrap(),
             src,
@@ -1094,7 +1128,10 @@ mod tests {
             None,
         );
 
-        assert_eq!(code, 0, "sync --shared with AGENTS_SKILLS_DIR should exit 0");
+        assert_eq!(
+            code, 0,
+            "sync --shared with AGENTS_SKILLS_DIR should exit 0"
+        );
         let link = custom_shared.join("my-skill");
         assert!(link.is_symlink(), "symlink should be in custom shared dir");
         assert_eq!(
@@ -1114,21 +1151,33 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["sync", "my-skill", &src.to_string_lossy(), "--target", "reasonix"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: Some(&custom_reasonix),
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "reasonix",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: Some(&custom_reasonix),
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_eq!(code, 0, "sync --target reasonix with REASONIX_SKILLS_DIR should exit 0");
+        assert_eq!(
+            code, 0,
+            "sync --target reasonix with REASONIX_SKILLS_DIR should exit 0"
+        );
         let link = custom_reasonix.join("my-skill");
-        assert!(link.is_symlink(), "symlink should be in custom reasonix dir");
+        assert!(
+            link.is_symlink(),
+            "symlink should be in custom reasonix dir"
+        );
         assert_eq!(
             read_link_target(&link).unwrap(),
             src,
@@ -1146,19 +1195,28 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["sync", "my-skill", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: Some(&custom_codex),
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: Some(&custom_codex),
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_eq!(code, 0, "sync --target codex with CODEX_SKILLS_DIR should exit 0");
+        assert_eq!(
+            code, 0,
+            "sync --target codex with CODEX_SKILLS_DIR should exit 0"
+        );
         let link = custom_codex.join("my-skill");
         assert!(link.is_symlink(), "symlink should be in custom codex dir");
         assert_eq!(
@@ -1177,7 +1235,13 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
 
         let (out, err, code) = run_install(
-            &["sync", "my-skill", &src.to_string_lossy(), "--target", "unknown"],
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "unknown",
+            ],
             &home,
             None,
             None,
@@ -1219,22 +1283,31 @@ mod tests {
         symlink(&src, shared_skills.join("to-remove")).unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["unlink", "to-remove"],
-        &home,
-        Some(&shared_skills),
-        None,
-        Some(&proj_root),
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &["unlink", "to-remove"],
+            &home,
+            Some(&shared_skills),
+            None,
+            Some(&proj_root),
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "unlink no --target should exit 0");
-        assert!(!reasonix_skills.join("to-remove").exists(), "reasonix symlink should be removed");
-        assert!(!codex_skills.join("to-remove").exists(), "codex symlink should be removed");
-        assert!(!shared_skills.join("to-remove").exists(), "shared symlink should be removed");
+        assert!(
+            !reasonix_skills.join("to-remove").exists(),
+            "reasonix symlink should be removed"
+        );
+        assert!(
+            !codex_skills.join("to-remove").exists(),
+            "codex symlink should be removed"
+        );
+        assert!(
+            !shared_skills.join("to-remove").exists(),
+            "shared symlink should be removed"
+        );
     }
 
     #[test]
@@ -1259,22 +1332,31 @@ mod tests {
         symlink(&src, shared_skills.join("to-remove")).unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["unlink", "to-remove", "--target", "codex"],
-        &home,
-        Some(&shared_skills),
-        None,
-        Some(&proj_root),
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &["unlink", "to-remove", "--target", "codex"],
+            &home,
+            Some(&shared_skills),
+            None,
+            Some(&proj_root),
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "unlink --target codex should exit 0");
-        assert!(reasonix_skills.join("to-remove").exists(), "reasonix symlink should be preserved");
-        assert!(!codex_skills.join("to-remove").exists(), "codex symlink should be removed");
-        assert!(shared_skills.join("to-remove").exists(), "shared symlink should be preserved");
+        assert!(
+            reasonix_skills.join("to-remove").exists(),
+            "reasonix symlink should be preserved"
+        );
+        assert!(
+            !codex_skills.join("to-remove").exists(),
+            "codex symlink should be removed"
+        );
+        assert!(
+            shared_skills.join("to-remove").exists(),
+            "shared symlink should be preserved"
+        );
     }
 
     #[test]
@@ -1299,22 +1381,31 @@ mod tests {
         symlink(&src, shared_skills.join("to-remove")).unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["unlink", "to-remove", "--target", "reasonix"],
-        &home,
-        Some(&shared_skills),
-        None,
-        Some(&proj_root),
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &["unlink", "to-remove", "--target", "reasonix"],
+            &home,
+            Some(&shared_skills),
+            None,
+            Some(&proj_root),
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "unlink --target reasonix should exit 0");
-        assert!(!reasonix_skills.join("to-remove").exists(), "reasonix symlink should be removed");
-        assert!(codex_skills.join("to-remove").exists(), "codex symlink should be preserved");
-        assert!(shared_skills.join("to-remove").exists(), "shared symlink should be preserved");
+        assert!(
+            !reasonix_skills.join("to-remove").exists(),
+            "reasonix symlink should be removed"
+        );
+        assert!(
+            codex_skills.join("to-remove").exists(),
+            "codex symlink should be preserved"
+        );
+        assert!(
+            shared_skills.join("to-remove").exists(),
+            "shared symlink should be preserved"
+        );
     }
 
     #[test]
@@ -1339,22 +1430,31 @@ mod tests {
         symlink(&src, shared_skills.join("to-remove")).unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["unlink", "to-remove", "--shared"],
-        &home,
-        Some(&shared_skills),
-        None,
-        Some(&proj_root),
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &["unlink", "to-remove", "--shared"],
+            &home,
+            Some(&shared_skills),
+            None,
+            Some(&proj_root),
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "unlink --shared should exit 0");
-        assert!(reasonix_skills.join("to-remove").exists(), "reasonix symlink should be preserved");
-        assert!(codex_skills.join("to-remove").exists(), "codex symlink should be preserved");
-        assert!(!shared_skills.join("to-remove").exists(), "shared symlink should be removed");
+        assert!(
+            reasonix_skills.join("to-remove").exists(),
+            "reasonix symlink should be preserved"
+        );
+        assert!(
+            codex_skills.join("to-remove").exists(),
+            "codex symlink should be preserved"
+        );
+        assert!(
+            !shared_skills.join("to-remove").exists(),
+            "shared symlink should be removed"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1379,19 +1479,22 @@ mod tests {
 
         // Default sync (no flags → reasonix) should replace wrong-target symlink
         let (_out, _err, code) = run_install_ext(
-        &["sync", "my-skill", &src.to_string_lossy()],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: Some(&reasonix_skills),
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &["sync", "my-skill", &src.to_string_lossy()],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_eq!(code, 0, "wrong-target replacement in reasonix should exit 0");
+        assert_eq!(
+            code, 0,
+            "wrong-target replacement in reasonix should exit 0"
+        );
         let link = reasonix_skills.join("my-skill");
         assert_eq!(
             read_link_target(&link).unwrap(),
@@ -1414,17 +1517,23 @@ mod tests {
         fs::write(conflict_dir.join("important.txt"), "precious data\n").unwrap();
 
         let (out, err, code) = run_install_ext(
-        &["sync", "conflict-skill", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: Some(&codex_skills),
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "sync",
+                "conflict-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+            },
+        );
 
         assert_ne!(code, 0, "real-dir conflict in codex should exit non-zero");
         let combined = format!("{}{}", out, err);
@@ -1452,21 +1561,30 @@ mod tests {
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (_out, err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "deploy-agent should exit 0, got stderr: {}", err);
         let deployed = home.join(".codex/agents/my-agent.toml");
-        assert!(deployed.is_file(), "~/.codex/agents/my-agent.toml should exist");
+        assert!(
+            deployed.is_file(),
+            "~/.codex/agents/my-agent.toml should exist"
+        );
         assert!(
             !project_root.join(".codex/agents/my-agent.toml").exists(),
             "default deploy-agent should not write project-local .codex/agents"
@@ -1485,21 +1603,31 @@ mod tests {
         fs::write(&src, "[agent]\nname = \"user-agent\"\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex", "--user"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+                "--user",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "deploy-agent --user should exit 0");
         let deployed = home.join(".codex/agents/my-agent.toml");
-        assert!(deployed.is_file(), "~/.codex/agents/my-agent.toml should exist");
+        assert!(
+            deployed.is_file(),
+            "~/.codex/agents/my-agent.toml should exist"
+        );
         let content = fs::read_to_string(&deployed).unwrap();
         assert_eq!(content, "[agent]\nname = \"user-agent\"\n");
     }
@@ -1514,22 +1642,32 @@ mod tests {
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (out, err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "reasonix"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "reasonix",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_ne!(code, 0, "deploy-agent --target reasonix should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "deploy-agent --target reasonix should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
-            combined.contains("requires --target codex") || combined.to_lowercase().contains("reasonix"),
+            combined.contains("requires --target codex")
+                || combined.to_lowercase().contains("reasonix"),
             "should error about --target reasonix being wrong, got: {}",
             combined
         );
@@ -1545,19 +1683,22 @@ mod tests {
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (out, err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy()],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &["deploy-agent", "my-agent", &src.to_string_lossy()],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_ne!(code, 0, "deploy-agent with no --target should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "deploy-agent with no --target should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
             combined.to_lowercase().contains("requires --target codex"),
@@ -1578,17 +1719,23 @@ mod tests {
 
         // First deploy
         let (_out, _err, code1) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
         assert_eq!(code1, 0, "first deploy should exit 0");
 
         let deployed = home.join(".codex/agents/my-agent.toml");
@@ -1596,22 +1743,31 @@ mod tests {
 
         // Second deploy with same content
         let (_out, _err, code2) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
         assert_eq!(code2, 0, "second deploy should exit 0");
 
         let second_mtime = fs::metadata(&deployed).unwrap().modified().unwrap();
         // Idempotent: file should NOT be modified again (same mtime)
-        assert_eq!(first_mtime, second_mtime, "idempotent deploy should not modify file");
+        assert_eq!(
+            first_mtime, second_mtime,
+            "idempotent deploy should not modify file"
+        );
         let content = fs::read_to_string(&deployed).unwrap();
         assert_eq!(content, "[agent]\nname = \"test\"\n");
     }
@@ -1628,39 +1784,60 @@ mod tests {
 
         // First deploy
         let (_out, _err, code1) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
         assert_eq!(code1, 0, "first deploy should exit 0");
         let deployed = home.join(".codex/agents/my-agent.toml");
-        assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"first\"\n");
+        assert_eq!(
+            fs::read_to_string(&deployed).unwrap(),
+            "[agent]\nname = \"first\"\n"
+        );
 
         // Change source content
         fs::write(&src, "[agent]\nname = \"second\"\n").unwrap();
 
         // Second deploy with different content
         let (_out, _err, code2) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
-        assert_eq!(code2, 0, "second deploy with different content should exit 0");
-        assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"second\"\n");
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
+        assert_eq!(
+            code2, 0,
+            "second deploy with different content should exit 0"
+        );
+        assert_eq!(
+            fs::read_to_string(&deployed).unwrap(),
+            "[agent]\nname = \"second\"\n"
+        );
     }
 
     #[test]
@@ -1673,19 +1850,28 @@ mod tests {
         let src = tmp.path().join("nonexistent.toml");
 
         let (out, err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_ne!(code, 0, "deploy-agent with missing source should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "deploy-agent with missing source should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
             combined.to_lowercase().contains("does not exist"),
@@ -1705,19 +1891,28 @@ mod tests {
         fs::write(&src, "not a toml file\n").unwrap();
 
         let (out, err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
-        assert_ne!(code, 0, "deploy-agent with non-.toml source should exit non-zero");
+        assert_ne!(
+            code, 0,
+            "deploy-agent with non-.toml source should exit non-zero"
+        );
         let combined = format!("{}{}", out, err);
         assert!(
             combined.to_lowercase().contains(".toml"),
@@ -1735,23 +1930,32 @@ mod tests {
         let project_root = tmp.path().to_path_buf();
         let agents_dir = home.join(".codex/agents");
         let project_agents_dir = project_root.join(".codex/agents");
-        assert!(!agents_dir.exists(), "~/.codex/agents/ should not exist before deploy");
+        assert!(
+            !agents_dir.exists(),
+            "~/.codex/agents/ should not exist before deploy"
+        );
 
         let src = tmp.path().join("my-agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        Some(&project_root),
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: None,
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+            },
+        );
 
         assert_eq!(code, 0, "deploy-agent should exit 0");
         assert!(agents_dir.is_dir(), "~/.codex/agents/ should be created");
@@ -1761,7 +1965,10 @@ mod tests {
         );
         let deployed = agents_dir.join("my-agent.toml");
         assert!(deployed.is_file(), "my-agent.toml should exist");
-        assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"test\"\n");
+        assert_eq!(
+            fs::read_to_string(&deployed).unwrap(),
+            "[agent]\nname = \"test\"\n"
+        );
     }
 
     #[test]
@@ -1775,21 +1982,33 @@ mod tests {
         fs::write(&src, "[agent]\nname = \"env-override\"\n").unwrap();
 
         let (_out, _err, code) = run_install_ext(
-        &["deploy-agent", "my-agent", &src.to_string_lossy(), "--target", "codex"],
-        &home,
-        None,
-        None,
-        None,
-        DualDirs {
-            reasonix_skills_dir: None,
-            codex_skills_dir: None,
-            codex_agents_dir: Some(&custom_agents),
-        }
-    );
+            &[
+                "deploy-agent",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "codex",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: Some(&custom_agents),
+            },
+        );
 
         assert_eq!(code, 0, "deploy-agent with CODEX_AGENTS_DIR should exit 0");
         let deployed = custom_agents.join("my-agent.toml");
-        assert!(deployed.is_file(), "custom agents dir should contain my-agent.toml");
-        assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"env-override\"\n");
+        assert!(
+            deployed.is_file(),
+            "custom agents dir should contain my-agent.toml"
+        );
+        assert_eq!(
+            fs::read_to_string(&deployed).unwrap(),
+            "[agent]\nname = \"env-override\"\n"
+        );
     }
 }

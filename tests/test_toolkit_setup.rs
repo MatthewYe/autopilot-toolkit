@@ -373,9 +373,7 @@ fn has_codex_agents(src: &Path) -> bool {
     if let Ok(entries) = fs::read_dir(&codex_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file()
-                && path.extension().map(|e| e == "toml").unwrap_or(false)
-            {
+            if path.is_file() && path.extension().map(|e| e == "toml").unwrap_or(false) {
                 return true;
             }
         }
@@ -393,9 +391,7 @@ fn codex_agent_files(src: &Path) -> Vec<(String, PathBuf)> {
     if let Ok(entries) = fs::read_dir(&codex_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file()
-                && path.extension().map(|e| e == "toml").unwrap_or(false)
-            {
+            if path.is_file() && path.extension().map(|e| e == "toml").unwrap_or(false) {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     let agent_name = if stem == "agent" {
                         src.file_name()
@@ -555,8 +551,7 @@ fn setup_mock_project_with_variants(ctx: &TestContext, _target: &str) {
                 "[agent]\nname = \"{}\"\ndescription = \"{} codex agent\"\n",
                 s, s
             );
-            fs::write(codex_dir.join("agent.toml"), agent_toml)
-                .expect("write agent .toml");
+            fs::write(codex_dir.join("agent.toml"), agent_toml).expect("write agent .toml");
         }
     }
 
@@ -648,8 +643,8 @@ fn derive_expected_set(mock_root: &Path) -> Vec<(String, PathBuf)> {
                 if path.is_dir() {
                     // Agnostic skill: SKILL.md directly in directory
                     // Coupled skill: reasonix/SKILL.md exists (variant source)
-                    let is_skill = path.join("SKILL.md").exists()
-                        || path.join("reasonix/SKILL.md").exists();
+                    let is_skill =
+                        path.join("SKILL.md").exists() || path.join("reasonix/SKILL.md").exists();
                     if is_skill {
                         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                             let raw = path.to_path_buf();
@@ -818,10 +813,7 @@ fn run_toolkit_setup_execute_targeted(
                                         ctx.path(),
                                         ename,
                                     );
-                                    lines.push(format!(
-                                        "  UNLINK {} (orphaned, shared)",
-                                        ename
-                                    ));
+                                    lines.push(format!("  UNLINK {} (orphaned, shared)", ename));
                                 }
                             }
                         }
@@ -888,8 +880,7 @@ fn run_toolkit_setup_verify_targeted(
         .iter()
         .filter(|(_, src)| {
             let category = categorize_skill(src);
-            category == "agnostic"
-                || (category == "coupled" && has_skill_variant(src, target))
+            category == "agnostic" || (category == "coupled" && has_skill_variant(src, target))
         })
         .count();
     let mut all_pass = true;
@@ -1480,8 +1471,14 @@ mod tests {
         );
 
         // Count categories
-        let agnostic_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "agnostic").count();
-        let coupled_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "coupled").count();
+        let agnostic_count = expected
+            .iter()
+            .filter(|(_, src)| categorize_skill(src) == "agnostic")
+            .count();
+        let coupled_count = expected
+            .iter()
+            .filter(|(_, src)| categorize_skill(src) == "coupled")
+            .count();
         assert!(agnostic_count > 0, "should have agnostic skills");
         assert!(coupled_count > 0, "should have coupled skills");
 
@@ -1561,10 +1558,15 @@ mod tests {
 
         let expected = derive_expected_set(ctx.path());
 
-        let agnostic_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "agnostic").count();
+        let agnostic_count = expected
+            .iter()
+            .filter(|(_, src)| categorize_skill(src) == "agnostic")
+            .count();
         let codex_skill_variant_count = expected
             .iter()
-            .filter(|(_, src)| categorize_skill(src) == "coupled" && has_skill_variant(src, "codex"))
+            .filter(|(_, src)| {
+                categorize_skill(src) == "coupled" && has_skill_variant(src, "codex")
+            })
             .count();
 
         // Execute with target=codex
@@ -1747,7 +1749,9 @@ mod tests {
         let _ = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "codex");
 
         // Create orphaned symlinks in both shared and codex dirs
-        let old_shared = ctx.path().join("skills/upstream/skills/engineering/old-shared");
+        let old_shared = ctx
+            .path()
+            .join("skills/upstream/skills/engineering/old-shared");
         fs::create_dir_all(&old_shared).expect("create old-shared dir");
         fs::write(old_shared.join("SKILL.md"), "# Old Shared\n").unwrap();
 

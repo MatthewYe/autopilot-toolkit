@@ -523,10 +523,7 @@ mod tests {
         let instructions = toml_string_value(&agent, "developer_instructions");
         let reasonix = read_reasonix_skill("autopilot-implementer");
 
-        assert_eq!(
-            toml_string_value(&agent, "name"),
-            "autopilot-implementer"
-        );
+        assert_eq!(toml_string_value(&agent, "name"), "autopilot-implementer");
         assert_eq!(
             toml_string_value(&agent, "description"),
             frontmatter_value(&reasonix, "description")
@@ -554,7 +551,10 @@ mod tests {
             "implementer SUGGESTION_RESOLUTIONS format must use the orchestrator parser's 来源 token"
         );
         assert!(
-            !contains(&instructions, "[resolved|rejected|deferred] source <issue-slug> round <N>:"),
+            !contains(
+                &instructions,
+                "[resolved|rejected|deferred] source <issue-slug> round <N>:"
+            ),
             "implementer must not emit the old source-token SUGGESTION_RESOLUTIONS format"
         );
     }

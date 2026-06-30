@@ -27,7 +27,9 @@ fn usage() -> ! {
     println!("                           --target reasonix|codex: only that target");
     println!("                           --shared: only ~/.agents/skills/");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
-    println!("  deploy-agent <name> <src> Copy a .toml agent definition to ~/.codex/agents/<name>.toml");
+    println!(
+        "  deploy-agent <name> <src> Copy a .toml agent definition to ~/.codex/agents/<name>.toml"
+    );
     println!("                           --target codex (required): ~/.codex/agents/<name>.toml");
     println!("                           --user: accepted for compatibility; same as default unless CODEX_AGENTS_DIR is set");
     std::process::exit(1);
@@ -209,7 +211,10 @@ fn deploy_agent(
     match target_flag.as_deref() {
         Some("codex") => {}
         Some(other) => {
-            anyhow::bail!("deploy-agent requires --target codex, but received --target {}", other);
+            anyhow::bail!(
+                "deploy-agent requires --target codex, but received --target {}",
+                other
+            );
         }
         None => {
             anyhow::bail!("deploy-agent requires --target codex");
@@ -394,7 +399,14 @@ fn main() -> anyhow::Result<()> {
             }
             let name = positional[0];
             let src = PathBuf::from(positional[1]);
-            deploy_agent(name, &src, &codex_agents_dir, &home, user_flag, &target_flag)?;
+            deploy_agent(
+                name,
+                &src,
+                &codex_agents_dir,
+                &home,
+                user_flag,
+                &target_flag,
+            )?;
         }
         _ => {
             eprintln!(
