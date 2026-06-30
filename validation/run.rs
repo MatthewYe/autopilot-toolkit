@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn discovers_codex_orchestrator_variant() {
+    fn discovers_codex_skill_variants() {
         let root = project_root();
         let skills = discover_skills(&root);
         let orchestrator = skills
@@ -766,6 +766,19 @@ mod tests {
         assert_eq!(
             orch.relative_path,
             "skills/autopilot/autopilot-orchestrator/codex/SKILL.md"
+        );
+
+        let audit = skills
+            .iter()
+            .find(|s| s.name == "audit-autopilot" && s.variant.as_deref() == Some("codex"));
+        assert!(
+            audit.is_some(),
+            "should find audit-autopilot codex variant"
+        );
+        let audit = audit.unwrap();
+        assert_eq!(
+            audit.relative_path,
+            "skills/autopilot/audit-autopilot/codex/SKILL.md"
         );
     }
 
@@ -847,7 +860,10 @@ mod tests {
         let status = check_codex_status(&skills);
         assert!(status.iter().any(|l| l.contains("autopilot-implementer") && l.contains("agent.toml")));
         assert!(status.iter().any(|l| l.contains("autopilot-reviewer") && l.contains("agent.toml")));
-        assert!(status.iter().any(|l| l.contains("audit-autopilot") && l.contains("placeholder")));
+        assert!(
+            !status.iter().any(|l| l.contains("audit-autopilot") && l.contains("placeholder")),
+            "audit-autopilot has a codex/SKILL.md and should no longer be reported as a placeholder"
+        );
         assert!(
             !status.iter().any(|l| l.contains("autopilot-orchestrator") && l.contains("placeholder")),
             "orchestrator has a codex/SKILL.md and should no longer be reported as a placeholder"

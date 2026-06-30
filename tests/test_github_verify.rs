@@ -7,7 +7,7 @@
 //! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
-//! #[test] functions: 21
+//! #[test] functions: 25
 //!
 //! For environment diagnostics (gh installed, authenticated, git remote),
 //! run: ./scripts/env-check.rs
@@ -63,6 +63,15 @@ fn codex_orchestrator_skill_path() -> PathBuf {
 fn read_codex_orchestrator_skill() -> String {
     fs::read_to_string(codex_orchestrator_skill_path())
         .expect("failed to read Codex orchestrator SKILL.md")
+}
+
+fn codex_audit_skill_path() -> PathBuf {
+    project_root().join("skills/autopilot/audit-autopilot/codex/SKILL.md")
+}
+
+fn read_codex_audit_skill() -> String {
+    fs::read_to_string(codex_audit_skill_path())
+        .expect("failed to read Codex audit-autopilot SKILL.md")
 }
 
 fn reasonix_skill_path(name: &str) -> PathBuf {
@@ -369,6 +378,102 @@ mod tests {
             assert!(
                 contains(&skill, required),
                 "Codex variant must preserve workflow section: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_exists_with_valid_frontmatter_and_references() {
+        let skill = read_codex_audit_skill();
+        let reasonix = read_reasonix_skill("audit-autopilot");
+        assert!(
+            skill.starts_with("---\nname: audit-autopilot\n"),
+            "Codex audit variant must start with valid frontmatter"
+        );
+        assert_eq!(
+            frontmatter_value(&skill, "description"),
+            frontmatter_value(&reasonix, "description")
+        );
+
+        let references = project_root().join("skills/autopilot/audit-autopilot/codex/references");
+        assert!(
+            references.join("questions.md").is_file(),
+            "Codex audit variant must include references/questions.md"
+        );
+        assert!(
+            references.join("report-template.md").is_file(),
+            "Codex audit variant must include references/report-template.md"
+        );
+    }
+
+    #[test]
+    fn codex_audit_variant_preserves_reasonix_audit_methodology() {
+        let skill = read_codex_audit_skill();
+        for required in [
+            "three layers of fidelity",
+            "9 analysis questions",
+            "Layer 1 (Fidelity)",
+            "Layer 2 (Errors)",
+            "Layer 3 (Friction & Drift)",
+            "Phase 2",
+            "fidelity percentage",
+            "evidence anchor",
+        ] {
+            assert!(
+                contains(&skill, required),
+                "Codex audit variant must preserve audit method term: {required}"
+            );
+        }
+
+        let questions = fs::read_to_string(
+            project_root().join("skills/autopilot/audit-autopilot/codex/references/questions.md"),
+        )
+        .expect("failed to read Codex audit questions");
+        for question in [
+            "Q1: Intent Translation",
+            "Q2: AC Coverage",
+            "Q3: Report Credibility",
+            "Q4: Unfixed Criticals",
+            "Q5: Verdict Consistency",
+            "Q6: Suggestion Chain Integrity",
+            "Q7: Retry Efficacy",
+            "Q8: Scope Creep",
+            "Q9: TDD Discipline",
+        ] {
+            assert!(
+                contains(&questions, question),
+                "Codex audit references must preserve {question}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_uses_codex_session_placeholders() {
+        let skill = read_codex_audit_skill();
+        assert!(
+            count_matches(&skill, "TODO: codex session export — TBD") >= 2,
+            "Codex audit variant must mark unresolved Codex session mechanism with TODO placeholders"
+        );
+        for forbidden in [
+            "reasonix session export",
+            "reasonix session list",
+            "list_sessions",
+            "read_session",
+        ] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex audit variant must not reference Reasonix session tool {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_audit_variant_excludes_reasonix_workflow_terms() {
+        let skill = read_codex_audit_skill();
+        for forbidden in ["run_skill", "complete_step", "runAs"] {
+            assert!(
+                !contains(&skill, forbidden),
+                "Codex audit variant must not contain Reasonix-specific term {forbidden}"
             );
         }
     }
