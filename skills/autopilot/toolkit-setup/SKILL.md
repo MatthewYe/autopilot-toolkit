@@ -92,11 +92,13 @@ Categories:
 | **agnostic** | `SKILL.md` directly in source dir | All upstream skills + `toolkit-setup` + `zoom-out` |
 | **coupled** | `reasonix/SKILL.md` exists | The 4 workflow skills: `audit-autopilot`, `autopilot-implementer`, `autopilot-orchestrator`, `autopilot-reviewer` |
 
-Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`).
+Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`) only when that target has a loadable `SKILL.md` variant.
+
+For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; deploy their TOML files via `install.rs deploy-agent` instead.
 
 ### Also: Codex custom agents
 
-For `--target codex`, the `autopilot-implementer` and `autopilot-reviewer` skills may also have `.toml` agent definition files in their `codex/` subdirectory. Check:
+For `--target codex`, coupled skills may have `.toml` agent definition files in their `codex/` subdirectory. Check:
 
 ```bash
 has_codex_agents() {
@@ -142,7 +144,8 @@ If a directory does not exist, it will be created by `install.rs sync` on first 
 For each name in the expected set, determine the correct install directory and expected source path based on category:
 
 - **Agnostic**: install to `$SHARED_DIR/<name>`, expected source = `<skill_source_dir>`
-- **Coupled**: install to `$TARGET_DIR/<name>`, expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/` or `codex/` variant)
+- **Coupled with target `SKILL.md`**: install to `$TARGET_DIR/<name>`, expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/` or `codex/` variant)
+- **Coupled without target `SKILL.md`**: skip skill-state diagnosis for `$TARGET_DIR/<name>`; this is valid for Codex custom-agent-only variants
 
 ```bash
 check_skill_state() {
@@ -190,7 +193,12 @@ For `--target codex`, also check if `autopilot-implementer` and `autopilot-revie
 
 ### 2e. Find orphaned symlinks
 
-Orphaned symlinks: entries in either `$SHARED_DIR` or `$TARGET_DIR` that are symlinks pointing under `PROJECT_ROOT` but whose names are NOT in the expected set. These are leftovers from removed skills.
+Orphaned symlinks: entries in either `$SHARED_DIR` or `$TARGET_DIR` that are symlinks pointing under `PROJECT_ROOT` but whose names are NOT expected for that install directory. These are leftovers from removed skills or from older routing rules.
+
+Use directory-specific expected names:
+
+- `$SHARED_DIR`: agnostic skill names only
+- `$TARGET_DIR`: coupled skill names whose `<skill_source_dir>/<target>/SKILL.md` exists only
 
 Check BOTH directories:
 
@@ -239,7 +247,18 @@ For **agnostic** skills — use `--shared` flag to install to the shared directo
 | real_dir | **WARN** — do NOT touch | Report conflict, skip |
 | correct | No-op | — |
 
-For **coupled** skills — use `--target` flag with variant source path:
+For **coupled** skills — first check whether the target variant is a loadable skill:
+
+```bash
+variant_src="$src/$target"
+if [ ! -f "$variant_src/SKILL.md" ]; then
+  # Codex agent-only variants, such as autopilot-implementer/codex/agent.toml,
+  # are not skills. Skip sync; still deploy agent TOMLs below.
+  skip_skill_sync=true
+fi
+```
+
+When `SKILL.md` exists, use `--target` flag with the variant source path:
 
 | State | Action | Command |
 |-------|--------|---------|
@@ -249,7 +268,7 @@ For **coupled** skills — use `--target` flag with variant source path:
 | real_dir | **WARN** — do NOT touch | Report conflict, skip |
 | correct | No-op | — |
 
-Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/autopilot-implementer/codex`).
+Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/audit-autopilot/codex`). Do not run `install.rs sync` for a Codex variant directory that lacks `SKILL.md`.
 
 ### Codex custom agents
 
@@ -338,9 +357,7 @@ After a successful setup, the expected directory layout per target:
 
 ~/.codex/skills/            # Coupled skills (codex variants)
 ├── audit-autopilot → .../skills/autopilot/audit-autopilot/codex
-├── autopilot-implementer → .../skills/autopilot/autopilot-implementer/codex
 ├── autopilot-orchestrator → .../skills/autopilot/autopilot-orchestrator/codex
-├── autopilot-reviewer → .../skills/autopilot/autopilot-reviewer/codex
 
 .codex/agents/              # Codex custom agents
 ├── autopilot-implementer.toml
@@ -392,8 +409,8 @@ If any skill remains missing/broken/wrong_target after execute, report as FAIL a
 ## Edge Cases
 
 - **Skills directory missing**: Created automatically by `install.rs sync` on first use.
-- **Variant source directory missing**: `install.rs sync` warns and skips (exit 0). Report as WARN, do not treat as failure — upstream may be mid-update or codex variant not yet authored.
-- **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files (no SKILL.md yet). Sync will skip (source not a directory); still deploy agents.
+- **Variant source directory missing**: Report as WARN and skip sync. Do not call `install.rs sync` for a missing target variant.
+- **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files. Skip skill sync explicitly; still deploy agents. If a stale toolkit-owned symlink for that name exists in `~/.codex/skills/`, unlink it as an invalid target skill entry.
 - **Real directory conflict**: Reported as WARN. install.rs refuses to overwrite real directories. User must resolve manually.
 - **No changes needed**: Report "all skills already correct", ALL PASS.
 - **python3 unavailable**: Fall back to grep-based parsing of `.skill-lock.json`. Less robust but functional for standard JSON layouts.

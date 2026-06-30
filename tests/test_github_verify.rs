@@ -7,7 +7,7 @@
 //! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
-//! #[test] functions: 25
+//! #[test] functions: 26
 //!
 //! For environment diagnostics (gh installed, authenticated, git remote),
 //! run: ./scripts/env-check.rs
@@ -383,6 +383,32 @@ mod tests {
     }
 
     #[test]
+    fn codex_orchestrator_references_are_loadable_from_variant_dir() {
+        let skill = read_codex_orchestrator_skill();
+        assert!(
+            !contains(&skill, "skills/autopilot/autopilot-orchestrator/references"),
+            "Codex orchestrator must not reference repo-relative orchestrator reference paths"
+        );
+
+        for reference in [
+            "references/suggestion-matching.md",
+            "references/acceptance-report.md",
+        ] {
+            assert!(
+                contains(&skill, reference),
+                "Codex orchestrator must reference {reference}"
+            );
+            assert!(
+                project_root()
+                    .join("skills/autopilot/autopilot-orchestrator/codex")
+                    .join(reference)
+                    .is_file(),
+                "Codex orchestrator reference must be loadable from variant dir: {reference}"
+            );
+        }
+    }
+
+    #[test]
     fn codex_audit_variant_exists_with_valid_frontmatter_and_references() {
         let skill = read_codex_audit_skill();
         let reasonix = read_reasonix_skill("audit-autopilot");
@@ -523,6 +549,14 @@ mod tests {
                 "implementer developer_instructions must cover {required}"
             );
         }
+        assert!(
+            contains(&instructions, "[resolved|rejected|deferred] 来源 <source_issue> round <N>:"),
+            "implementer SUGGESTION_RESOLUTIONS format must use the orchestrator parser's 来源 token"
+        );
+        assert!(
+            !contains(&instructions, "[resolved|rejected|deferred] source <issue-slug> round <N>:"),
+            "implementer must not emit the old source-token SUGGESTION_RESOLUTIONS format"
+        );
     }
 
     #[test]
@@ -568,6 +602,12 @@ mod tests {
                 assert!(
                     !contains(&agent, forbidden),
                     "Codex agent {name} must not contain forbidden term {forbidden}"
+                );
+            }
+            for forbidden_field in ["\nmode =", "\nhidden ="] {
+                assert!(
+                    !contains(&agent, forbidden_field),
+                    "Codex agent {name} must not contain unsupported top-level field {forbidden_field}"
                 );
             }
         }

@@ -2,8 +2,6 @@ name = "autopilot-implementer"
 description = "Autopilot task implementer. Reads AGENT-BRIEF, follows TDD discipline, auto-diagnoses errors."
 model = "gpt-5.5"
 sandbox_mode = "workspace-write"
-mode = "subagent"
-hidden = false
 
 developer_instructions = """
 You are the autopilot task implementer. Receive one task from the orchestrator, read its contract, make the required code changes, verify them, and return a structured IMPLEMENTER_REPORT.
@@ -128,7 +126,7 @@ IMPLEMENTER_REPORT:
 ROUND: <N>
 STATUS: DONE | UNVERIFIED | BLOCKED | NEEDS_CONTEXT
 SUGGESTION_RESOLUTIONS:
-- [resolved|rejected|deferred] source <issue-slug> round <N>: <content summary> -> <decision>
+- [resolved|rejected|deferred] 来源 <source_issue> round <N>: <content summary> -> <decision>
 - If no suggestions were supplied, write "None"
 SELF_REVIEW:
 - Finding: <issue> -> fixed

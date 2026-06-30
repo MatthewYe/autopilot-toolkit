@@ -359,6 +359,11 @@ fn variant_src(src: &Path, target: &str) -> PathBuf {
     src.join(target)
 }
 
+/// Check if a coupled skill has a loadable SKILL.md for the target runtime.
+fn has_skill_variant(src: &Path, target: &str) -> bool {
+    src.join(target).join("SKILL.md").is_file()
+}
+
 /// Check if a coupled skill has codex agent .toml files (for deploy-agent).
 fn has_codex_agents(src: &Path) -> bool {
     let codex_dir = src.join("codex");
@@ -536,11 +541,13 @@ fn setup_mock_project_with_variants(ctx: &TestContext, _target: &str) {
         // Create codex variant
         let codex_dir = dir.join("codex");
         fs::create_dir_all(&codex_dir).expect("create codex variant dir");
-        let codex_md = format!(
-            "---\nname: {}\ndescription: {} (codex variant)\n---\n# {} (Codex)\n",
-            s, s, s
-        );
-        fs::write(codex_dir.join("SKILL.md"), codex_md).expect("write codex SKILL.md");
+        if !codex_agent_skills.contains(s) {
+            let codex_md = format!(
+                "---\nname: {}\ndescription: {} (codex variant)\n---\n# {} (Codex)\n",
+                s, s, s
+            );
+            fs::write(codex_dir.join("SKILL.md"), codex_md).expect("write codex SKILL.md");
+        }
 
         // For implementer and reviewer: add .toml agent files
         if codex_agent_skills.contains(s) {
@@ -726,35 +733,37 @@ fn run_toolkit_setup_execute_targeted(
             }
             "coupled" => {
                 let variant_src_path = variant_src(src, target);
-                let state = skill_state(name, &variant_src_path, target_skills_dir);
-                match state {
-                    "missing" | "broken" | "wrong_target" => {
-                        let (_stdout, _stderr, _code) = run_sync_targeted(
-                            install_script,
-                            ctx.home(),
-                            target,
-                            target_skills_dir,
-                            ctx.path(),
-                            name,
-                            &variant_src_path,
-                        );
-                        lines.push(format!(
-                            "  SYNC {} -> {} (--target {})",
-                            name,
-                            variant_src_path.display(),
-                            target
-                        ));
+                if has_skill_variant(src, target) {
+                    let state = skill_state(name, &variant_src_path, target_skills_dir);
+                    match state {
+                        "missing" | "broken" | "wrong_target" => {
+                            let (_stdout, _stderr, _code) = run_sync_targeted(
+                                install_script,
+                                ctx.home(),
+                                target,
+                                target_skills_dir,
+                                ctx.path(),
+                                name,
+                                &variant_src_path,
+                            );
+                            lines.push(format!(
+                                "  SYNC {} -> {} (--target {})",
+                                name,
+                                variant_src_path.display(),
+                                target
+                            ));
+                        }
+                        "real_dir" => {
+                            lines.push(format!(
+                                "  WARN: {} is a real directory at {}/{} — skipping",
+                                name,
+                                target_skills_dir.display(),
+                                name
+                            ));
+                        }
+                        "correct" => { /* no-op */ }
+                        _ => {}
                     }
-                    "real_dir" => {
-                        lines.push(format!(
-                            "  WARN: {} is a real directory at {}/{} — skipping",
-                            name,
-                            target_skills_dir.display(),
-                            name
-                        ));
-                    }
-                    "correct" => { /* no-op */ }
-                    _ => {}
                 }
 
                 // Codex agents: deploy-agent for skills with .toml files
@@ -782,14 +791,23 @@ fn run_toolkit_setup_execute_targeted(
 
     // Find and unlink orphaned symlinks from ALL relevant directories
     // Agnostic orphans: in ~/.agents/skills/
-    let expected_names: Vec<&str> = expected.iter().map(|(n, _)| n.as_str()).collect();
+    let shared_expected_names: Vec<&str> = expected
+        .iter()
+        .filter(|(_, src)| categorize_skill(src) == "agnostic")
+        .map(|(n, _)| n.as_str())
+        .collect();
+    let target_expected_names: Vec<&str> = expected
+        .iter()
+        .filter(|(_, src)| categorize_skill(src) == "coupled" && has_skill_variant(src, target))
+        .map(|(n, _)| n.as_str())
+        .collect();
     if ctx.skills_dir().is_dir() {
         if let Ok(entries) = fs::read_dir(ctx.skills_dir()) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_symlink() {
                     if let Some(ename) = path.file_name().and_then(|n| n.to_str()) {
-                        if !expected_names.contains(&ename) {
+                        if !shared_expected_names.contains(&ename) {
                             if let Ok(link_target) = fs::read_link(&path) {
                                 let proj = ctx.path().to_path_buf();
                                 if link_target.starts_with(&proj) {
@@ -820,7 +838,7 @@ fn run_toolkit_setup_execute_targeted(
                 let path = entry.path();
                 if path.is_symlink() {
                     if let Some(ename) = path.file_name().and_then(|n| n.to_str()) {
-                        if !expected_names.contains(&ename) {
+                        if !target_expected_names.contains(&ename) {
                             if let Ok(link_target) = fs::read_link(&path) {
                                 let proj = ctx.path().to_path_buf();
                                 if link_target.starts_with(&proj) {
@@ -866,7 +884,14 @@ fn run_toolkit_setup_verify_targeted(
     let mut report: Vec<String> = Vec::new();
     let mut missing_count = 0;
     let mut damaged_count = 0;
-    let total = expected.len();
+    let total = expected
+        .iter()
+        .filter(|(_, src)| {
+            let category = categorize_skill(src);
+            category == "agnostic"
+                || (category == "coupled" && has_skill_variant(src, target))
+        })
+        .count();
     let mut all_pass = true;
 
     let target_skills_dir = if target == "reasonix" {
@@ -879,7 +904,12 @@ fn run_toolkit_setup_verify_targeted(
         let category = categorize_skill(src);
         let (check_dir, check_src) = match category {
             "agnostic" => (ctx.skills_dir(), src.clone()),
-            "coupled" => (target_skills_dir, variant_src(src, target)),
+            "coupled" => {
+                if !has_skill_variant(src, target) {
+                    continue;
+                }
+                (target_skills_dir, variant_src(src, target))
+            }
             _ => continue,
         };
 
@@ -1532,7 +1562,10 @@ mod tests {
         let expected = derive_expected_set(ctx.path());
 
         let agnostic_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "agnostic").count();
-        let coupled_count = expected.iter().filter(|(_, src)| categorize_skill(src) == "coupled").count();
+        let codex_skill_variant_count = expected
+            .iter()
+            .filter(|(_, src)| categorize_skill(src) == "coupled" && has_skill_variant(src, "codex"))
+            .count();
 
         // Execute with target=codex
         let exec_result = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "codex");
@@ -1545,11 +1578,21 @@ mod tests {
             exec_result
         );
 
-        // Verify --target codex sync for coupled skills
+        // Verify --target codex sync only for coupled skills with a loadable codex/SKILL.md.
         let targeted_sync_count = exec_result.matches("--target codex").count();
         assert_eq!(
-            targeted_sync_count, coupled_count,
-            "all coupled skills should sync with --target codex:\n{}",
+            targeted_sync_count, codex_skill_variant_count,
+            "only coupled skills with codex/SKILL.md should sync with --target codex:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("SYNC autopilot-implementer"),
+            "agent-only implementer must not be synced as a Codex skill:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("SYNC autopilot-reviewer"),
+            "agent-only reviewer must not be synced as a Codex skill:\n{}",
             exec_result
         );
 
@@ -1577,9 +1620,9 @@ mod tests {
             exec_result
         );
 
-        // Verify coupled skills in codex dir
+        // Verify only coupled skills with codex/SKILL.md are linked in codex skills dir.
         for (name, src) in &expected {
-            if categorize_skill(src) == "coupled" {
+            if categorize_skill(src) == "coupled" && has_skill_variant(src, "codex") {
                 let variant = variant_src(src, "codex");
                 let state = skill_state(name, &variant, ctx.codex_skills_dir());
                 assert_eq!(
@@ -1588,6 +1631,13 @@ mod tests {
                     name, state
                 );
             }
+        }
+        for agent_only in &["autopilot-implementer", "autopilot-reviewer"] {
+            assert!(
+                !ctx.codex_skills_dir().join(agent_only).exists(),
+                "agent-only Codex variant {} must not be linked under ~/.codex/skills",
+                agent_only
+            );
         }
 
         // Verify agent files deployed

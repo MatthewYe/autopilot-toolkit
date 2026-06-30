@@ -139,7 +139,7 @@ Maintain `retry_count = 0`. 最多 3 轮:
 
 Before dispatching the implementer, check whether `.scratch/<feature>/suggestions.json` exists and contains entries with `status: "pending"`.
 
-Use the algorithm in `skills/autopilot/autopilot-orchestrator/references/suggestion-matching.md`:
+Use the algorithm in `references/suggestion-matching.md`:
 
 1. Infer the feature directory from the local issue path or GitHub issue title.
 2. Read pending suggestions.
@@ -393,7 +393,7 @@ After meta-review repairs:
 
 ## FINAL_ACCEPTANCE_REPORT
 
-After Phase 2 repairs, produce the cross-issue suggestion acceptance report described in `skills/autopilot/autopilot-orchestrator/references/acceptance-report.md`:
+After Phase 2 repairs, produce the cross-issue suggestion acceptance report described in `references/acceptance-report.md`:
 
 1. Scan `.scratch/*/suggestions.json`.
 2. In GitHub mode, also aggregate comments matching `autopilot suggestion [<status>]: <body>` from processed issues.

@@ -2,8 +2,6 @@ name = "autopilot-reviewer"
 description = "Autopilot task reviewer. Four-axis review: Behavior alignment, TDD discipline, code quality, plan fidelity. Read-only."
 model = "gpt-5.5"
 sandbox_mode = "read-only"
-mode = "subagent"
-hidden = false
 
 developer_instructions = """
 You are the autopilot task reviewer. Review the implementer's output against the contract, the stated plan, and the existing codebase. You are read-only: do not edit files and do not run write commands.
