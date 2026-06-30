@@ -27,9 +27,9 @@ fn usage() -> ! {
     println!("                           --target reasonix|codex: only that target");
     println!("                           --shared: only ~/.agents/skills/");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
-    println!("  deploy-agent <name> <src> Copy a .toml agent definition to .codex/agents/<name>.toml");
-    println!("                           --target codex (required): .codex/agents/<name>.toml");
-    println!("                           --user: ~/.codex/agents/<name>.toml");
+    println!("  deploy-agent <name> <src> Copy a .toml agent definition to ~/.codex/agents/<name>.toml");
+    println!("                           --target codex (required): ~/.codex/agents/<name>.toml");
+    println!("                           --user: accepted for compatibility; same as default unless CODEX_AGENTS_DIR is set");
     std::process::exit(1);
 }
 
@@ -217,7 +217,8 @@ fn deploy_agent(name: &str, src: &Path, codex_agents_dir: &Path, home: &str, use
         anyhow::bail!("source file must be a .toml file: {}", src.display());
     }
 
-    // Determine target directory
+    // Determine target directory. CODEX_AGENTS_DIR is an advanced/test override;
+    // --user forces the standard Codex user-level agents directory.
     let agents_dir = if user_flag {
         PathBuf::from(home).join(".codex/agents")
     } else {
@@ -289,7 +290,7 @@ fn main() -> anyhow::Result<()> {
 
     let codex_agents_dir = env::var("CODEX_AGENTS_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| project_root.join(".codex/agents"));
+        .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
     let subcommand = &args[1];
     let rest = &args[2..];

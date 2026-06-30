@@ -5,7 +5,7 @@
 autopilot-toolkit targets both Reasonix and Codex. While 17 of 19 skills are runtime-agnostic (pure methodology instructions), the 4 autopilot workflow skills (orchestrator, implementer, reviewer, audit-autopilot) depend on runtime-specific mechanisms:
 
 - Reasonix: `run_skill` dispatch, `runAs: subagent` in SKILL.md frontmatter, `complete_step` tool
-- Codex: `spawn agent` dispatch, `.codex/agents/*.toml` custom agent definitions, no `runAs` concept in SKILL.md
+- Codex: `spawn agent` dispatch, `~/.codex/agents/*.toml` custom agent definitions, no `runAs` concept in SKILL.md
 
 Both agents scan `~/.agents/skills/` for skill discovery (Agent Skills standard). A single SKILL.md body cannot serve both runtimes for runtime-coupled skills — the dispatch mechanisms are fundamentally different.
 
@@ -19,7 +19,9 @@ Both agents scan `~/.agents/skills/` for skill discovery (Agent Skills standard)
    - `--target reasonix` → symlink `SKILL.reasonix.md` as `~/.reasonix/skills/<name>/SKILL.md`
    - `--target codex` → symlink `SKILL.codex.md` as `~/.codex/skills/<name>/SKILL.md`
 
-3. **Codex custom agents**: For implementer and reviewer, the Codex install also deploys `.codex/agents/implementer.toml` and `.codex/agents/reviewer.toml` — Codex-native subagent definitions the orchestrator references via `spawn agent`.
+3. **Codex custom agents**: For implementer and reviewer, the Codex install also deploys `~/.codex/agents/autopilot-implementer.toml` and `~/.codex/agents/autopilot-reviewer.toml` — Codex-native subagent definitions the orchestrator references via `spawn agent`.
+
+   `~/.codex/agents` recognition was verified empirically with Codex v0.142.3 on 2026-06-30 by placing a temporary invalid TOML file in that directory and observing Codex report it during interactive startup.
 
 4. **No `compatibility` field dependency**: Agent-exclusive directories eliminate cross-agent visibility conflicts. Reasonix does not scan `~/.codex/skills/`; Codex does not scan `~/.reasonix/skills/` (verified empirically 2025-06-29).
 

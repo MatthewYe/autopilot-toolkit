@@ -5,7 +5,7 @@ description: Codex autopilot loop: scan -> implement -> review -> retry via spaw
 
 Before anything else, read `~/.agents/principles/karpathy.md`. Apply Principle 1 "Think Before Analyzing" variant plus Principles 2 and 4.
 
-Execute the autopilot orchestrator workflow below. The implementer and reviewer are Codex custom agents, installed as `.codex/agents/*.toml`, and already contain their own methodology. Dispatch them directly by name.
+Execute the autopilot orchestrator workflow below. The implementer and reviewer are Codex custom agents, installed as `~/.codex/agents/*.toml`, and already contain their own methodology. Dispatch them directly by name.
 
 ## Issue 来源识别
 

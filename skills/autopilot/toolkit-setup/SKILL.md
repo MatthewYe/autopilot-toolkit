@@ -107,7 +107,7 @@ has_codex_agents() {
 }
 ```
 
-If `.toml` files exist, they will be deployed to `.codex/agents/<name>.toml` via `install.rs deploy-agent`.
+If `.toml` files exist, they will be deployed to `~/.codex/agents/<name>.toml` via `install.rs deploy-agent`.
 
 ## Step 2: Diagnose
 
@@ -122,6 +122,7 @@ SHARED_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 # Agent-exclusive skills directory
 if [ "$TARGET" = "codex" ]; then
   TARGET_DIR="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
+  CODEX_AGENTS_DIR="${CODEX_AGENTS_DIR:-$HOME/.codex/agents}"
 else
   TARGET_DIR="${REASONIX_SKILLS_DIR:-$HOME/.reasonix/skills}"
 fi
@@ -189,7 +190,7 @@ States:
 
 ### 2d. Diagnose codex agents (codex target only)
 
-For `--target codex`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `codex/` directory. If present, check whether `.codex/agents/<name>.toml` exists with matching content.
+For `--target codex`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `codex/` directory. If present, check whether `$CODEX_AGENTS_DIR/<name>.toml` exists with matching content. By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
 
 ### 2e. Find orphaned symlinks
 
@@ -278,7 +279,7 @@ For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/`
 install.rs deploy-agent <agent_name> <agent_toml_path> --target codex
 ```
 
-`deploy-agent` copies the `.toml` to `.codex/agents/<agent_name>.toml`. It is idempotent: skips if target exists with identical content, overwrites if content differs.
+`deploy-agent` copies the `.toml` to `~/.codex/agents/<agent_name>.toml`. It is idempotent: skips if target exists with identical content, overwrites if content differs.
 
 Agent names are derived from the `.toml` filename stem, except the canonical `codex/agent.toml` file uses its parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/codex/agent.toml` -> agent name `autopilot-implementer`).
 
@@ -320,7 +321,7 @@ Track each action taken — the report must list specific skill names, operation
 
 Re-run Step 2c diagnosis on all expected skills. Every skill should now be `correct`.
 
-For codex target, also verify that `.codex/agents/<name>.toml` files exist for implementer and reviewer (if they had `.toml` sources).
+For codex target, also verify that `$CODEX_AGENTS_DIR/<name>.toml` files exist for implementer and reviewer (if they had `.toml` sources). By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
 
 Verify principles symlink:
 
@@ -359,7 +360,7 @@ After a successful setup, the expected directory layout per target:
 ├── audit-autopilot → .../skills/autopilot/audit-autopilot/codex
 ├── autopilot-orchestrator → .../skills/autopilot/autopilot-orchestrator/codex
 
-.codex/agents/              # Codex custom agents
+~/.codex/agents/            # Codex custom agents
 ├── autopilot-implementer.toml
 ├── autopilot-reviewer.toml
 

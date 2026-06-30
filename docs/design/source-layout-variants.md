@@ -31,12 +31,12 @@ skills/
     │
     ├── autopilot-implementer/         # runtime-coupled
     │   ├── reasonix/SKILL.md          # → ~/.reasonix/skills/autopilot-implementer/
-    │   └── codex/agent.toml           # → .codex/agents/autopilot-implementer.toml
+    │   └── codex/agent.toml           # → ~/.codex/agents/autopilot-implementer.toml
     │                                  #    (custom agent, not a skill — use deploy-agent)
     │
     ├── autopilot-reviewer/            # runtime-coupled
     │   ├── reasonix/SKILL.md          # → ~/.reasonix/skills/autopilot-reviewer/
-    │   └── codex/agent.toml           # → .codex/agents/autopilot-reviewer.toml
+    │   └── codex/agent.toml           # → ~/.codex/agents/autopilot-reviewer.toml
     │
     ├── audit-autopilot/               # runtime-coupled: both variants are inline skills
     │   ├── reasonix/
@@ -64,7 +64,7 @@ skills/
 
 ## Why implementer/reviewer are TOML not SKILL.md on Codex
 
-Codex custom agents (`spawn agent`) are defined in `.codex/agents/*.toml`, not as skills. The Codex orchestrator variant instructs the agent to spawn them by name. They don't need to be discoverable as skills — the orchestrator is their only caller.
+Codex custom agents (`spawn agent`) are installed in `~/.codex/agents/*.toml`, not as skills. The Codex orchestrator variant instructs the agent to spawn them by name. They don't need to be discoverable as skills — the orchestrator is their only caller.
 
 ## install.rs calls per target
 

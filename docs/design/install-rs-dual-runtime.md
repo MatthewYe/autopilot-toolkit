@@ -13,7 +13,7 @@ Subcommands (unchanged):
   sync <name> <src>       Ensure <skills-dir>/<name> is a symlink to <src>
   unlink <name>           Remove a toolkit-owned symlink from <skills-dir>
   link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>
-  deploy-agent <name> <src>  Copy a .toml custom agent to .codex/agents/<name>.toml
+  deploy-agent <name> <src>  Copy a .toml custom agent to ~/.codex/agents/<name>.toml
 
 Flags:
   --target reasonix|codex   Select agent directory (default: reasonix)
@@ -25,7 +25,7 @@ Flags:
 | Flag combo | `sync` target | `deploy-agent` target |
 |---|---|---|
 | (default) | `~/.reasonix/skills/` | N/A (Reasonix has no custom agents) |
-| `--target codex` | `~/.codex/skills/` | `.codex/agents/` (project) or `~/.codex/agents/` (user) |
+| `--target codex` | `~/.codex/skills/` | `~/.codex/agents/` |
 | `--shared` | `~/.agents/skills/` | N/A |
 
 Environment variable overrides: `REASONIX_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CODEX_AGENTS_DIR`, `AGENTS_SKILLS_DIR` (shared).
@@ -36,7 +36,7 @@ Environment variable overrides: `REASONIX_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CODE
 install.rs deploy-agent <name> <src> [--target codex] [--user]
 ```
 
-Copies (not symlinks) the TOML file at `<src>` to `.codex/agents/<name>.toml` (project-local by default, `--user` for `~/.codex/agents/`). Copy instead of symlink because `.codex/` is often gitignored and not tracked alongside the toolkit repo. On subsequent runs, overwrites if content differs.
+Copies (not symlinks) the TOML file at `<src>` to `~/.codex/agents/<name>.toml` by default. `CODEX_AGENTS_DIR` can override the target directory for tests or unusual installs; `--user` is accepted for compatibility and forces the standard `~/.codex/agents/` path. On subsequent runs, overwrites if content differs.
 
 ## Toolkit-setup calling pattern
 

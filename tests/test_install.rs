@@ -1438,8 +1438,12 @@ mod tests {
         );
 
         assert_eq!(code, 0, "deploy-agent should exit 0, got stderr: {}", err);
-        let deployed = project_root.join(".codex/agents/my-agent.toml");
-        assert!(deployed.is_file(), ".codex/agents/my-agent.toml should exist");
+        let deployed = home.join(".codex/agents/my-agent.toml");
+        assert!(deployed.is_file(), "~/.codex/agents/my-agent.toml should exist");
+        assert!(
+            !project_root.join(".codex/agents/my-agent.toml").exists(),
+            "default deploy-agent should not write project-local .codex/agents"
+        );
         let content = fs::read_to_string(&deployed).unwrap();
         assert_eq!(content, "[agent]\nname = \"test\"\n");
     }
@@ -1552,7 +1556,7 @@ mod tests {
         );
         assert_eq!(code1, 0, "first deploy should exit 0");
 
-        let deployed = project_root.join(".codex/agents/my-agent.toml");
+        let deployed = home.join(".codex/agents/my-agent.toml");
         let first_mtime = fs::metadata(&deployed).unwrap().modified().unwrap();
 
         // Second deploy with same content
@@ -1597,7 +1601,7 @@ mod tests {
             None,
         );
         assert_eq!(code1, 0, "first deploy should exit 0");
-        let deployed = project_root.join(".codex/agents/my-agent.toml");
+        let deployed = home.join(".codex/agents/my-agent.toml");
         assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"first\"\n");
 
         // Change source content
@@ -1684,8 +1688,9 @@ mod tests {
         fs::create_dir_all(&home).unwrap();
 
         let project_root = tmp.path().to_path_buf();
-        let agents_dir = project_root.join(".codex/agents");
-        assert!(!agents_dir.exists(), ".codex/agents/ should not exist before deploy");
+        let agents_dir = home.join(".codex/agents");
+        let project_agents_dir = project_root.join(".codex/agents");
+        assert!(!agents_dir.exists(), "~/.codex/agents/ should not exist before deploy");
 
         let src = tmp.path().join("my-agent.toml");
         fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
@@ -1702,7 +1707,11 @@ mod tests {
         );
 
         assert_eq!(code, 0, "deploy-agent should exit 0");
-        assert!(agents_dir.is_dir(), ".codex/agents/ should be created");
+        assert!(agents_dir.is_dir(), "~/.codex/agents/ should be created");
+        assert!(
+            !project_agents_dir.exists(),
+            "default deploy-agent should not create project-local .codex/agents/"
+        );
         let deployed = agents_dir.join("my-agent.toml");
         assert!(deployed.is_file(), "my-agent.toml should exist");
         assert_eq!(fs::read_to_string(&deployed).unwrap(), "[agent]\nname = \"test\"\n");

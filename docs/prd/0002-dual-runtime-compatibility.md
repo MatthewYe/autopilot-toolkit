@@ -1,6 +1,6 @@
 ## Problem Statement
 
-autopilot-toolkit currently targets only Reasonix. While 17 of 19 skills are runtime-agnostic (pure methodology instructions usable by any Agent Skills-compliant agent), the 4 autopilot workflow skills (orchestrator, implementer, reviewer, audit-autopilot) are coupled to Reasonix-specific mechanisms: `run_skill` dispatch, `runAs: subagent`, and `complete_step`. Codex has equivalent but structurally different mechanisms: `spawn agent` dispatch, `.codex/agents/*.toml` custom agents, and no `runAs` concept in SKILL.md.
+autopilot-toolkit currently targets only Reasonix. While 17 of 19 skills are runtime-agnostic (pure methodology instructions usable by any Agent Skills-compliant agent), the 4 autopilot workflow skills (orchestrator, implementer, reviewer, audit-autopilot) are coupled to Reasonix-specific mechanisms: `run_skill` dispatch, `runAs: subagent`, and `complete_step`. Codex has equivalent but structurally different mechanisms: `spawn agent` dispatch, `~/.codex/agents/*.toml` custom agents, and no `runAs` concept in SKILL.md.
 
 The shared `~/.agents/skills/` directory (Agent Skills standard) creates a naming conflict if both variants are installed there. Users need a clean way to install the toolkit for either runtime — or both simultaneously — without cross-contamination.
 
@@ -11,7 +11,7 @@ The shared `~/.agents/skills/` directory (Agent Skills standard) creates a namin
 - 17 runtime-agnostic skills stay as-is in `~/.agents/skills/` (shared, both agents discover them).
 - 4 runtime-coupled skills maintain two variants in source: `reasonix/SKILL.md` and `codex/SKILL.md` (or `codex/agent.toml` for implementer/reviewer).
 - install.rs gains `--target reasonix|codex` and `--shared` flags. Runtime-coupled skills are installed to agent-exclusive directories (`~/.reasonix/skills/` or `~/.codex/skills/`), eliminating cross-agent conflicts without depending on `compatibility` field filtering.
-- Codex implementer and reviewer are deployed as custom agents (`.codex/agents/*.toml`), not as skills — matching Codex's native subagent dispatch model.
+- Codex implementer and reviewer are deployed as custom agents (`~/.codex/agents/*.toml`), not as skills — matching Codex's native subagent dispatch model.
 
 ## Assumptions (to verify before implementation)
 
@@ -29,7 +29,7 @@ The shared `~/.agents/skills/` directory (Agent Skills standard) creates a namin
 4. As a user of any Agent Skills-compliant agent, I want the 17 runtime-agnostic skills available from the shared `~/.agents/skills/` directory, so that I can use them regardless of which agent I'm running.
 5. As a toolkit maintainer, I want a single install.rs script that handles both targets via a flag, so that I don't maintain separate install scripts per platform.
 6. As a toolkit maintainer, I want runtime-coupled skill variants stored alongside each other in the source tree (`reasonix/` and `codex/` subdirectories), so that I can see and update both variants together.
-7. As a toolkit maintainer, I want Codex implementer and reviewer defined as `.codex/agents/*.toml` custom agents, so that they integrate natively with Codex's subagent dispatch without emulating the Reasonix `runAs: subagent` model.
+7. As a toolkit maintainer, I want Codex implementer and reviewer defined as `~/.codex/agents/*.toml` custom agents, so that they integrate natively with Codex's subagent dispatch without emulating the Reasonix `runAs: subagent` model.
 8. As a toolkit maintainer, I want `install.rs unlink` to clean up across all three directories (shared + reasonix + codex), so that `toolkit-setup` can fully tear down a previous install regardless of target.
 9. As a toolkit maintainer, I want existing Reasonix-only users unaffected — the default `--target reasonix` preserves backward compatibility.
 
@@ -39,7 +39,7 @@ The shared `~/.agents/skills/` directory (Agent Skills standard) creates a namin
 
 - New `--target reasonix|codex` flag (default: `reasonix` for backward compat).
 - New `--shared` flag routes to `~/.agents/skills/` regardless of `--target`.
-- New `deploy-agent <name> <src>` subcommand for Codex custom agent TOML deployment to `.codex/agents/` (project-local) or `~/.codex/agents/` (with `--user`).
+- New `deploy-agent <name> <src>` subcommand for Codex custom agent TOML deployment to `~/.codex/agents/`.
 - Environment variables for directory overrides: `AGENTS_SKILLS_DIR` (shared), `REASONIX_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CODEX_AGENTS_DIR`.
 - `unlink` without `--target` cleans all three directories; with `--target` cleans only that target's directory.
 
@@ -59,14 +59,14 @@ install.rs `sync` symlinks the agent directory to the variant subdirectory (e.g.
 
 ### Why implementer/reviewer are TOML on Codex
 
-Codex subagents are defined in `.codex/agents/*.toml` with `developer_instructions` as the body. They are dispatched by name via `spawn agent`, not via skill loading. Making them skills would add unnecessary indirection. The orchestrator's Codex variant instructs the agent to spawn them directly by name.
+Codex subagents are installed in `~/.codex/agents/*.toml` with `developer_instructions` as the body. They are dispatched by name via `spawn agent`, not via skill loading. Making them skills would add unnecessary indirection. The orchestrator's Codex variant instructs the agent to spawn them directly by name.
 
 ### Variant body differences
 
 | Aspect | Reasonix variant | Codex variant |
 |--------|-----------------|---------------|
 | Dispatch | `run_skill(name: "autopilot-implementer", arguments: "...")` | `spawn agent autopilot-implementer with task: "..."` |
-| Subagent definition | `runAs: subagent` in SKILL.md frontmatter | `.codex/agents/implementer.toml` file |
+| Subagent definition | `runAs: subagent` in SKILL.md frontmatter | `~/.codex/agents/implementer.toml` file |
 | Step sign-off | `complete_step` tool | Not applicable (custom agent reports result directly) |
 | Session export | `reasonix session export` | Codex session mechanism (TODO — deferred) |
 | Tool allowlist | `allowed-tools` in SKILL.md | `dependencies.tools` in `agents/openai.yaml` (optional) |
@@ -85,7 +85,7 @@ Full decision record at `docs/adr/0007-dual-runtime-skill-variants.md`. Records 
 
 - Test install.rs produces correct symlink structure for each `--target` / `--shared` combination.
 - Test symlink targets resolve to correct variant subdirectories.
-- Test `deploy-agent` copies TOML to correct `.codex/agents/` path.
+- Test `deploy-agent` copies TOML to correct `~/.codex/agents/` path.
 - Test `unlink` cleans correct directories.
 - Test real-directory conflict detection works in agent-exclusive directories too.
 - Do NOT test SKILL.md body content correctness (that's per-variant implementation, not install infrastructure).
@@ -97,7 +97,7 @@ Full decision record at `docs/adr/0007-dual-runtime-skill-variants.md`. Records 
 | `sync --target reasonix` | Symlink at `~/.reasonix/skills/<name>` → `<project>/skills/autopilot/<name>/reasonix` |
 | `sync --target codex` | Symlink at `~/.codex/skills/<name>` → `<project>/skills/autopilot/<name>/codex` |
 | `sync --shared` | Symlink at `~/.agents/skills/<name>` → `<project>/skills/...` (unchanged) |
-| `deploy-agent --target codex` | File at `.codex/agents/<name>.toml` with content matching source |
+| `deploy-agent --target codex` | File at `~/.codex/agents/<name>.toml` with content matching source |
 | `unlink` (no target) | No symlinks under toolkit project_root in any of the three directories |
 | `unlink --target codex` | No symlinks under project_root in `~/.codex/skills/` only |
 

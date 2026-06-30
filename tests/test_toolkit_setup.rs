@@ -45,7 +45,7 @@ impl TestContext {
         let skills_dir = mock_home.join(".agents/skills");
         let reasonix_skills_dir = mock_home.join(".reasonix/skills");
         let codex_skills_dir = mock_home.join(".codex/skills");
-        let codex_agents_dir = mock_root.join(".codex/agents");
+        let codex_agents_dir = mock_home.join(".codex/agents");
 
         fs::create_dir_all(&mock_root).expect("create mock_root");
         fs::create_dir_all(&mock_home).expect("create mock_home");
