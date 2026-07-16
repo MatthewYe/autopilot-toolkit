@@ -41,6 +41,8 @@ pub enum SkillVariant {
     Reasonix,
     /// Codex runtime (allows OpenCode-specific fields).
     Codex,
+    /// Ksana runtime — Codex-aligned, allows OpenCode-specific fields.
+    Ksana,
     /// Runtime-agnostic (rejects OpenCode-specific fields, same as Reasonix).
     Agnostic,
 }
@@ -219,8 +221,9 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
         }
     }
 
-    // Check 3: No opencode fields (skip for Codex variants)
-    if variant != SkillVariant::Codex {
+    // Check 3: No opencode fields (skip for Codex and Ksana variants — both
+    // are Codex-aligned runtimes that may legitimately use these fields).
+    if !matches!(variant, SkillVariant::Codex | SkillVariant::Ksana) {
         for &field in OPENCODE_FIELDS {
             if let Some(val) = fields.get(field) {
                 if !val.is_empty() {
@@ -534,6 +537,26 @@ disable-model-invocation: true
         assert!(
             result.passed,
             "codex variant should allow opencode fields, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn ksana_variant_allows_opencode_fields() {
+        // Ksana is Codex-aligned; its SKILL.md may legitimately contain
+        // compatibility, mode, etc., same as Codex.
+        let content = "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+mode: chat
+disable-model-invocation: true
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Ksana);
+        assert!(
+            result.passed,
+            "ksana variant should allow opencode fields, got: {:?}",
             result.issues
         );
     }

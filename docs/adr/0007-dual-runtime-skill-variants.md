@@ -42,7 +42,9 @@ Maintain only Reasonix variants; declare Codex unsupported for autopilot workflo
 
 ## Consequences
 
-- **Maintenance**: 4 skills × 2 variants = 8 variant files to maintain. Upstream skills and runtime-agnostic autopilot skills (17 total) remain single-source.
-- **install.rs complexity**: Must route skills to different directories based on `--target` and skill category. Must also handle Codex custom agent TOML deployment.
+- **Maintenance**: 4 skills × 2 variants = 8 variant files to maintain. Upstream skills and runtime-agnostic autopilot skills (17 total) remain single-source. (Extended to 3 variants / 12 files by ADR-0008, which adds the ksana runtime.)
+- **install.rs complexity**: Must route skills to different directories based on `--target` and skill category. Must also handle Codex custom agent TOML deployment. (Extended to a third runtime and a second agents directory in ADR-0008.)
 - **Variant drift risk**: Changes to workflow logic must be applied to both variants. Mitigation: both variants implement the same workflow phases (scan → implement → review → retry); only the dispatch mechanism differs.
-- **Verification**: Install tests must cover both `--target reasonix` and `--target codex` paths.
+- **Verification**: Install tests must cover both `--target reasonix` and `--target codex` paths. (Plus `--target ksana` per ADR-0008.)
+
+> **Update (ADR-0008)**: The dual-runtime model was extended to a tri-runtime model adding Ksana. See [ADR-0008](0008-tri-runtime-ksana.md) for the ksana-specific decisions.

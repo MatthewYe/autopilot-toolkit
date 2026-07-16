@@ -52,6 +52,8 @@ struct DualDirs<'a> {
     reasonix_skills_dir: Option<&'a Path>,
     codex_skills_dir: Option<&'a Path>,
     codex_agents_dir: Option<&'a Path>,
+    ksana_skills_dir: Option<&'a Path>,
+    ksana_agents_dir: Option<&'a Path>,
 }
 
 /// Run install.rs with given args and environment variables.
@@ -73,6 +75,8 @@ fn run_install(
             reasonix_skills_dir: None,
             codex_skills_dir: None,
             codex_agents_dir: None,
+            ksana_skills_dir: None,
+            ksana_agents_dir: None,
         },
     )
 }
@@ -115,6 +119,12 @@ fn run_install_ext(
     }
     if let Some(d) = dual.codex_agents_dir {
         cmd.env("CODEX_AGENTS_DIR", d);
+    }
+    if let Some(d) = dual.ksana_skills_dir {
+        cmd.env("KSANA_SKILLS_DIR", d);
+    }
+    if let Some(d) = dual.ksana_agents_dir {
+        cmd.env("KSANA_AGENTS_DIR", d);
     }
 
     let output = cmd.output().expect("failed to run rust-script install.rs");
@@ -998,6 +1008,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1039,12 +1051,54 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
         assert_eq!(code, 0, "sync --target codex should exit 0");
         let link = codex_skills.join("my-skill");
         assert!(link.is_symlink(), "symlink should be in codex skills dir");
+        assert_eq!(
+            read_link_target(&link).unwrap(),
+            src,
+            "symlink should point to correct source"
+        );
+    }
+
+    #[test]
+    fn sync_target_ksana_routes_to_ksana_skills() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        let ksana_skills = home.join(".ksana/skills");
+        let src = tmp.path().join("source-skills/my-skill");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("SKILL.md"), "# My Skill\n").unwrap();
+
+        let (_out, _err, code) = run_install_ext(
+            &[
+                "sync",
+                "my-skill",
+                &src.to_string_lossy(),
+                "--target",
+                "ksana",
+            ],
+            &home,
+            None,
+            None,
+            None,
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+                ksana_skills_dir: Some(&ksana_skills),
+                ksana_agents_dir: None,
+            },
+        );
+
+        assert_eq!(code, 0, "sync --target ksana should exit 0");
+        let link = ksana_skills.join("my-skill");
+        assert!(link.is_symlink(), "symlink should be in ksana skills dir");
         assert_eq!(
             read_link_target(&link).unwrap(),
             src,
@@ -1166,6 +1220,8 @@ mod tests {
                 reasonix_skills_dir: Some(&custom_reasonix),
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1210,6 +1266,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: Some(&custom_codex),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1262,11 +1320,12 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════
 
     #[test]
-    fn unlink_no_target_removes_from_all_three_dirs() {
+    fn unlink_no_target_removes_from_all_skill_dirs() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().join("home");
         let reasonix_skills = home.join(".reasonix/skills");
         let codex_skills = home.join(".codex/skills");
+        let ksana_skills = home.join(".ksana/skills");
         let shared_skills = home.join(".agents/skills");
         let src = tmp.path().join("source-skills/to-remove");
         let proj_root = tmp.path().to_path_buf();
@@ -1274,12 +1333,14 @@ mod tests {
         fs::create_dir_all(&src).unwrap();
         fs::write(src.join("SKILL.md"), "# To Remove\n").unwrap();
 
-        // Create symlinks in all three directories manually
+        // Create symlinks in all four skill directories manually
         fs::create_dir_all(&reasonix_skills).unwrap();
         fs::create_dir_all(&codex_skills).unwrap();
+        fs::create_dir_all(&ksana_skills).unwrap();
         fs::create_dir_all(&shared_skills).unwrap();
         symlink(&src, reasonix_skills.join("to-remove")).unwrap();
         symlink(&src, codex_skills.join("to-remove")).unwrap();
+        symlink(&src, ksana_skills.join("to-remove")).unwrap();
         symlink(&src, shared_skills.join("to-remove")).unwrap();
 
         let (_out, _err, code) = run_install_ext(
@@ -1292,6 +1353,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: Some(&ksana_skills),
+                ksana_agents_dir: None,
             },
         );
 
@@ -1303,6 +1366,10 @@ mod tests {
         assert!(
             !codex_skills.join("to-remove").exists(),
             "codex symlink should be removed"
+        );
+        assert!(
+            !ksana_skills.join("to-remove").exists(),
+            "ksana symlink should be removed"
         );
         assert!(
             !shared_skills.join("to-remove").exists(),
@@ -1341,6 +1408,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1352,6 +1421,64 @@ mod tests {
         assert!(
             !codex_skills.join("to-remove").exists(),
             "codex symlink should be removed"
+        );
+        assert!(
+            shared_skills.join("to-remove").exists(),
+            "shared symlink should be preserved"
+        );
+    }
+
+    #[test]
+    fn unlink_target_ksana_removes_only_ksana() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        let reasonix_skills = home.join(".reasonix/skills");
+        let codex_skills = home.join(".codex/skills");
+        let ksana_skills = home.join(".ksana/skills");
+        let shared_skills = home.join(".agents/skills");
+        let src = tmp.path().join("source-skills/to-remove");
+        let proj_root = tmp.path().to_path_buf();
+
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("SKILL.md"), "# To Remove\n").unwrap();
+
+        // Create symlinks in all four skill directories manually
+        fs::create_dir_all(&reasonix_skills).unwrap();
+        fs::create_dir_all(&codex_skills).unwrap();
+        fs::create_dir_all(&ksana_skills).unwrap();
+        fs::create_dir_all(&shared_skills).unwrap();
+        symlink(&src, reasonix_skills.join("to-remove")).unwrap();
+        symlink(&src, codex_skills.join("to-remove")).unwrap();
+        symlink(&src, ksana_skills.join("to-remove")).unwrap();
+        symlink(&src, shared_skills.join("to-remove")).unwrap();
+
+        let (_out, _err, code) = run_install_ext(
+            &["unlink", "to-remove", "--target", "ksana"],
+            &home,
+            Some(&shared_skills),
+            None,
+            Some(&proj_root),
+            DualDirs {
+                reasonix_skills_dir: Some(&reasonix_skills),
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: None,
+                ksana_skills_dir: Some(&ksana_skills),
+                ksana_agents_dir: None,
+            },
+        );
+
+        assert_eq!(code, 0, "unlink --target ksana should exit 0");
+        assert!(
+            reasonix_skills.join("to-remove").exists(),
+            "reasonix symlink should be preserved"
+        );
+        assert!(
+            codex_skills.join("to-remove").exists(),
+            "codex symlink should be preserved"
+        );
+        assert!(
+            !ksana_skills.join("to-remove").exists(),
+            "ksana symlink should be removed"
         );
         assert!(
             shared_skills.join("to-remove").exists(),
@@ -1390,6 +1517,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1439,6 +1568,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1488,6 +1619,8 @@ mod tests {
                 reasonix_skills_dir: Some(&reasonix_skills),
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1532,6 +1665,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: Some(&codex_skills),
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1577,6 +1712,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1589,6 +1726,55 @@ mod tests {
         assert!(
             !project_root.join(".codex/agents/my-agent.toml").exists(),
             "default sync --agent should not write project-local .codex/agents"
+        );
+        assert_eq!(fs::read_link(&target).unwrap(), src);
+    }
+
+    #[test]
+    fn sync_agent_basic_to_ksana() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let project_root = tmp.path().to_path_buf();
+        let src = tmp.path().join("agent.toml");
+        fs::write(&src, "[agent]\nname = \"test\"\n").unwrap();
+
+        let (_out, err, code) = run_install_ext(
+            &[
+                "sync",
+                "my-agent",
+                &src.to_string_lossy(),
+                "--target",
+                "ksana",
+                "--agent",
+            ],
+            &home,
+            None,
+            None,
+            Some(&project_root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: None,
+                codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
+            },
+        );
+
+        assert_eq!(
+            code, 0,
+            "sync --target ksana --agent should exit 0, got stderr: {}",
+            err
+        );
+        let target = home.join(".ksana/agents/my-agent.toml");
+        assert!(
+            target.is_symlink(),
+            "~/.ksana/agents/my-agent.toml should be a symlink"
+        );
+        assert!(
+            !project_root.join(".ksana/agents/my-agent.toml").exists(),
+            "default sync --agent should not write project-local .ksana/agents"
         );
         assert_eq!(fs::read_link(&target).unwrap(), src);
     }
@@ -1619,6 +1805,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1628,8 +1816,8 @@ mod tests {
         );
         let combined = format!("{}{}", out, err);
         assert!(
-            combined.contains("--agent requires --target codex"),
-            "should error about --agent requiring --target codex, got: {}",
+            combined.contains("--agent requires --target codex or ksana"),
+            "should error about --agent requiring --target codex or ksana, got: {}",
             combined
         );
     }
@@ -1653,6 +1841,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1693,6 +1883,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
         assert_eq!(code1, 0, "first sync should exit 0");
@@ -1719,6 +1911,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
         assert_eq!(code2, 0, "second sync should exit 0");
@@ -1756,6 +1950,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
         assert_eq!(code1, 0);
@@ -1781,6 +1977,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
         assert_eq!(code2, 0);
@@ -1813,6 +2011,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1862,6 +2062,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1903,6 +2105,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: Some(&custom_agents),
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1947,6 +2151,8 @@ mod tests {
                 reasonix_skills_dir: None,
                 codex_skills_dir: None,
                 codex_agents_dir: None,
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
             },
         );
 
@@ -1954,6 +2160,127 @@ mod tests {
         assert!(
             target.is_file() && !target.is_symlink(),
             "real file should still exist unchanged"
+        );
+    }
+
+    #[test]
+    fn setup_target_codex_installs_skills_agents_and_principles() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        let root = tmp.path().join("toolkit");
+        let shared_skills = home.join("shared-skills");
+        let principles_dir = home.join("principles-link");
+        let codex_skills = home.join("codex-skills");
+        let codex_agents = home.join("codex-agents");
+
+        let upstream = root.join("skills/upstream/skills/engineering/diagnosing-bugs");
+        let setup = root.join("skills/autopilot/toolkit-setup");
+        let orchestrator = root.join("skills/autopilot/autopilot-orchestrator/codex");
+        let implementer = root.join("skills/autopilot/autopilot-implementer/codex");
+        let principles = root.join("principles");
+        for dir in [&upstream, &setup, &orchestrator, &implementer, &principles] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        fs::write(upstream.join("SKILL.md"), "---\nname: diagnosing-bugs\n---\n").unwrap();
+        fs::write(setup.join("SKILL.md"), "---\nname: toolkit-setup\n---\n").unwrap();
+        fs::write(
+            orchestrator.join("SKILL.md"),
+            "---\nname: autopilot-orchestrator\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            implementer.join("agent.toml"),
+            "name = \"autopilot-implementer\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("skills/autopilot/autopilot-orchestrator/reasonix")).unwrap();
+        fs::create_dir_all(root.join("skills/autopilot/autopilot-implementer/reasonix")).unwrap();
+        fs::write(
+            root.join("skills/autopilot/autopilot-orchestrator/reasonix/SKILL.md"),
+            "---\nname: autopilot-orchestrator\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("skills/autopilot/autopilot-implementer/reasonix/SKILL.md"),
+            "---\nname: autopilot-implementer\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".skill-lock.json"),
+            r#"{"skills":{"diagnosing-bugs":{"skillPath":"skills/engineering/diagnosing-bugs/SKILL.md"}}}"#,
+        )
+        .unwrap();
+
+        let (dry_out, dry_err, dry_code) = run_install_ext(
+            &["setup", "--target", "codex", "--dry-run"],
+            &home,
+            Some(&shared_skills),
+            Some(&principles_dir),
+            Some(&root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: Some(&codex_agents),
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
+            },
+        );
+        assert_eq!(dry_code, 0, "dry-run should succeed: {dry_out}{dry_err}");
+        assert!(dry_out.contains("WOULD SYNC"), "dry-run should report planned work");
+        assert!(
+            !shared_skills.join("diagnosing-bugs").exists(),
+            "dry-run must not create skill links"
+        );
+
+        let (out, err, code) = run_install_ext(
+            &["setup", "--target", "codex"],
+            &home,
+            Some(&shared_skills),
+            Some(&principles_dir),
+            Some(&root),
+            DualDirs {
+                reasonix_skills_dir: None,
+                codex_skills_dir: Some(&codex_skills),
+                codex_agents_dir: Some(&codex_agents),
+                ksana_skills_dir: None,
+                ksana_agents_dir: None,
+            },
+        );
+
+        assert_eq!(code, 0, "setup should succeed: {out}{err}");
+        assert_eq!(
+            fs::read_link(shared_skills.join("diagnosing-bugs")).unwrap(),
+            upstream
+        );
+        assert_eq!(fs::read_link(shared_skills.join("toolkit-setup")).unwrap(), setup);
+        assert_eq!(
+            fs::read_link(codex_skills.join("autopilot-orchestrator")).unwrap(),
+            orchestrator
+        );
+        assert_eq!(
+            fs::read_link(codex_agents.join("autopilot-implementer.toml")).unwrap(),
+            implementer.join("agent.toml")
+        );
+        assert!(
+            !codex_skills.join("autopilot-implementer").exists(),
+            "agent-only variants must not be installed as skills"
+        );
+        assert_eq!(fs::read_link(&principles_dir).unwrap(), principles);
+        assert!(out.contains("ALL PASS"), "setup report should verify success: {out}");
+    }
+
+    #[test]
+    fn setup_requires_an_explicit_runtime_target() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let (out, err, code) = run_install(&["setup"], &home, None, None, None);
+
+        assert_ne!(code, 0, "setup without --target must fail");
+        assert!(
+            format!("{}{}", out, err).contains("require --target"),
+            "setup should explain that a runtime target is required"
         );
     }
 }

@@ -11,10 +11,24 @@ Orchestrate the end-to-end install-or-update workflow for autopilot-toolkit. Run
 ## Input Parameter
 
 ```
---target reasonix|codex   (default: reasonix)
+--target reasonix|codex|ksana   (required)
 ```
 
 The `--target` parameter selects the target runtime. All skills are installed into the appropriate directories based on their category (see Step 1b). Principles are always installed to the shared `~/.agents/principles/` regardless of target.
+
+Do not infer a default runtime. If the user did not supply `--target`, ask them to choose one before changing any links. This prevents a Codex user from silently receiving the Reasonix workflow variants.
+
+## Canonical Command
+
+`install.rs setup` is the authoritative, deterministic implementation of this workflow. Once a target is known, run:
+
+```bash
+rust-script "$PROJECT_ROOT/install.rs" setup --target "$TARGET"
+```
+
+It discovers the expected set, performs preflight conflict checks, applies the minimum safe repairs, removes toolkit-owned orphaned symlinks, links principles, and verifies the final state. Relay its structured report to the user.
+
+Use the detailed steps below only to explain the command's behavior or if the command itself cannot run. Do not reimplement the synchronization loop in ad-hoc shell commands when `install.rs setup` is available.
 
 ## Scope
 
@@ -78,7 +92,7 @@ For each skill in the expected set, determine its category:
 categorize_skill() {
   local src="$1"
   if [ -f "$src/reasonix/SKILL.md" ]; then
-    echo "coupled"   # Has per-runtime variants (reasonix/codex subdirectories)
+    echo "coupled"   # Has per-runtime variants (reasonix/codex/ksana subdirectories)
   else
     echo "agnostic"   # No runtime variants — works on any agent
   fi
@@ -90,31 +104,31 @@ Categories:
 | Category | Detection | Skills (conceptual) |
 |----------|-----------|---------------------|
 | **agnostic** | `SKILL.md` directly in source dir | All upstream skills + `toolkit-setup` + `zoom-out` |
-| **coupled** | `reasonix/SKILL.md` exists | The 4 workflow skills: `audit-autopilot`, `autopilot-implementer`, `autopilot-orchestrator`, `autopilot-reviewer` |
+| **coupled** | `reasonix/SKILL.md` exists | The 4 workflow skills: `audit-autopilot`, `autopilot-implementer`, `autopilot-orchestrator`, `autopilot-reviewer`. Each maintains three variant sources: `reasonix/`, `codex/`, `ksana/`. |
 
-Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`) only when that target has a loadable `SKILL.md` variant.
+Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/`, `~/.codex/skills/`, or `~/.ksana/skills/`) only when that target has a loadable `SKILL.md` variant.
 
-For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; sync their TOML files via `install.rs sync --target codex --agent` instead.
+For `--target codex` or `--target ksana`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` (or `ksana/`) directories contain `agent.toml` without `SKILL.md`, so do not sync them into the target skills dir; sync their TOML files via `install.rs sync --target <target> --agent` instead.
 
-### Also: Codex custom agents
+### Also: Codex/Ksana custom agents
 
-For `--target codex`, coupled skills may have `.toml` agent definition files in their `codex/` subdirectory. Check:
+For `--target codex` or `--target ksana`, coupled skills may have `.toml` agent definition files in their `<target>/` subdirectory. Check generically against the selected target:
 
 ```bash
-has_codex_agents() {
-  local src="$1"
-  [ -d "$src/codex" ] && ls "$src/codex"/*.toml >/dev/null 2>&1
+has_target_agents() {
+  local src="$1" target="$2"
+  [ -d "$src/$target" ] && ls "$src/$target"/*.toml >/dev/null 2>&1
 }
 ```
 
-If `.toml` files exist, they will be synced to `~/.codex/agents/<name>.toml` via `install.rs sync --target codex --agent`.
+If `.toml` files exist, they will be synced to `~/.<target>/agents/<name>.toml` (`~/.codex/agents/` or `~/.ksana/agents/`) via `install.rs sync --target <target> --agent`.
 
 ## Step 2: Diagnose
 
 ### 2a. Determine target directories
 
 ```bash
-TARGET="${1:-reasonix}"   # --target reasonix|codex, default reasonix
+TARGET="<user-selected runtime>"   # --target reasonix|codex|ksana; no implicit default
 
 # Shared skills directory (always ~/.agents/skills/)
 SHARED_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
@@ -123,6 +137,9 @@ SHARED_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 if [ "$TARGET" = "codex" ]; then
   TARGET_DIR="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
   CODEX_AGENTS_DIR="${CODEX_AGENTS_DIR:-$HOME/.codex/agents}"
+elif [ "$TARGET" = "ksana" ]; then
+  TARGET_DIR="${KSANA_SKILLS_DIR:-$HOME/.ksana/skills}"
+  KSANA_AGENTS_DIR="${KSANA_AGENTS_DIR:-$HOME/.ksana/agents}"
 else
   TARGET_DIR="${REASONIX_SKILLS_DIR:-$HOME/.reasonix/skills}"
 fi
@@ -145,8 +162,8 @@ If a directory does not exist, it will be created by `install.rs sync` on first 
 For each name in the expected set, determine the correct install directory and expected source path based on category:
 
 - **Agnostic**: install to `$SHARED_DIR/<name>`, expected source = `<skill_source_dir>`
-- **Coupled with target `SKILL.md`**: install to `$TARGET_DIR/<name>`, expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/` or `codex/` variant)
-- **Coupled without target `SKILL.md`**: skip skill-state diagnosis for `$TARGET_DIR/<name>`; this is valid for Codex custom-agent-only variants
+- **Coupled with target `SKILL.md`**: install to `$TARGET_DIR/<name>`, expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/`, `codex/`, or `ksana/` variant)
+- **Coupled without target `SKILL.md`**: skip skill-state diagnosis for `$TARGET_DIR/<name>`; this is valid for Codex/Ksana custom-agent-only variants
 
 ```bash
 check_skill_state() {
@@ -188,9 +205,9 @@ States:
 - **broken** — symlink exists but its target is not a valid directory (dangling)
 - **real_dir** — a real (non-symlink) directory occupies the name
 
-### 2d. Diagnose codex agents (codex target only)
+### 2d. Diagnose custom agents (codex/ksana target only)
 
-For `--target codex`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `codex/` directory. If present, treat them like symlinked skills: check whether `$CODEX_AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source `<skill_source_dir>/codex/agent.toml`. Use the same five states as skill diagnosis (correct / missing / wrong_target / broken / real_file). By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
+For `--target codex` or `--target ksana`, also check if `autopilot-implementer` and `autopilot-reviewer` have `.toml` agent files in their source's `<target>/` directory. If present, treat them like symlinked skills: check whether `$AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source `<skill_source_dir>/<target>/agent.toml`. Use the same five states as skill diagnosis (correct / missing / wrong_target / broken / real_file). `$AGENTS_DIR` is `$CODEX_AGENTS_DIR` (`~/.codex/agents`) for codex, or `$KSANA_AGENTS_DIR` (`~/.ksana/agents`) for ksana.
 
 ### 2e. Find orphaned symlinks
 
@@ -253,8 +270,9 @@ For **coupled** skills — first check whether the target variant is a loadable 
 ```bash
 variant_src="$src/$target"
 if [ ! -f "$variant_src/SKILL.md" ]; then
-  # Codex agent-only variants, such as autopilot-implementer/codex/agent.toml,
-  # are not skills. Skip sync; still deploy agent TOMLs below.
+  # Agent-only variants, such as autopilot-implementer/codex/agent.toml or
+  # autopilot-implementer/ksana/agent.toml, are not skills. Skip sync; still
+  # deploy agent TOMLs below.
   skip_skill_sync=true
 fi
 ```
@@ -269,19 +287,19 @@ When `SKILL.md` exists, use `--target` flag with the variant source path:
 | real_dir | **WARN** — do NOT touch | Report conflict, skip |
 | correct | No-op | — |
 
-Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/audit-autopilot/codex`). Do not run `install.rs sync` for a Codex variant directory that lacks `SKILL.md`.
+Where `<target>` is `reasonix`, `codex`, or `ksana`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/audit-autopilot/codex` or `.../ksana`). Do not run `install.rs sync` for a variant directory that lacks `SKILL.md`.
 
-### Codex custom agents
+### Codex/Ksana custom agents
 
-For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, sync each as a file symlink (not a copy — `install.rs sync --agent` uses symlinks like skills do):
+For `--target codex` or `--target ksana`, if a coupled skill has `.toml` agent files in its `<target>/` subdirectory, sync each as a file symlink (not a copy — `install.rs sync --agent` uses symlinks like skills do):
 
 ```bash
-install.rs sync <agent_name> <skill_source_dir>/codex/agent.toml --target codex --agent
+install.rs sync <agent_name> <skill_source_dir>/<target>/agent.toml --target <target> --agent
 ```
 
-This creates/repairs a file symlink `~/.codex/agents/<agent_name>.toml` → `<skill_source_dir>/codex/agent.toml`. Behaviour mirrors skill sync: creates if missing, replaces if broken/wrong, warns on real-file conflict. Symlinks ensure source updates take effect immediately without re-running setup.
+This creates/repairs a file symlink `~/.<target>/agents/<agent_name>.toml` → `<skill_source_dir>/<target>/agent.toml` (i.e. `~/.codex/agents/` or `~/.ksana/agents/`). Behaviour mirrors skill sync: creates if missing, replaces if broken/wrong, warns on real-file conflict. Symlinks ensure source updates take effect immediately without re-running setup.
 
-Agent names are derived from the parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/codex/agent.toml` -> agent name `autopilot-implementer`).
+Agent names are derived from the parent skill directory name (e.g. `skills/autopilot/autopilot-implementer/ksana/agent.toml` -> agent name `autopilot-implementer`).
 
 ### Orphaned symlinks
 
@@ -311,7 +329,7 @@ This creates/repairs `~/.agents/principles` → `$PROJECT_ROOT/principles`. Beha
 
 1. Process all expected agnostic skills (sync to `$SHARED_DIR`)
 2. Process all expected coupled skills (sync to `$TARGET_DIR`)
-3. If codex target: sync agent `.toml` files for implementer/reviewer via `sync --target codex --agent`
+3. If codex or ksana target: sync agent `.toml` files for implementer/reviewer via `sync --target <target> --agent`
 4. Clean up orphaned symlinks from BOTH directories (unlink)
 5. Ensure principles symlink (link-principles)
 
@@ -321,7 +339,7 @@ Track each action taken — the report must list specific skill names, operation
 
 Re-run Step 2c diagnosis on all expected skills. Every skill should now be `correct`.
 
-For codex target, also verify that `$CODEX_AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source file for implementer and reviewer (if they had `.toml` sources). Use `readlink` to verify the symlink target matches. By default, `$CODEX_AGENTS_DIR` is `~/.codex/agents`.
+For codex or ksana target, also verify that `$AGENTS_DIR/<name>.toml` is a symlink pointing to the expected source file for implementer and reviewer (if they had `.toml` sources). Use `readlink` to verify the symlink target matches. `$AGENTS_DIR` is `$CODEX_AGENTS_DIR` (`~/.codex/agents`) for codex, or `$KSANA_AGENTS_DIR` (`~/.ksana/agents`) for ksana.
 
 Verify principles symlink:
 
@@ -367,7 +385,23 @@ After a successful setup, the expected directory layout per target:
 ~/.agents/principles → $PROJECT_ROOT/principles
 ```
 
-Note: `~/.codex/skills/` and `~/.reasonix/skills/` are **agent-exclusive** — only the target runtime scans them. This prevents the Reasonix variant of a coupled skill from being discovered by Codex and vice versa.
+**`--target ksana`:**
+```
+~/.agents/skills/           # Agnostic skills (shared)
+├── ... (same as reasonix)
+
+~/.ksana/skills/            # Coupled skills (ksana variants)
+├── audit-autopilot → .../skills/autopilot/audit-autopilot/ksana
+├── autopilot-orchestrator → .../skills/autopilot/autopilot-orchestrator/ksana
+
+~/.ksana/agents/            # Ksana custom agents (symlinked, not copied)
+├── autopilot-implementer.toml → .../autopilot-implementer/ksana/agent.toml
+├── autopilot-reviewer.toml → .../autopilot-reviewer/ksana/agent.toml
+
+~/.agents/principles → $PROJECT_ROOT/principles
+```
+
+Note: `~/.reasonix/skills/`, `~/.codex/skills/`, and `~/.ksana/skills/` are **agent-exclusive** — only the target runtime scans them. This prevents one runtime's variant of a coupled skill from being discovered by another.
 
 ## Report Template
 
@@ -375,7 +409,7 @@ Output a structured report — list specific skill names, operations, and flags 
 
 ```
 TOOLKIT_SETUP_REPORT:
-Target: reasonix | codex
+Target: reasonix | codex | ksana
 
 ## Expected Set
   N skills (K upstream + A autopilot)
@@ -383,10 +417,10 @@ Target: reasonix | codex
 
 ## Actions Taken
   SYNC <name> → <src> (shared)
-  SYNC <name> → <variant_src> (--target reasonix)
-  SYNC <name> → <src> (--target codex --agent)
+  SYNC <name> → <variant_src> (--target reasonix|codex|ksana)
+  SYNC <name> → <src> (--target codex|ksana --agent)
   UNLINK <name> (orphaned, shared)
-  UNLINK <name> (orphaned, --target codex)
+  UNLINK <name> (orphaned, --target codex|ksana)
   LINK-PRINCIPLES → <src>
   — or —
   (none — all skills already correct)
@@ -411,11 +445,11 @@ If any skill remains missing/broken/wrong_target after execute, report as FAIL a
 
 - **Skills directory missing**: Created automatically by `install.rs sync` on first use.
 - **Variant source directory missing**: Report as WARN and skip sync. Do not call `install.rs sync` for a missing target variant.
-- **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files. Skip skill sync explicitly; still sync agents via `sync --target codex --agent`. If a stale toolkit-owned symlink for that name exists in `~/.codex/skills/`, unlink it as an invalid target skill entry.
-- **Real file conflict (agents)**: A real (non-symlink) file at `~/.codex/agents/<name>.toml`. Reported as WARN. install.rs refuses to overwrite real files. User must remove manually before sync can replace it with a symlink.
+- **Variant has no SKILL.md (codex/ksana)**: The `codex/` or `ksana/` subdirectory may contain only `.toml` agent files (implementer, reviewer). Skip skill sync explicitly; still sync agents via `sync --target <target> --agent`. If a stale toolkit-owned symlink for that name exists in the target skills dir, unlink it as an invalid target skill entry.
+- **Real file conflict (agents)**: A real (non-symlink) file at `~/.codex/agents/<name>.toml` or `~/.ksana/agents/<name>.toml`. Reported as WARN. install.rs refuses to overwrite real files. User must remove manually before sync can replace it with a symlink.
 - **Real directory conflict**: Reported as WARN. install.rs refuses to overwrite real directories. User must resolve manually.
 - **No changes needed**: Report "all skills already correct", ALL PASS.
 - **python3 unavailable**: Fall back to grep-based parsing of `.skill-lock.json`. Less robust but functional for standard JSON layouts.
 - **Empty .skill-lock.json skills**: Only autopilot skills in expected set. Valid scenario for minimal installs.
-- **No `--target` argument**: Defaults to `reasonix`. The skill body should treat missing/empty `--target` as `reasonix`.
+- **No `--target` argument**: Ask the user to select `reasonix`, `codex`, or `ksana`; do not modify the installation until they choose.
 - **Both targets on same machine**: Running `--target reasonix` then `--target codex` on the same machine is supported. Agnostic skills are shared (installed once); coupled skills go to separate agent-exclusive directories.

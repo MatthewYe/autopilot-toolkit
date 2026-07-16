@@ -35,6 +35,8 @@ struct TestContext {
     reasonix_skills_dir: PathBuf,
     codex_skills_dir: PathBuf,
     codex_agents_dir: PathBuf,
+    ksana_skills_dir: PathBuf,
+    ksana_agents_dir: PathBuf,
 }
 
 impl TestContext {
@@ -46,12 +48,15 @@ impl TestContext {
         let reasonix_skills_dir = mock_home.join(".reasonix/skills");
         let codex_skills_dir = mock_home.join(".codex/skills");
         let codex_agents_dir = mock_home.join(".codex/agents");
+        let ksana_skills_dir = mock_home.join(".ksana/skills");
+        let ksana_agents_dir = mock_home.join(".ksana/agents");
 
         fs::create_dir_all(&mock_root).expect("create mock_root");
         fs::create_dir_all(&mock_home).expect("create mock_home");
         fs::create_dir_all(&skills_dir).expect("create skills_dir");
         fs::create_dir_all(&reasonix_skills_dir).expect("create reasonix skills_dir");
         fs::create_dir_all(&codex_skills_dir).expect("create codex skills_dir");
+        fs::create_dir_all(&ksana_skills_dir).expect("create ksana skills_dir");
 
         TestContext {
             _temp: temp,
@@ -61,6 +66,8 @@ impl TestContext {
             reasonix_skills_dir,
             codex_skills_dir,
             codex_agents_dir,
+            ksana_skills_dir,
+            ksana_agents_dir,
         }
     }
 
@@ -82,6 +89,14 @@ impl TestContext {
 
     fn codex_agents_dir(&self) -> &Path {
         self.codex_agents_dir.as_path()
+    }
+
+    fn ksana_skills_dir(&self) -> &Path {
+        self.ksana_skills_dir.as_path()
+    }
+
+    fn ksana_agents_dir(&self) -> &Path {
+        self.ksana_agents_dir.as_path()
     }
 
     fn home(&self) -> &Path {
@@ -236,10 +251,11 @@ fn run_sync_targeted(
         .env("HOME", home)
         .env("PROJECT_ROOT", project_root)
         .env(
-            if target == "reasonix" {
-                "REASONIX_SKILLS_DIR"
-            } else {
-                "CODEX_SKILLS_DIR"
+            match target {
+                "reasonix" => "REASONIX_SKILLS_DIR",
+                "codex" => "CODEX_SKILLS_DIR",
+                "ksana" => "KSANA_SKILLS_DIR",
+                _ => "REASONIX_SKILLS_DIR",
             },
             target_skills_dir,
         )
@@ -253,27 +269,37 @@ fn run_sync_targeted(
     )
 }
 
-/// Run install.rs deploy-agent with --target codex.
-fn run_deploy_agent(
+/// Run install.rs sync --agent with --target codex|ksana.
+///
+/// Replaces the former `deploy-agent` subcommand (which never existed in
+/// install.rs — the real implementation is `sync --target <t> --agent`).
+fn run_sync_agent(
     install_script: &Path,
     home: &Path,
     project_root: &Path,
-    codex_agents_dir: &Path,
+    target: &str,
+    agents_dir: &Path,
     name: &str,
     src: &Path,
 ) -> (String, String, i32) {
+    let agents_env = match target {
+        "codex" => "CODEX_AGENTS_DIR",
+        "ksana" => "KSANA_AGENTS_DIR",
+        _ => "CODEX_AGENTS_DIR",
+    };
     let output = Command::new("rust-script")
         .arg(install_script)
-        .arg("deploy-agent")
+        .arg("sync")
         .arg(name)
         .arg(src)
         .arg("--target")
-        .arg("codex")
+        .arg(target)
+        .arg("--agent")
         .env("HOME", home)
         .env("PROJECT_ROOT", project_root)
-        .env("CODEX_AGENTS_DIR", codex_agents_dir)
+        .env(agents_env, agents_dir)
         .output()
-        .expect("failed to run install.rs deploy-agent");
+        .expect("failed to run install.rs sync --target <t> --agent");
 
     (
         String::from_utf8_lossy(&output.stdout).to_string(),
@@ -326,10 +352,11 @@ fn run_unlink_targeted(
         .env("HOME", home)
         .env("PROJECT_ROOT", project_root)
         .env(
-            if target == "reasonix" {
-                "REASONIX_SKILLS_DIR"
-            } else {
-                "CODEX_SKILLS_DIR"
+            match target {
+                "reasonix" => "REASONIX_SKILLS_DIR",
+                "codex" => "CODEX_SKILLS_DIR",
+                "ksana" => "KSANA_SKILLS_DIR",
+                _ => "REASONIX_SKILLS_DIR",
             },
             target_skills_dir,
         )
@@ -364,13 +391,13 @@ fn has_skill_variant(src: &Path, target: &str) -> bool {
     src.join(target).join("SKILL.md").is_file()
 }
 
-/// Check if a coupled skill has codex agent .toml files (for deploy-agent).
-fn has_codex_agents(src: &Path) -> bool {
-    let codex_dir = src.join("codex");
-    if !codex_dir.is_dir() {
+/// Check if a coupled skill has agent .toml files in its `<target>/` directory.
+fn has_target_agents(src: &Path, target: &str) -> bool {
+    let variant_dir = src.join(target);
+    if !variant_dir.is_dir() {
         return false;
     }
-    if let Ok(entries) = fs::read_dir(&codex_dir) {
+    if let Ok(entries) = fs::read_dir(&variant_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension().map(|e| e == "toml").unwrap_or(false) {
@@ -381,14 +408,14 @@ fn has_codex_agents(src: &Path) -> bool {
     false
 }
 
-/// Get the .toml agent files from a coupled skill's codex/ directory.
-fn codex_agent_files(src: &Path) -> Vec<(String, PathBuf)> {
+/// Get the .toml agent files from a coupled skill's `<target>/` directory.
+fn target_agent_files(src: &Path, target: &str) -> Vec<(String, PathBuf)> {
     let mut agents: Vec<(String, PathBuf)> = Vec::new();
-    let codex_dir = src.join("codex");
-    if !codex_dir.is_dir() {
+    let variant_dir = src.join(target);
+    if !variant_dir.is_dir() {
         return agents;
     }
-    if let Ok(entries) = fs::read_dir(&codex_dir) {
+    if let Ok(entries) = fs::read_dir(&variant_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension().map(|e| e == "toml").unwrap_or(false) {
@@ -553,6 +580,24 @@ fn setup_mock_project_with_variants(ctx: &TestContext, _target: &str) {
             );
             fs::write(codex_dir.join("agent.toml"), agent_toml).expect("write agent .toml");
         }
+
+        // Create ksana variant (Codex-aligned: same agent-only split)
+        let ksana_dir = dir.join("ksana");
+        fs::create_dir_all(&ksana_dir).expect("create ksana variant dir");
+        if !codex_agent_skills.contains(s) {
+            let ksana_md = format!(
+                "---\nname: {}\ndescription: {} (ksana variant)\n---\n# {} (Ksana)\n",
+                s, s, s
+            );
+            fs::write(ksana_dir.join("SKILL.md"), ksana_md).expect("write ksana SKILL.md");
+        }
+        if codex_agent_skills.contains(s) {
+            let agent_toml = format!(
+                "[agent]\nname = \"{}\"\ndescription = \"{} ksana agent\"\n",
+                s, s
+            );
+            fs::write(ksana_dir.join("agent.toml"), agent_toml).expect("write ksana agent .toml");
+        }
     }
 
     // ── Principles ─────────────────────────────────────────────────────
@@ -689,10 +734,16 @@ fn run_toolkit_setup_execute_targeted(
     let mut lines: Vec<String> = Vec::new();
 
     // Resolve target-specific dirs
-    let target_skills_dir = if target == "reasonix" {
-        ctx.reasonix_skills_dir()
-    } else {
-        ctx.codex_skills_dir()
+    let target_skills_dir = match target {
+        "reasonix" => ctx.reasonix_skills_dir(),
+        "codex" => ctx.codex_skills_dir(),
+        "ksana" => ctx.ksana_skills_dir(),
+        _ => ctx.reasonix_skills_dir(),
+    };
+    let target_agents_dir = match target {
+        "codex" => ctx.codex_agents_dir(),
+        "ksana" => ctx.ksana_agents_dir(),
+        _ => ctx.codex_agents_dir(), // reasonix has no agents dir
     };
 
     // Sync all expected skills
@@ -761,21 +812,23 @@ fn run_toolkit_setup_execute_targeted(
                     }
                 }
 
-                // Codex agents: deploy-agent for skills with .toml files
-                if target == "codex" && has_codex_agents(src) {
-                    for (agent_name, agent_src) in &codex_agent_files(src) {
-                        let (_stdout, _stderr, _code) = run_deploy_agent(
+                // Custom agents: sync --agent for codex/ksana skills with .toml files
+                if (target == "codex" || target == "ksana") && has_target_agents(src, target) {
+                    for (agent_name, agent_src) in &target_agent_files(src, target) {
+                        let (_stdout, _stderr, _code) = run_sync_agent(
                             install_script,
                             ctx.home(),
                             ctx.path(),
-                            ctx.codex_agents_dir(),
+                            target,
+                            target_agents_dir,
                             agent_name,
                             agent_src,
                         );
                         lines.push(format!(
-                            "  DEPLOY-AGENT {} -> {}",
+                            "  SYNC-AGENT {} -> {} (--target {} --agent)",
                             agent_name,
-                            agent_src.display()
+                            agent_src.display(),
+                            target
                         ));
                     }
                 }
@@ -1580,45 +1633,50 @@ mod tests {
             exec_result
         );
 
-        // Verify --target codex sync only for coupled skills with a loadable codex/SKILL.md.
-        let targeted_sync_count = exec_result.matches("--target codex").count();
+        // Verify --target codex skill sync only for coupled skills with a
+        // loadable codex/SKILL.md. Use the "SYNC {name} ->" prefix to count
+        // skill syncs only (SYNC-AGENT lines are excluded).
+        let targeted_sync_count = exec_result
+            .lines()
+            .filter(|l| l.contains("SYNC ") && l.contains("--target codex)"))
+            .count();
         assert_eq!(
             targeted_sync_count, codex_skill_variant_count,
             "only coupled skills with codex/SKILL.md should sync with --target codex:\n{}",
             exec_result
         );
         assert!(
-            !exec_result.contains("SYNC autopilot-implementer"),
+            !exec_result.contains("SYNC autopilot-implementer ->"),
             "agent-only implementer must not be synced as a Codex skill:\n{}",
             exec_result
         );
         assert!(
-            !exec_result.contains("SYNC autopilot-reviewer"),
+            !exec_result.contains("SYNC autopilot-reviewer ->"),
             "agent-only reviewer must not be synced as a Codex skill:\n{}",
             exec_result
         );
 
-        // Verify DEPLOY-AGENT for implementer and reviewer
+        // Verify SYNC-AGENT for implementer and reviewer
         assert!(
-            exec_result.contains("DEPLOY-AGENT autopilot-implementer"),
-            "should contain DEPLOY-AGENT for implementer:\n{}",
+            exec_result.contains("SYNC-AGENT autopilot-implementer"),
+            "should contain SYNC-AGENT for implementer:\n{}",
             exec_result
         );
         assert!(
-            exec_result.contains("DEPLOY-AGENT autopilot-reviewer"),
-            "should contain DEPLOY-AGENT for reviewer:\n{}",
+            exec_result.contains("SYNC-AGENT autopilot-reviewer"),
+            "should contain SYNC-AGENT for reviewer:\n{}",
             exec_result
         );
 
-        // deploy-agent should NOT be called for non-agent skills
+        // sync --agent should NOT be called for non-agent skills
         assert!(
-            !exec_result.contains("DEPLOY-AGENT audit-autopilot"),
-            "should NOT deploy-agent for audit-autopilot:\n{}",
+            !exec_result.contains("SYNC-AGENT audit-autopilot"),
+            "should NOT sync-agent for audit-autopilot:\n{}",
             exec_result
         );
         assert!(
-            !exec_result.contains("DEPLOY-AGENT autopilot-orchestrator"),
-            "should NOT deploy-agent for orchestrator:\n{}",
+            !exec_result.contains("SYNC-AGENT autopilot-orchestrator"),
+            "should NOT sync-agent for orchestrator:\n{}",
             exec_result
         );
 
@@ -1645,6 +1703,117 @@ mod tests {
         // Verify agent files deployed
         for agent_name in &["autopilot-implementer", "autopilot-reviewer"] {
             let agent_path = ctx.codex_agents_dir().join(format!("{}.toml", agent_name));
+            assert!(
+                agent_path.is_file(),
+                "agent file {} should exist after deploy",
+                agent_path.display()
+            );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test 8b: --target ksana routes skills correctly (mirrors the codex test)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn target_ksana_routes_skills_correctly() {
+        let ctx = TestContext::new("toolkit-test8b");
+        setup_mock_project_with_variants(&ctx, "ksana");
+        let install = install_script();
+
+        let expected = derive_expected_set(ctx.path());
+
+        let agnostic_count = expected
+            .iter()
+            .filter(|(_, src)| categorize_skill(src) == "agnostic")
+            .count();
+        let ksana_skill_variant_count = expected
+            .iter()
+            .filter(|(_, src)| {
+                categorize_skill(src) == "coupled" && has_skill_variant(src, "ksana")
+            })
+            .count();
+
+        // Execute with target=ksana
+        let exec_result = run_toolkit_setup_execute_targeted(&install, &ctx, &expected, "ksana");
+
+        // Verify shared sync for agnostic skills
+        let shared_sync_count = exec_result.matches("(shared)").count();
+        assert_eq!(
+            shared_sync_count, agnostic_count,
+            "all agnostic skills should sync with --shared:\n{}",
+            exec_result
+        );
+
+        // Verify --target ksana skill sync only for coupled skills with a
+        // loadable ksana/SKILL.md (SYNC-AGENT lines excluded).
+        let targeted_sync_count = exec_result
+            .lines()
+            .filter(|l| l.contains("SYNC ") && l.contains("--target ksana)"))
+            .count();
+        assert_eq!(
+            targeted_sync_count, ksana_skill_variant_count,
+            "only coupled skills with ksana/SKILL.md should sync with --target ksana:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("SYNC autopilot-implementer ->"),
+            "agent-only implementer must not be synced as a Ksana skill:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("SYNC autopilot-reviewer ->"),
+            "agent-only reviewer must not be synced as a Ksana skill:\n{}",
+            exec_result
+        );
+
+        // Verify SYNC-AGENT for implementer and reviewer
+        assert!(
+            exec_result.contains("SYNC-AGENT autopilot-implementer"),
+            "should contain SYNC-AGENT for implementer:\n{}",
+            exec_result
+        );
+        assert!(
+            exec_result.contains("SYNC-AGENT autopilot-reviewer"),
+            "should contain SYNC-AGENT for reviewer:\n{}",
+            exec_result
+        );
+
+        // sync --agent should NOT be called for non-agent skills
+        assert!(
+            !exec_result.contains("SYNC-AGENT audit-autopilot"),
+            "should NOT sync-agent for audit-autopilot:\n{}",
+            exec_result
+        );
+        assert!(
+            !exec_result.contains("SYNC-AGENT autopilot-orchestrator"),
+            "should NOT sync-agent for orchestrator:\n{}",
+            exec_result
+        );
+
+        // Verify only coupled skills with ksana/SKILL.md are linked in ksana skills dir.
+        for (name, src) in &expected {
+            if categorize_skill(src) == "coupled" && has_skill_variant(src, "ksana") {
+                let variant = variant_src(src, "ksana");
+                let state = skill_state(name, &variant, ctx.ksana_skills_dir());
+                assert_eq!(
+                    state, "correct",
+                    "coupled skill {} should be correct in ksana dir, but was {}",
+                    name, state
+                );
+            }
+        }
+        for agent_only in &["autopilot-implementer", "autopilot-reviewer"] {
+            assert!(
+                !ctx.ksana_skills_dir().join(agent_only).exists(),
+                "agent-only Ksana variant {} must not be linked under ~/.ksana/skills",
+                agent_only
+            );
+        }
+
+        // Verify agent files deployed
+        for agent_name in &["autopilot-implementer", "autopilot-reviewer"] {
+            let agent_path = ctx.ksana_agents_dir().join(format!("{}.toml", agent_name));
             assert!(
                 agent_path.is_file(),
                 "agent file {} should exist after deploy",

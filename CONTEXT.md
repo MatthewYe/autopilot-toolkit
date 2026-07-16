@@ -1,15 +1,15 @@
 # Autopilot Toolkit
 
-A skill-pack repo targeting Reasonix and Codex. Ships 19 skills — 13 upstream (from mattpocock/skills, tracked in `.skill-lock.json`) plus 6 autopilot (custom, living in `skills/autopilot/`). 17 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 4 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
+A skill-pack repo targeting Reasonix, Codex, and Ksana. Ships 25 named toolkit capabilities — 19 upstream (from mattpocock/skills, tracked in `.skill-lock.json`) plus 6 autopilot (custom, living in `skills/autopilot/`). 21 are runtime-agnostic skills; 4 autopilot workflow capabilities have per-runtime variants due to differing subagent dispatch mechanisms.
 
 ## Language
 
 **Toolkit skill**:
-One of the 19 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream) or a directory under `skills/autopilot/` (autopilot).
+One of the 25 named capabilities that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream) or a directory under `skills/autopilot/` (autopilot).
 _Avoid_: project skill, owned skill
 
 **Expected set**:
-The authoritative list of toolkit skills, derived at runtime by reading `.skill-lock.json` (upstream) and scanning `skills/autopilot/*/SKILL.md` (autopilot). No separate manifest — the sources are the SSOT.
+The authoritative list of toolkit capabilities, derived at runtime by reading `.skill-lock.json` (upstream) and scanning `skills/autopilot/*/` for an agnostic `SKILL.md` or a runtime-coupled `reasonix/SKILL.md`. No separate manifest — the sources are the SSOT.
 _Avoid_: skill inventory, skill manifest
 
 **Skill source**:
@@ -17,7 +17,7 @@ The origin of a toolkit skill — either `upstream` (mattpocock/skills, synced v
 _Avoid_: skill type, skill category
 
 **Runtime-agnostic skill**:
-A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Claude Code, etc.). 17 of 19 toolkit skills fall in this category.
+A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Claude Code, etc.). 21 of 25 named toolkit capabilities fall in this category.
 _Avoid_: universal skill, portable skill
 
 **Runtime-coupled skill**:
@@ -25,11 +25,11 @@ A skill whose body depends on runtime-specific mechanisms (subagent dispatch, se
 _Avoid_: platform-specific skill, bound skill
 
 **Skill variant**:
-A runtime-specific version of a runtime-coupled skill. Same skill identity (name, purpose), different body — the Reasonix variant uses `run_skill` dispatch and `complete_step`; the Codex variant uses `spawn agent` and `.codex/agents/*.toml` custom agents. Each variant is a separate source file: `SKILL.reasonix.md` or `SKILL.codex.md`.
+A runtime-specific version of a runtime-coupled skill. Same skill identity (name, purpose), different body — the Reasonix variant uses `run_skill` dispatch and `complete_step`; the Codex variant uses `spawn agent <name>` and `.codex/agents/*.toml` custom agents; the Ksana variant uses the `spawn_agent` tool (`agent_type`/`task_name`/`message` params) and `~/.ksana/agents/*.toml` custom agent **roles** (with `model` omitted — supplied by the user's global config). Each variant lives in a per-runtime subdirectory: `reasonix/SKILL.md`, `codex/SKILL.md` (or `codex/agent.toml`), or `ksana/SKILL.md` (or `ksana/agent.toml`).
 _Avoid_: skill version, skill flavor
 
 **Variant source**:
-A file in the source tree that carries a specific runtime variant of a runtime-coupled skill. Named `SKILL.<runtime>.md` (e.g. `SKILL.reasonix.md`, `SKILL.codex.md`) alongside any runtime-agnostic supporting files. The install script selects the matching variant based on `--target`.
+A directory in the source tree that carries a specific runtime variant of a runtime-coupled skill. Named `<runtime>/` (e.g. `reasonix/`, `codex/`, `ksana/`) under the skill directory, containing the variant `SKILL.md` or `agent.toml` plus any runtime-specific supporting files. The install script selects the matching variant based on `--target`.
 _Avoid_: variant file, alternate body
 
 ## Install model
@@ -37,23 +37,23 @@ _Avoid_: variant file, alternate body
 **Install target**:
 The directory where a skill symlink is deployed. Varies by skill category and runtime target:
 
-| Skill category | Reasonix target | Codex target |
-|---|---|---|
-| Runtime-agnostic | `~/.agents/skills/<name>/` | `~/.agents/skills/<name>/` |
-| Runtime-coupled | `~/.reasonix/skills/<name>/` | `~/.codex/skills/<name>/` |
+| Skill category | Reasonix target | Codex target | Ksana target |
+|---|---|---|---|
+| Runtime-agnostic | `~/.agents/skills/<name>/` | `~/.agents/skills/<name>/` | `~/.agents/skills/<name>/` |
+| Runtime-coupled | `~/.reasonix/skills/<name>/` | `~/.codex/skills/<name>/` | `~/.ksana/skills/<name>/` |
 
 _Avoid_: skills dir, agents skills
 
 **Agent-exclusive skill directory**:
-A skill directory scanned by exactly one agent runtime. `~/.reasonix/skills/` (Reasonix only) and `~/.codex/skills/` (Codex only). Runtime-coupled skill variants are installed here to eliminate cross-agent conflicts without relying on `compatibility` field filtering.
+A skill directory scanned by exactly one agent runtime. `~/.reasonix/skills/` (Reasonix only), `~/.codex/skills/` (Codex only), and `~/.ksana/skills/` (Ksana only). Runtime-coupled skill variants are installed here to eliminate cross-agent conflicts without relying on `compatibility` field filtering.
 _Avoid_: private skills dir, isolated directory
 
 **Shared skill directory**:
-`~/.agents/skills/` — the Agent Skills standard shared location, scanned by both Reasonix and Codex. Runtime-agnostic skills are installed here so both agents can discover them from a single copy.
+`~/.agents/skills/` — the Agent Skills standard shared location, scanned by Reasonix, Codex, and Ksana. Runtime-agnostic skills are installed here so all agents can discover them from a single copy.
 _Avoid_: common skills dir, public skills dir
 
-**Custom agent** (Codex only):
-A `.codex/agents/*.toml` file defining a named subagent with model, sandbox, and instruction configuration. The Codex variants of implementer and reviewer ship TOML files that the install script places under `.codex/agents/` (project-local) or `~/.codex/agents/` (user-global). Not a skill — a Codex-native subagent definition.
+**Custom agent** (Codex/Ksana):
+A `~/.codex/agents/*.toml` or `~/.ksana/agents/*.toml` file defining a named subagent with sandbox, model, and instruction configuration. The Codex and Ksana variants of implementer and reviewer ship TOML files that the install script symlinks under `~/.codex/agents/` or `~/.ksana/agents/` (user-global). Not a skill — a runtime-native subagent definition. On ksana the `agent.toml` omits `model` (autopilot-toolkit is provider-agnostic); the user's global `~/.ksana/config.toml` must supply a top-level `model = "<slug>"` layer, because spawning a child role rebuilds its config from the layer stack without inheriting the parent's runtime model.
 _Avoid_: agent config, worker definition
 
 **Symlink target**:
@@ -90,7 +90,7 @@ _Avoid_: selfcheck (that's now only the verification step), install flow
 - **Toolkit setup** invokes **operational sync** per skill, then verifies via a final diagnostic pass
 - Runtime-agnostic skills go to the **shared skill directory**; runtime-coupled skills go to the **agent-exclusive skill directory** for the target runtime
 - A **skill variant** is selected at install time from the **variant source** matching `--target`
-- Codex **custom agent** TOML files are deployed alongside Codex skill variants for implementer and reviewer
+- Codex and Ksana **custom agent** TOML files are deployed alongside their respective skill variants for implementer and reviewer
 
 ## Autopilot Workflow
 

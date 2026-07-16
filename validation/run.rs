@@ -134,6 +134,12 @@ fn discover_autopilot(root: &Path, skills: &mut Vec<Skill>) {
                         let relative_path = format!("skills/autopilot/{}/codex/SKILL.md", name);
                         entries.push((name.to_string(), relative_path, Some("codex".to_string())));
                     }
+                    // Check ksana variant
+                    let ksana_skill = path.join("ksana/SKILL.md");
+                    if ksana_skill.is_file() {
+                        let relative_path = format!("skills/autopilot/{}/ksana/SKILL.md", name);
+                        entries.push((name.to_string(), relative_path, Some("ksana".to_string())));
+                    }
                 }
             }
         }
@@ -171,6 +177,7 @@ fn validate_all(root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
             let variant = match skill.variant.as_deref() {
                 Some("reasonix") => SkillVariant::Reasonix,
                 Some("codex") => SkillVariant::Codex,
+                Some("ksana") => SkillVariant::Ksana,
                 _ => SkillVariant::Agnostic,
             };
             let validation_result = validate_skill_with_variant(&content, variant);
@@ -245,11 +252,22 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
     write_skill_entries(&mut report, skills, results, "autopilot", false);
 
     // ── Codex variant status ──
-    let codex_status = check_codex_status(skills);
+    let codex_status = check_variant_status(skills, "codex");
     if !codex_status.is_empty() {
         wln!(report, "--- Codex Variant Status ---");
         wln!(report);
         for line in &codex_status {
+            wln!(report, "  {}", line);
+        }
+        wln!(report);
+    }
+
+    // ── Ksana variant status ──
+    let ksana_status = check_variant_status(skills, "ksana");
+    if !ksana_status.is_empty() {
+        wln!(report, "--- Ksana Variant Status ---");
+        wln!(report);
+        for line in &ksana_status {
             wln!(report, "  {}", line);
         }
         wln!(report);
@@ -261,11 +279,14 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
     wln!(report, "{}", sep);
     wln!(report);
 
-    // Check 1: 0 opencode-specific fields (exclude codex variants)
+    // Check 1: 0 opencode-specific fields (exclude codex and ksana variants —
+    // both are Codex-aligned runtimes that may legitimately use these fields).
+    let is_opencode_checked =
+        |s: &Skill| !matches!(s.variant.as_deref(), Some("codex") | Some("ksana"));
     let oc_count: usize = skills
         .iter()
         .zip(results.iter())
-        .filter(|(s, _)| s.variant.as_deref() != Some("codex"))
+        .filter(|(s, _)| is_opencode_checked(s))
         .map(|(_, r)| {
             r.result
                 .issues
@@ -274,15 +295,12 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
                 .count()
         })
         .sum();
-    let non_codex_count = skills
-        .iter()
-        .filter(|s| s.variant.as_deref() != Some("codex"))
-        .count();
+    let non_opencode_count = skills.iter().filter(|s| is_opencode_checked(s)).count();
     wln!(
         report,
-        "Check: 0 opencode-specific fields across {} skills ({} non-codex)",
-        non_codex_count,
-        non_codex_count
+        "Check: 0 opencode-specific fields across {} skills ({} non-codex/ksana)",
+        non_opencode_count,
+        non_opencode_count
     );
     if oc_count == 0 {
         wln!(report, "Result: ✓ PASS");
@@ -420,38 +438,42 @@ fn find_subagent_missing_allowed_tools(skills: &[Skill]) -> Vec<String> {
 }
 
 /// Check codex variant status for autopilot skills.
-/// Returns informational lines about which skills lack codex SKILL.md.
-fn check_codex_status(skills: &[Skill]) -> Vec<String> {
+/// Returns informational lines about which skills lack a `<variant>/SKILL.md`.
+///
+/// Generic over the runtime variant name ("codex" or "ksana"). For each
+/// autopilot skill directory that has a `<variant>/` subdirectory, reports
+/// skills whose variant directory exists but contains no `SKILL.md`.
+fn check_variant_status(skills: &[Skill], variant: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let root = project_root();
     let autopilot_dir = root.join("skills/autopilot");
     if !autopilot_dir.is_dir() {
         return lines;
     }
-    // Find skill directories that have a codex/ subdirectory
+    // Find skill directories that have a `<variant>/` subdirectory
     if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                let codex_skill = path.join("codex/SKILL.md");
-                let codex_dir = path.join("codex");
-                if codex_dir.is_dir() {
+                let variant_skill = path.join(format!("{variant}/SKILL.md"));
+                let variant_dir = path.join(variant);
+                if variant_dir.is_dir() {
                     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-                    let has_codex = codex_skill.is_file();
-                    // Check if this skill was already found as a codex variant
+                    let has_variant = variant_skill.is_file();
+                    // Check if this skill was already found as this variant
                     let already_found = skills
                         .iter()
-                        .any(|s| s.name == name && s.variant.as_deref() == Some("codex"));
-                    if !has_codex && !already_found {
+                        .any(|s| s.name == name && s.variant.as_deref() == Some(variant));
+                    if !has_variant && !already_found {
                         // Determine the reason
                         if name == "autopilot-implementer" || name == "autopilot-reviewer" {
                             lines.push(format!(
-                                "[INFO] {}: no codex/SKILL.md (uses agent.toml instead)",
+                                "[INFO] {}: no {variant}/SKILL.md (uses agent.toml instead)",
                                 name
                             ));
                         } else {
                             lines.push(format!(
-                                "[INFO] {}: no codex/SKILL.md (placeholder directory)",
+                                "[INFO] {}: no {variant}/SKILL.md (placeholder directory)",
                                 name
                             ));
                         }
