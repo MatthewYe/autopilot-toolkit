@@ -19,5 +19,6 @@
 
 - 新增 `Cargo.toml` workspace 根 + `crates/validation/` lib crate
 - `validation/run.rs` 和 `scripts/check.rs` 通过 path dependency 引用 validation crate
+- **后续应用**: `deploy.rs` 中的 skill discovery / 分类 / manifest 生成逻辑提取为 `crates/skill-index/` lib crate（同模式）。`deploy.rs` 和 `validation/run.rs` 通过 path dependency 引用。同时修复 `SkillVariant` 枚举缺失 `Kimi` 成员的问题——`classify_skill` 统一了 codex/kimi/reasonix 三 variant 的识别。
 - 全量转换验证通过后，统一删除 11 个 `.sh` 文件（保留 vendored upstream 脚本）
 - rust-script 的 path dependency 缓存策略需验证：修改 workspace crate 后 rust-script 是否会重新编译

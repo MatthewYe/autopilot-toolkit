@@ -41,6 +41,8 @@ pub enum SkillVariant {
     Reasonix,
     /// Codex runtime (allows OpenCode-specific fields).
     Codex,
+    /// Kimi Code runtime (allows OpenCode-specific fields, same as Codex).
+    Kimi,
     /// Runtime-agnostic (rejects OpenCode-specific fields, same as Reasonix).
     Agnostic,
 }
@@ -254,8 +256,8 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
         }
     }
 
-    // Check 3: No opencode fields (skip for Codex variants)
-    if variant != SkillVariant::Codex {
+    // Check 3: No opencode fields (skip for Codex and Kimi variants)
+    if variant != SkillVariant::Codex && variant != SkillVariant::Kimi {
         for &field in OPENCODE_FIELDS {
             if let Some(val) = fields.get(field) {
                 if !val.is_empty() {
@@ -569,6 +571,24 @@ disable-model-invocation: true
         assert!(
             result.passed,
             "codex variant should allow opencode fields, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn kimi_variant_allows_opencode_fields() {
+        // Kimi SKILL.md may legitimately contain compatibility, mode, etc.
+        let content = "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+mode: chat
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Kimi);
+        assert!(
+            result.passed,
+            "kimi variant should allow opencode fields, got: {:?}",
             result.issues
         );
     }

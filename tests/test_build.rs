@@ -442,6 +442,28 @@ mod tests {
             fs::copy(&real_lock, mock_root.join(".skill-lock.json")).unwrap();
         }
 
+        // Copy crates/ (needed by deploy.rs path dep on skill-index)
+        let real_crates = project_root().join("crates");
+        if real_crates.exists() {
+            let status = Command::new("cp")
+                .args([
+                    "-r",
+                    &real_crates.to_string_lossy(),
+                    &mock_root.join("crates").to_string_lossy(),
+                ])
+                .status()
+                .expect("cp crates failed");
+            assert!(status.success());
+        }
+
+        // Copy Cargo.toml + Cargo.lock (needed by workspace resolution)
+        for f in &["Cargo.toml", "Cargo.lock"] {
+            let real = project_root().join(f);
+            if real.exists() {
+                fs::copy(&real, mock_root.join(f)).unwrap();
+            }
+        }
+
         // Copy skills dirs (needed for build scanning)
         let real_skills = project_root().join("skills");
         if real_skills.exists() {

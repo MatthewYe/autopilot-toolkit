@@ -2,6 +2,7 @@
 //! ```cargo
 //! [dependencies]
 //! validation = { path = "../crates/validation" }
+//! skill-index = { path = "../crates/skill-index" }
 //! serde_json = { version = "1", features = ["preserve_order"] }
 //! chrono = "0.4"
 //! ```
@@ -13,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use chrono::Utc;
+use skill_index::classify_skill;
 use validation::{parse_frontmatter, validate_skill_with_variant, SkillVariant, ValidationResult};
 
 /// Write a line into a `String` via `fmt::Write`.  Allocation into a
@@ -110,32 +112,32 @@ fn discover_autopilot(root: &Path, skills: &mut Vec<Skill>) {
     if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    // Check root-level SKILL.md (runtime-agnostic skills)
-                    let root_skill = path.join("SKILL.md");
-                    if root_skill.is_file() {
-                        let relative_path = format!("skills/autopilot/{}/SKILL.md", name);
-                        entries.push((name.to_string(), relative_path, None));
-                    }
-                    // Any subdirectory carrying a SKILL.md is a runtime variant
-                    // source named after the directory (reasonix/, codex/, kimi/, …)
-                    if let Ok(sub_dirs) = fs::read_dir(&path) {
-                        let mut variants: Vec<String> = sub_dirs
-                            .flatten()
-                            .filter(|sub| sub.path().is_dir())
-                            .filter_map(|sub| {
-                                let sub_name = sub.file_name().to_str()?.to_string();
-                                sub.path().join("SKILL.md").is_file().then_some(sub_name)
-                            })
-                            .collect();
-                        variants.sort();
-                        for variant in variants {
-                            let relative_path =
-                                format!("skills/autopilot/{}/{}/SKILL.md", name, variant);
-                            entries.push((name.to_string(), relative_path, Some(variant)));
-                        }
-                    }
+            if !path.is_dir() {
+                continue;
+            }
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+
+            // classify_skill returns (SkillType, variants, codex_agent); we only
+            // need variants for file-path enumeration — type and codex_agent are
+            // handled separately (codex-only dirs with agent.toml are filtered below).
+            let (_skill_type, variants, _codex_agent) = classify_skill(&path);
+
+            // Root-level SKILL.md (agnostic skill or fallback variant)
+            let root_skill = path.join("SKILL.md");
+            if root_skill.is_file() {
+                let relative_path = format!("skills/autopilot/{}/SKILL.md", name);
+                entries.push((name.clone(), relative_path, None));
+            }
+
+            // Known variant subdirectories with SKILL.md
+            for variant in &variants {
+                if path.join(variant).join("SKILL.md").is_file() {
+                    let relative_path =
+                        format!("skills/autopilot/{}/{}/SKILL.md", name, variant);
+                    entries.push((name.clone(), relative_path, Some(variant.clone())));
                 }
             }
         }
@@ -173,6 +175,7 @@ fn validate_all(root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
             let variant = match skill.variant.as_deref() {
                 Some("reasonix") => SkillVariant::Reasonix,
                 Some("codex") => SkillVariant::Codex,
+                Some("kimi") => SkillVariant::Kimi,
                 _ => SkillVariant::Agnostic,
             };
             let validation_result = validate_skill_with_variant(&content, variant);
@@ -263,11 +266,14 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
     wln!(report, "{}", sep);
     wln!(report);
 
-    // Check 1: 0 opencode-specific fields (exclude codex variants)
+    // Check 1: 0 opencode-specific fields (exclude codex and kimi variants)
     let oc_count: usize = skills
         .iter()
         .zip(results.iter())
-        .filter(|(s, _)| s.variant.as_deref() != Some("codex"))
+        .filter(|(s, _)| {
+            let v = s.variant.as_deref();
+            v != Some("codex") && v != Some("kimi")
+        })
         .map(|(_, r)| {
             r.result
                 .issues
@@ -278,11 +284,14 @@ fn generate_report(skills: &[Skill], results: &[SkillResult]) -> String {
         .sum();
     let non_codex_count = skills
         .iter()
-        .filter(|s| s.variant.as_deref() != Some("codex"))
+        .filter(|s| {
+            let v = s.variant.as_deref();
+            v != Some("codex") && v != Some("kimi")
+        })
         .count();
     wln!(
         report,
-        "Check: 0 opencode-specific fields across {} skills ({} non-codex)",
+        "Check: 0 opencode-specific fields across {} skills ({} non-codex/kimi)",
         non_codex_count,
         non_codex_count
     );
@@ -744,8 +753,7 @@ mod tests {
 
     #[test]
     fn discovers_arbitrary_variant_directory_names() {
-        // Discovery must not hardcode runtime names — a future variant source
-        // (e.g. kimi/) is picked up without code changes.
+        // Known variants (codex/kimi/reasonix) are picked up by classify_skill.
         let skills = discover_with_variants(&["kimi"]);
         assert!(
             skills
@@ -902,13 +910,19 @@ mod tests {
                 source: "autopilot".to_string(),
                 variant: Some("codex".to_string()),
             },
+            Skill {
+                name: "kimi-skill".to_string(),
+                relative_path: "skills/autopilot/my-skill/kimi/SKILL.md".to_string(),
+                source: "autopilot".to_string(),
+                variant: Some("kimi".to_string()),
+            },
         ];
-        let results = vec![pass_result(), pass_result()];
+        let results = vec![pass_result(), pass_result(), pass_result()];
         let report = generate_report(&skills, &results);
-        // Should say "1 non-codex" since only reasonix is counted
+        // Should say "1 non-codex/kimi" since only reasonix is counted
         assert!(
-            report.contains("1 non-codex"),
-            "global check should show 1 non-codex, got:\n{}",
+            report.contains("1 non-codex/kimi"),
+            "global check should show 1 non-codex/kimi, got:\n{}",
             report
         );
     }
