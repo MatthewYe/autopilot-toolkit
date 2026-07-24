@@ -135,8 +135,7 @@ fn discover_autopilot(root: &Path, skills: &mut Vec<Skill>) {
             // Known variant subdirectories with SKILL.md
             for variant in &variants {
                 if path.join(variant).join("SKILL.md").is_file() {
-                    let relative_path =
-                        format!("skills/autopilot/{}/{}/SKILL.md", name, variant);
+                    let relative_path = format!("skills/autopilot/{}/{}/SKILL.md", name, variant);
                     entries.push((name.clone(), relative_path, Some(variant.clone())));
                 }
             }

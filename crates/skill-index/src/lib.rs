@@ -131,12 +131,8 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyh
         if let Some(skills_map) = lock.get("skills").and_then(|s| s.as_object()) {
             for (skill_name, skill_entry) in skills_map {
                 // Check that the source directory exists before adding to the index
-                if let Some(skill_path) =
-                    skill_entry.get("skillPath").and_then(|s| s.as_str())
-                {
-                    let src_parent = Path::new(skill_path)
-                        .parent()
-                        .unwrap_or(Path::new(""));
+                if let Some(skill_path) = skill_entry.get("skillPath").and_then(|s| s.as_str()) {
+                    let src_parent = Path::new(skill_path).parent().unwrap_or(Path::new(""));
                     let src_dir = project_root
                         .join("skills")
                         .join("upstream")
