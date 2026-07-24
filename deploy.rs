@@ -1,14 +1,13 @@
 #!/usr/bin/env rust-script
 //! ```cargo
 //! [dependencies]
-//! serde = { version = "1", features = ["derive"] }
 //! serde_json = "1"
 //! anyhow = "1"
+//! skill-index = { path = "crates/skill-index" }
 //! ```
 
 use anyhow::Context;
-use serde::Serialize;
-use std::collections::BTreeMap;
+use skill_index::{classify_skill, discover_skills, generate_manifest, SkillType};
 use std::env;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -186,22 +185,6 @@ fn sync_agent(name: &str, src: &Path, codex_agents_dir: &Path) -> Result<(), any
 
 // ── Build ────────────────────────────────────────────────────────────────
 
-#[derive(Serialize)]
-struct ManifestSkill {
-    #[serde(rename = "type")]
-    skill_type: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    variants: Vec<String>,
-    #[serde(default)]
-    codex_agent: bool,
-}
-
-#[derive(Serialize)]
-struct Manifest {
-    version: String,
-    skills: BTreeMap<String, ManifestSkill>,
-}
-
 fn get_version(project_root: &Path) -> Result<String, anyhow::Error> {
     let output = Command::new("git")
         .args(["-C", &project_root.to_string_lossy(), "rev-parse", "HEAD"])
@@ -265,12 +248,7 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     let autopilot_staging = staging.join(".autopilot");
     std::fs::create_dir_all(&autopilot_staging)?;
 
-    let mut manifest = Manifest {
-        version: version.clone(),
-        skills: BTreeMap::new(),
-    };
-
-    // ── scan autopilot skills ──
+    // ── scan autopilot skills (file copy) ──
     let autopilot_dir = project_root.join("skills").join("autopilot");
     if autopilot_dir.is_dir() {
         for entry in std::fs::read_dir(&autopilot_dir)? {
@@ -281,38 +259,12 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let skill_name = entry.file_name();
             let skill_name_str = skill_name.to_string_lossy().to_string();
             let src_dir = entry.path();
-
-            // Determine type: agnostic (just SKILL.md) vs coupled (variant subdirs)
-            let has_variants = has_variant_dirs(&src_dir);
-
-            if has_variants {
-                let variants = list_variants(&src_dir);
-                let codex_agent = src_dir.join("codex").join("agent.toml").is_file();
-                manifest.skills.insert(
-                    skill_name_str.clone(),
-                    ManifestSkill {
-                        skill_type: "coupled".to_string(),
-                        variants,
-                        codex_agent,
-                    },
-                );
-            } else {
-                manifest.skills.insert(
-                    skill_name_str.clone(),
-                    ManifestSkill {
-                        skill_type: "agnostic".to_string(),
-                        variants: vec![],
-                        codex_agent: false,
-                    },
-                );
-            }
-
             // Copy skill directory into staging
             copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
         }
     }
 
-    // ── scan upstream skills from .skill-lock.json ──
+    // ── scan upstream skills (file copy) ──
     let lock_path = project_root.join(".skill-lock.json");
     if lock_path.is_file() {
         let lock_bytes = std::fs::read_to_string(&lock_path)?;
@@ -321,27 +273,14 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
 
         if let Some(skills_map) = lock.get("skills").and_then(|s| s.as_object()) {
             for (skill_name, skill_entry) in skills_map {
-                // Extract skillPath to locate the source directory
                 if let Some(skill_path) = skill_entry.get("skillPath").and_then(|s| s.as_str()) {
-                    // skillPath is like "skills/engineering/diagnosing-bugs/SKILL.md"
-                    // The source dir is the parent of SKILL.md, relative to skills/upstream/
                     let src_parent = Path::new(skill_path).parent().unwrap_or(Path::new(""));
                     let src_dir = project_root
                         .join("skills")
                         .join("upstream")
                         .join(src_parent);
-
                     if src_dir.is_dir() {
-                        // Copy upstream skill dir (flat name) into staging
                         copy_dir_all(&src_dir, &skills_staging.join(skill_name))?;
-                        manifest.skills.insert(
-                            skill_name.clone(),
-                            ManifestSkill {
-                                skill_type: "upstream".to_string(),
-                                variants: vec![],
-                                codex_agent: false,
-                            },
-                        );
                     } else {
                         eprintln!(
                             "WARNING: upstream skill '{}' source dir missing ({}), skipping",
@@ -354,7 +293,9 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
         }
     }
 
-    // ── write manifest.json ──
+    // ── generate manifest.json (via skill-index lib) ──
+    let skills = discover_skills(project_root)?;
+    let manifest = generate_manifest(&skills, &version);
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
     std::fs::write(autopilot_staging.join("manifest.json"), &manifest_json)?;
 
@@ -448,25 +389,6 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn has_variant_dirs(dir: &Path) -> bool {
-    for variant in &["codex", "kimi", "reasonix"] {
-        if dir.join(variant).is_dir() {
-            return true;
-        }
-    }
-    false
-}
-
-fn list_variants(dir: &Path) -> Vec<String> {
-    let mut variants = Vec::new();
-    for variant in &["codex", "kimi", "reasonix"] {
-        if dir.join(variant).is_dir() {
-            variants.push(variant.to_string());
-        }
-    }
-    variants
-}
-
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -503,9 +425,10 @@ fn dev_all(
             let name = entry.file_name().to_string_lossy().to_string();
             let src_dir = entry.path();
 
-            if has_variant_dirs(&src_dir) {
+            let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
+
+            if skill_type == SkillType::Coupled {
                 // Coupled skill: symlink variant for each detected runtime
-                let variants = list_variants(&src_dir);
                 for variant in &variants {
                     let target_dir = match variant.as_str() {
                         "reasonix" => reasonix_skills_dir,
@@ -536,8 +459,8 @@ fn dev_all(
                     }
                 }
                 // Codex agent.toml
-                let agent_src = src_dir.join("codex").join("agent.toml");
-                if agent_src.is_file() {
+                if codex_agent {
+                    let agent_src = src_dir.join("codex").join("agent.toml");
                     sync_agent(&name, &agent_src, codex_agents_dir)?;
                     count += 1;
                 }

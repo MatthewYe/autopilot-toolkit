@@ -59,7 +59,7 @@ jobs:
         with:
           components: rustfmt
       - name: Check rust-script formatting
-        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs scripts/check.rs scripts/env-check.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs
+        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs scripts/check.rs scripts/env-check.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs
 
   clippy:
     name: clippy
@@ -72,6 +72,8 @@ jobs:
           components: clippy
       - name: Run clippy on validation crate
         run: cargo clippy --manifest-path crates/validation/Cargo.toml --all-targets -- -D warnings
+      - name: Run clippy on skill-index crate
+        run: cargo clippy --manifest-path crates/skill-index/Cargo.toml --all-targets -- -D warnings
 
   clippy-scripts:
     name: clippy-scripts

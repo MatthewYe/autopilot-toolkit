@@ -207,7 +207,7 @@ test_idempotent() {
 
     # Capture mtime of the symlink after first run
     local mtime1
-    mtime1="$(stat -f "%m" "${reasonix_skills}/autopilot-implementer" 2>/dev/null || stat -c "%Y" "${reasonix_skills}/autopilot-implementer")"
+    mtime1="$(stat -c "%Y" "${reasonix_skills}/autopilot-implementer" 2>/dev/null || stat -f "%m" "${reasonix_skills}/autopilot-implementer")"
 
     # Second run
     AGENTS_SKILLS_DIR="${ssot}" \
@@ -226,7 +226,7 @@ test_idempotent() {
 
     # Symlink mtime should be unchanged (wasn't recreated)
     local mtime2
-    mtime2="$(stat -f "%m" "${reasonix_skills}/autopilot-implementer" 2>/dev/null || stat -c "%Y" "${reasonix_skills}/autopilot-implementer")"
+    mtime2="$(stat -c "%Y" "${reasonix_skills}/autopilot-implementer" 2>/dev/null || stat -f "%m" "${reasonix_skills}/autopilot-implementer")"
     assert_eq "symlink mtime unchanged (idempotent)" "${mtime1}" "${mtime2}"
 }
 
