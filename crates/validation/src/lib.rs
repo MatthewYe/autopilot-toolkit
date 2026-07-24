@@ -174,6 +174,37 @@ fn parse_key_value(line: &str) -> Option<(&str, &str)> {
     Some((key, value))
 }
 
+// ── strict YAML check ───────────────────────────────────────────────────────
+
+/// Extract the raw frontmatter block (between the `---` delimiters).
+/// Returns `None` when the delimiters are missing or malformed.
+fn frontmatter_block(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let first = lines.first().map(|s| s.trim_end_matches('\r'))?;
+    if first != "---" {
+        return None;
+    }
+    let end_idx = (1..lines.len()).find(|&i| lines[i].trim_end_matches('\r').trim() == "---")?;
+    Some(lines[1..end_idx].join("\n"))
+}
+
+/// Parse the frontmatter block with a strict YAML parser. Returns an issue
+/// list — empty when the block is valid YAML. The hand-rolled line parser in
+/// `parse_frontmatter` is intentionally lenient; this gate catches frontmatter
+/// that strict parsers (e.g. Kimi Code's skill loader) would reject, such as
+/// unquoted `: ` inside a plain scalar.
+fn strict_yaml_issues(content: &str) -> Vec<String> {
+    let block = match frontmatter_block(content) {
+        Some(b) => b,
+        // Delimiter problems are reported by parse_frontmatter already.
+        None => return Vec::new(),
+    };
+    match serde_yaml::from_str::<serde_yaml::Value>(&block) {
+        Ok(_) => Vec::new(),
+        Err(e) => vec![format!("Invalid YAML frontmatter: {e}")],
+    }
+}
+
 // ── validate_skill ──────────────────────────────────────────────────────────
 
 /// Validate SKILL.md frontmatter content (Reasonix-compatible default).
@@ -201,6 +232,10 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
             };
         }
     };
+
+    // Check 0: frontmatter must be valid YAML (strict parsers reject skills
+    // whose frontmatter only the lenient line parser accepts)
+    issues.extend(strict_yaml_issues(content));
 
     // Check 1: Required fields
     if fields.get("name").is_none_or(|v| v.is_empty()) {
@@ -590,6 +625,47 @@ compatibility: \">=1.0\"
         assert!(
             !result.passed,
             "default validate_skill should reject opencode fields"
+        );
+    }
+
+    // ── Strict YAML frontmatter check ─────────────────────────────────
+
+    #[test]
+    fn fails_when_description_contains_unquoted_colon() {
+        // Real-world regression: autopilot-orchestrator/autopilot-reviewer were
+        // silently dropped by strict YAML parsers because the plain scalar
+        // contained ": " (e.g. "loop: scan → ...").
+        assert_fail(
+            "---
+name: test-skill
+description: Resolution loop: scan → implement → review. Use when processing issues.
+---
+# Test",
+            "YAML",
+        );
+    }
+
+    #[test]
+    fn passes_when_colon_description_is_quoted() {
+        assert_pass(
+            "---
+name: test-skill
+description: \"Resolution loop: scan → implement → review. Use when processing issues.\"
+---
+# Test",
+        );
+    }
+
+    #[test]
+    fn fails_when_frontmatter_is_malformed_yaml() {
+        assert_fail(
+            "---
+name: test-skill
+description: A test
+  bad-indent: true
+---
+# Test",
+            "YAML",
         );
     }
 

@@ -11,10 +11,10 @@ Orchestrate the end-to-end install-or-update workflow for autopilot-toolkit. Run
 ## Input Parameter
 
 ```
---target reasonix|codex   (default: reasonix)
+--target reasonix|codex|kimi   (default: reasonix)
 ```
 
-The `--target` parameter selects the target runtime. All skills are installed into the appropriate directories based on their category (see Step 1b). Principles are always installed to the shared `~/.agents/principles/` regardless of target.
+The `--target` parameter selects the target runtime. All skills are installed into the appropriate directories based on their category (see Step 1b). Principles are always installed to the shared `~/.agents/principles/` regardless of target. Kimi has no agent-exclusive skill directory — its coupled variants install to the shared `~/.agents/skills/` alongside agnostic skills.
 
 ## Scope
 
@@ -32,7 +32,7 @@ Read `$PROJECT_ROOT/.skill-lock.json`, parse the `skills` object keys. Each key 
 $PROJECT_ROOT/skills/upstream/<skillPath directory>
 ```
 
-(install.rs uses the same pattern: `$PROJECT_ROOT/skills/upstream/$skill_path` then `dirname`.)
+(deploy.rs uses the same pattern: `$PROJECT_ROOT/skills/upstream/$skill_path` then `dirname`.)
 
 Use python3 for JSON parsing if available:
 
@@ -92,9 +92,9 @@ Categories:
 | **agnostic** | `SKILL.md` directly in source dir | All upstream skills + `toolkit-setup` + `zoom-out` |
 | **coupled** | `reasonix/SKILL.md` exists | The 4 workflow skills: `audit-autopilot`, `autopilot-implementer`, `autopilot-orchestrator`, `autopilot-reviewer` |
 
-Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`) only when that target has a loadable `SKILL.md` variant.
+Runtime-agnostic skills go to the shared directory (`~/.agents/skills/`). Runtime-coupled skills go to the agent-exclusive directory for the target runtime (`~/.reasonix/skills/` or `~/.codex/skills/`) only when that target has a loadable `SKILL.md` variant — **except Kimi**, whose coupled variants install to the shared directory (`~/.agents/skills/`) via `--shared`, since Kimi Code scans the shared directory and has no agent-exclusive one.
 
-For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; sync their TOML files via `install.rs sync --target codex --agent` instead.
+For `--target codex`, `autopilot-implementer` and `autopilot-reviewer` are custom agents only. Their `codex/` directories contain `agent.toml` without `SKILL.md`, so do not sync them into `~/.codex/skills/`; sync their TOML files via `deploy.rs dev --target codex --agent` instead.
 
 ### Also: Codex custom agents
 
@@ -107,22 +107,24 @@ has_codex_agents() {
 }
 ```
 
-If `.toml` files exist, they will be synced to `~/.codex/agents/<name>.toml` via `install.rs sync --target codex --agent`.
+If `.toml` files exist, they will be synced to `~/.codex/agents/<name>.toml` via `deploy.rs dev --target codex --agent`.
 
 ## Step 2: Diagnose
 
 ### 2a. Determine target directories
 
 ```bash
-TARGET="${1:-reasonix}"   # --target reasonix|codex, default reasonix
+TARGET="${1:-reasonix}"   # --target reasonix|codex|kimi, default reasonix
 
 # Shared skills directory (always ~/.agents/skills/)
 SHARED_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 
-# Agent-exclusive skills directory
+# Agent-exclusive skills directory (kimi has none — coupled variants use SHARED_DIR)
 if [ "$TARGET" = "codex" ]; then
   TARGET_DIR="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
   CODEX_AGENTS_DIR="${CODEX_AGENTS_DIR:-$HOME/.codex/agents}"
+elif [ "$TARGET" = "kimi" ]; then
+  TARGET_DIR="$SHARED_DIR"
 else
   TARGET_DIR="${REASONIX_SKILLS_DIR:-$HOME/.reasonix/skills}"
 fi
@@ -138,15 +140,15 @@ ls -d "$SHARED_DIR" 2>/dev/null || true
 ls -d "$TARGET_DIR" 2>/dev/null || true
 ```
 
-If a directory does not exist, it will be created by `install.rs sync` on first use. Proceed — do not stop.
+If a directory does not exist, it will be created by `deploy.rs dev` on first use. Proceed — do not stop.
 
 ### 2c. Diagnose each expected skill
 
 For each name in the expected set, determine the correct install directory and expected source path based on category:
 
 - **Agnostic**: install to `$SHARED_DIR/<name>`, expected source = `<skill_source_dir>`
-- **Coupled with target `SKILL.md`**: install to `$TARGET_DIR/<name>`, expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/` or `codex/` variant)
-- **Coupled without target `SKILL.md`**: skip skill-state diagnosis for `$TARGET_DIR/<name>`; this is valid for Codex custom-agent-only variants
+- **Coupled with target `SKILL.md`**: install to `$TARGET_DIR/<name>` (for kimi, `$TARGET_DIR` IS `$SHARED_DIR`), expected source = `<skill_source_dir>/<target>` (i.e. `reasonix/`, `codex/`, or `kimi/` variant)
+- **Coupled without target `SKILL.md`**: skip skill-state diagnosis for `$TARGET_DIR/<name>`; this is valid for Codex custom-agent-only variants and for coupled skills that have no kimi variant yet
 
 ```bash
 check_skill_state() {
@@ -198,8 +200,8 @@ Orphaned symlinks: entries in either `$SHARED_DIR` or `$TARGET_DIR` that are sym
 
 Use directory-specific expected names:
 
-- `$SHARED_DIR`: agnostic skill names only
-- `$TARGET_DIR`: coupled skill names whose `<skill_source_dir>/<target>/SKILL.md` exists only
+- `$SHARED_DIR`: agnostic skill names, **plus coupled skill names that have a `kimi/SKILL.md` variant** (kimi variants are legitimate shared-dir residents for every target — never orphan them)
+- `$TARGET_DIR` (skipped for kimi, where `$TARGET_DIR` = `$SHARED_DIR`): coupled skill names whose `<skill_source_dir>/<target>/SKILL.md` exists only
 
 Check BOTH directories:
 
@@ -229,12 +231,13 @@ find_orphans() {
 }
 
 find_orphans "$SHARED_DIR"
-find_orphans "$TARGET_DIR"
+# Skipped for kimi — TARGET_DIR is SHARED_DIR, already scanned above
+[ "$TARGET" != "kimi" ] && find_orphans "$TARGET_DIR"
 ```
 
 ## Step 3: Execute
 
-Use `install.rs` subcommands with the appropriate flags. See `install.rs --help` for full reference.
+Use `deploy.rs` subcommands with the appropriate flags. See `deploy.rs --help` for full reference.
 
 ### Actions by state (per category)
 
@@ -242,9 +245,9 @@ For **agnostic** skills — use `--shared` flag to install to the shared directo
 
 | State | Action | Command |
 |-------|--------|---------|
-| missing | Create symlink | `install.rs sync <name> <src> --shared` |
-| broken | Remove broken + recreate | `install.rs sync <name> <src> --shared` |
-| wrong_target | Replace with correct target | `install.rs sync <name> <src> --shared` |
+| missing | Create symlink | `deploy.rs dev <name> <src> --shared` |
+| broken | Remove broken + recreate | `deploy.rs dev <name> <src> --shared` |
+| wrong_target | Replace with correct target | `deploy.rs dev <name> <src> --shared` |
 | real_dir | **WARN** — do NOT touch | Report conflict, skip |
 | correct | No-op | — |
 
@@ -259,24 +262,24 @@ if [ ! -f "$variant_src/SKILL.md" ]; then
 fi
 ```
 
-When `SKILL.md` exists, use `--target` flag with the variant source path:
+When `SKILL.md` exists, the sync command depends on the target. For `reasonix`/`codex` use `--target`; for `kimi` use `--shared` (Kimi variants live in the shared directory):
 
-| State | Action | Command |
-|-------|--------|---------|
-| missing | Create symlink | `install.rs sync <name> <src>/<target> --target <target>` |
-| broken | Remove broken + recreate | `install.rs sync <name> <src>/<target> --target <target>` |
-| wrong_target | Replace with correct target | `install.rs sync <name> <src>/<target> --target <target>` |
-| real_dir | **WARN** — do NOT touch | Report conflict, skip |
-| correct | No-op | — |
+| State | Action | Command (reasonix/codex) | Command (kimi) |
+|-------|--------|--------------------------|----------------|
+| missing | Create symlink | `deploy.rs dev <name> <src>/<target> --target <target>` | `deploy.rs dev <name> <src>/kimi --shared` |
+| broken | Remove broken + recreate | same as missing | same as missing |
+| wrong_target | Replace with correct target | same as missing | same as missing |
+| real_dir | **WARN** — do NOT touch | Report conflict, skip | Report conflict, skip |
+| correct | No-op | — | — |
 
-Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/audit-autopilot/codex`). Do not run `install.rs sync` for a Codex variant directory that lacks `SKILL.md`.
+Where `<target>` is `reasonix` or `codex`, and `<src>/<target>` is the variant source directory (e.g. `skills/autopilot/audit-autopilot/codex`). Do not run `deploy.rs dev` for a variant directory that lacks `SKILL.md` (e.g. Codex agent-only variants, or coupled skills without a `kimi/` variant on a kimi run).
 
 ### Codex custom agents
 
-For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, sync each as a file symlink (not a copy — `install.rs sync --agent` uses symlinks like skills do):
+For `--target codex`, if a coupled skill has `.toml` agent files in its `codex/` subdirectory, sync each as a file symlink (not a copy — `deploy.rs dev --agent` uses symlinks like skills do):
 
 ```bash
-install.rs sync <agent_name> <skill_source_dir>/codex/agent.toml --target codex --agent
+deploy.rs dev <agent_name> <skill_source_dir>/codex/agent.toml --target codex --agent
 ```
 
 This creates/repairs a file symlink `~/.codex/agents/<agent_name>.toml` → `<skill_source_dir>/codex/agent.toml`. Behaviour mirrors skill sync: creates if missing, replaces if broken/wrong, warns on real-file conflict. Symlinks ensure source updates take effect immediately without re-running setup.
@@ -289,10 +292,10 @@ For each orphaned symlink found in Step 2e, remove it from the appropriate direc
 
 ```bash
 # Agnostic orphan (in shared dir):
-install.rs unlink <name> --shared
+deploy.rs unlink <name> --shared
 
 # Coupled orphan (in target dir):
-install.rs unlink <name> --target <target>
+deploy.rs unlink <name> --target <target>
 ```
 
 This removes the symlink only if its target lies under PROJECT_ROOT (safe).
@@ -302,7 +305,7 @@ This removes the symlink only if its target lies under PROJECT_ROOT (safe).
 Ensure principles symlink (unchanged — always goes to shared location):
 
 ```bash
-install.rs link-principles "$PROJECT_ROOT/principles"
+deploy.rs link-principles "$PROJECT_ROOT/principles"
 ```
 
 This creates/repairs `~/.agents/principles` → `$PROJECT_ROOT/principles`. Behaviour mirrors sync: creates if missing, replaces if broken/wrong, warns on real-dir conflict.
@@ -367,6 +370,17 @@ After a successful setup, the expected directory layout per target:
 ~/.agents/principles → $PROJECT_ROOT/principles
 ```
 
+**`--target kimi`:**
+```
+~/.agents/skills/           # Agnostic skills AND kimi coupled variants (shared)
+├── ... (all agnostic skills, same as reasonix)
+├── autopilot-implementer → .../skills/autopilot/autopilot-implementer/kimi
+├── autopilot-orchestrator → .../skills/autopilot/autopilot-orchestrator/kimi
+├── autopilot-reviewer → .../skills/autopilot/autopilot-reviewer/kimi
+
+~/.agents/principles → $PROJECT_ROOT/principles
+```
+
 Note: `~/.codex/skills/` and `~/.reasonix/skills/` are **agent-exclusive** — only the target runtime scans them. This prevents the Reasonix variant of a coupled skill from being discovered by Codex and vice versa.
 
 ## Report Template
@@ -375,7 +389,7 @@ Output a structured report — list specific skill names, operations, and flags 
 
 ```
 TOOLKIT_SETUP_REPORT:
-Target: reasonix | codex
+Target: reasonix | codex | kimi
 
 ## Expected Set
   N skills (K upstream + A autopilot)
@@ -409,13 +423,14 @@ If any skill remains missing/broken/wrong_target after execute, report as FAIL a
 
 ## Edge Cases
 
-- **Skills directory missing**: Created automatically by `install.rs sync` on first use.
-- **Variant source directory missing**: Report as WARN and skip sync. Do not call `install.rs sync` for a missing target variant.
+- **Skills directory missing**: Created automatically by `deploy.rs dev` on first use.
+- **Variant source directory missing**: Report as WARN and skip sync. Do not call `deploy.rs dev` for a missing target variant.
 - **Codex variant has no SKILL.md**: The `codex/` subdirectory may contain only `.toml` agent files. Skip skill sync explicitly; still sync agents via `sync --target codex --agent`. If a stale toolkit-owned symlink for that name exists in `~/.codex/skills/`, unlink it as an invalid target skill entry.
-- **Real file conflict (agents)**: A real (non-symlink) file at `~/.codex/agents/<name>.toml`. Reported as WARN. install.rs refuses to overwrite real files. User must remove manually before sync can replace it with a symlink.
-- **Real directory conflict**: Reported as WARN. install.rs refuses to overwrite real directories. User must resolve manually.
+- **Real file conflict (agents)**: A real (non-symlink) file at `~/.codex/agents/<name>.toml`. Reported as WARN. deploy.rs refuses to overwrite real files. User must remove manually before sync can replace it with a symlink.
+- **Real directory conflict**: Reported as WARN. deploy.rs refuses to overwrite real directories. User must resolve manually.
 - **No changes needed**: Report "all skills already correct", ALL PASS.
 - **python3 unavailable**: Fall back to grep-based parsing of `.skill-lock.json`. Less robust but functional for standard JSON layouts.
 - **Empty .skill-lock.json skills**: Only autopilot skills in expected set. Valid scenario for minimal installs.
 - **No `--target` argument**: Defaults to `reasonix`. The skill body should treat missing/empty `--target` as `reasonix`.
-- **Both targets on same machine**: Running `--target reasonix` then `--target codex` on the same machine is supported. Agnostic skills are shared (installed once); coupled skills go to separate agent-exclusive directories.
+- **Multiple targets on same machine**: Running `--target reasonix`, `--target codex`, and `--target kimi` on the same machine is supported and they coexist. Agnostic skills are shared (installed once); reasonix/codex coupled skills go to separate agent-exclusive directories; kimi coupled variants live in the shared directory and are recognized as expected residents there by every target's orphan scan.
+- **Kimi variant missing for a coupled skill**: Skip sync for that skill (same rule as Codex agent-only variants). A coupled skill without `kimi/SKILL.md` is simply not installed on a kimi run.

@@ -1,0 +1,22 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install rust-script
+        run: cargo install rust-script
+
+      - name: Build and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: rust-script deploy.rs release

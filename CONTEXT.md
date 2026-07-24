@@ -1,6 +1,6 @@
 # Autopilot Toolkit
 
-A skill-pack repo targeting Reasonix and Codex. Ships 19 skills — 13 upstream (from mattpocock/skills, tracked in `.skill-lock.json`) plus 6 autopilot (custom, living in `skills/autopilot/`). 17 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 4 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
+A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 19 skills — 13 upstream (from mattpocock/skills, tracked in `.skill-lock.json`) plus 6 autopilot (custom, living in `skills/autopilot/`). 15 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 4 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
 
 ## Language
 
@@ -17,7 +17,7 @@ The origin of a toolkit skill — either `upstream` (mattpocock/skills, synced v
 _Avoid_: skill type, skill category
 
 **Runtime-agnostic skill**:
-A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Claude Code, etc.). 17 of 19 toolkit skills fall in this category.
+A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Kimi Code, Claude Code, etc.). 15 of 19 toolkit skills fall in this category.
 _Avoid_: universal skill, portable skill
 
 **Runtime-coupled skill**:
@@ -25,72 +25,63 @@ A skill whose body depends on runtime-specific mechanisms (subagent dispatch, se
 _Avoid_: platform-specific skill, bound skill
 
 **Skill variant**:
-A runtime-specific version of a runtime-coupled skill. Same skill identity (name, purpose), different body — the Reasonix variant uses `run_skill` dispatch and `complete_step`; the Codex variant uses `spawn agent` and `.codex/agents/*.toml` custom agents. Each variant is a separate source file: `SKILL.reasonix.md` or `SKILL.codex.md`.
+A runtime-specific version of a runtime-coupled skill. Same skill identity (name, purpose), different body — the Reasonix variant uses `run_skill` dispatch and `complete_step`; the Codex variant uses `spawn agent` and `.codex/agents/*.toml` custom agents; the Kimi variant uses `Agent`-tool dispatch and reads session traces from `~/.kimi-code/sessions/`. Each variant is a separate subdirectory: `<skill>/reasonix/`, `<skill>/codex/`, or `<skill>/kimi/`.
 _Avoid_: skill version, skill flavor
 
-**Variant source**:
-A file in the source tree that carries a specific runtime variant of a runtime-coupled skill. Named `SKILL.<runtime>.md` (e.g. `SKILL.reasonix.md`, `SKILL.codex.md`) alongside any runtime-agnostic supporting files. The install script selects the matching variant based on `--target`.
-_Avoid_: variant file, alternate body
+**Fallback variant**:
+A vendor-neutral `SKILL.md` at the root of a coupled skill directory. Based on the Kimi variant with Kimi-specific path references removed. Agents without a native variant symlink to this fallback. Describes the generic workflow and instructs the agent to adapt its native dispatch mechanism.
+_Avoid_: generic variant, default variant, universal variant
 
 ## Install model
 
-**Install target**:
-The directory where a skill symlink is deployed. Varies by skill category and runtime target:
+**SSOT** (single source of truth):
+`~/.agents/skills/` — the canonical storage for all autopilot skills after installation. All agnostic skills, all coupled skill variants, and the `.autopilot/` metadata directory live here as real directories (not symlinks to the source repo). Cross-machine sync of `~/.agents/skills/` works because no paths reference the local source tree.
+_Avoid_: install root, skill store
 
-| Skill category | Reasonix target | Codex target |
-|---|---|---|
-| Runtime-agnostic | `~/.agents/skills/<name>/` | `~/.agents/skills/<name>/` |
-| Runtime-coupled | `~/.reasonix/skills/<name>/` | `~/.codex/skills/<name>/` |
+**Bootstrap**:
+The process of creating symlinks from agent-exclusive directories into the SSOT, enabling agents that don't scan `~/.agents/skills/` to discover their variants. Executed by `bootstrap.sh --target <runtime>` after initial install or on demand. Always idempotent — safe to run repeatedly. Driven purely by filesystem conventions (no hardcoded skill lists): scans `~/.agents/skills/` for `<name>/<runtime>/SKILL.md` and creates the corresponding symlink.
+_Avoid_: link step, agent setup
 
-_Avoid_: skills dir, agents skills
+**Bootstrap symlink**:
+A symlink in an agent-exclusive directory (`~/.reasonix/skills/<name>/` or `~/.codex/skills/<name>/`) that resolves into `~/.agents/skills/<name>/<runtime>/`. Also covers Codex custom agent symlinks: `~/.codex/agents/<name>.toml` → `~/.agents/skills/<name>/codex/agent.toml`. Unlike the old repo-symlink model, these are disposable — the SSOT holds the real files.
+_Avoid_: agent symlink, runtime link
 
 **Agent-exclusive skill directory**:
-A skill directory scanned by exactly one agent runtime. `~/.reasonix/skills/` (Reasonix only) and `~/.codex/skills/` (Codex only). Runtime-coupled skill variants are installed here to eliminate cross-agent conflicts without relying on `compatibility` field filtering.
+A skill directory scanned by exactly one agent runtime. `~/.reasonix/skills/` (Reasonix only) and `~/.codex/skills/` (Codex only). Bootstrap symlinks are deployed here to give each runtime its variant without duplicating files in the SSOT. Kimi Code has no such directory — its coupled variants live directly in the shared `~/.agents/skills/`.
 _Avoid_: private skills dir, isolated directory
 
 **Shared skill directory**:
-`~/.agents/skills/` — the Agent Skills standard shared location, scanned by both Reasonix and Codex. Runtime-agnostic skills are installed here so both agents can discover them from a single copy.
+`~/.agents/skills/` — the Agent Skills standard shared location, scanned by Reasonix, Codex, and Kimi Code. Serves double duty: stores all autopilot skills as the SSOT, and is natively scanned by agents for skill discovery.
 _Avoid_: common skills dir, public skills dir
 
 **Custom agent** (Codex only):
-A `.codex/agents/*.toml` file defining a named subagent with model, sandbox, and instruction configuration. The Codex variants of implementer and reviewer ship TOML files that the install script places under `.codex/agents/` (project-local) or `~/.codex/agents/` (user-global). Not a skill — a Codex-native subagent definition.
+A `~/.codex/agents/*.toml` file defining a named subagent with model, sandbox, and instruction configuration. Deployed during bootstrap when a coupled skill has a `<name>/codex/agent.toml` in the SSOT. Not a skill — a Codex-native subagent definition.
 _Avoid_: agent config, worker definition
 
-**Symlink target**:
-The absolute path a symlink in the install target resolves to. For a correct toolkit install, it must match `<PROJECT_ROOT>/skills/upstream/<path>` or `<PROJECT_ROOT>/skills/autopilot/<name>` (variant selection handled at install time).
-_Avoid_: link destination, resolved path
+**Manifest**:
+`~/.agents/skills/.autopilot/manifest.json` — the install ownership document. Lists every directory under `~/.agents/skills/` that belongs to the toolkit, plus metadata about each skill (type: agnostic/coupled/upstream, variants, codex_agent flag). Generated by `deploy.rs pack` during tarball assembly. Used by `install.sh` at upgrade time to determine which directories are safe to remove before extracting a new version.
+_Avoid_: skill list, inventory, lockfile
 
-**Same-name conflict**:
-A symlink at a toolkit skill's name that resolves to a directory outside the toolkit's own source tree — looks present but belongs to a different project. Applies to any install target directory.
-_Avoid_: name collision, shadowing
+**Tarball install**:
+The distribution model: a single `.tar.gz` published to GitHub Releases, containing `skills/`, `.autopilot/` (bootstrap.sh, manifest.json, .version, .skill-lock.json), and `principles/`. Installed via `curl -sSL <url>/install.sh | bash`. Version is the git commit hash, embedded in install.sh and recorded in `.version`. Same version → skip download and re-run bootstrap. New version → remove manifest-listed directories, extract tarball, bootstrap all detected runtimes.
+_Avoid_: package install, release install
 
-**Real directory** (vs symlink):
-A non-symlink directory at an install target path where a symlink is expected. Indicates manual tampering or a competing install method. install.rs must not silently delete it.
-_Avoid_: concrete directory, non-link directory
-
-**Orphaned symlink**:
-A symlink in any install target directory whose target points under PROJECT_ROOT but whose name is not in the expected set. Created when a toolkit skill is removed upstream — `install.rs unlink <name>` cleans it up.
-_Avoid_: leftover symlink, stale symlink, dangling symlink (means broken target, different thing)
-
-**Operational sync**:
-The act of calling `install.rs sync <name> <src>` to bring one skill symlink to its expected state. Skips if already correct, creates if missing, replaces if broken or wrong target, warns and exits non-zero on real-directory conflict. Now accepts `--target reasonix|codex` to select the variant source and install directory.
-_Avoid_: install step, link action
+**Operational sync** (dev-only):
+`deploy.rs dev <name> <src>` — the local development shortcut that creates a symlink from an agent skills directory directly into the source repo, bypassing the tarball entirely. Retained for rapid iteration during development. Not used in production installs.
+_Avoid_: dev link, local install
 
 **Toolkit setup**:
-The end-to-end install-or-update workflow, orchestrated by the `toolkit-setup` skill. Discovers the expected set, diagnoses every skill, computes and executes the minimal set of `sync`/`unlink`/`link-principles` operations for the target runtime, then verifies.
-_Avoid_: selfcheck (that's now only the verification step), install flow
+The end-to-end install-or-update workflow. Production path: `curl | bash` → download tarball → extract → bootstrap. Development path: `deploy.rs dev` per skill (symlink-to-repo). The `toolkit-setup` skill orchestrates both paths.
+_Avoid_: selfcheck, install flow
 
 ## Relationships
 
-- The **expected set** is the union of upstream skills (from `.skill-lock.json`) and autopilot skills (from `skills/autopilot/` scanning)
-- An **install target** entry at `<name>` should be a symlink whose **symlink target** matches the toolkit's source directory for that name
-- A **same-name conflict** is a symlink at the right name with the wrong symlink target
-- A **real directory** at a toolkit skill's name is a conflict of type, not just target
-- An **orphaned symlink** is a toolkit symlink whose name is no longer in the expected set — cleaned by `unlink`
-- **Toolkit setup** invokes **operational sync** per skill, then verifies via a final diagnostic pass
-- Runtime-agnostic skills go to the **shared skill directory**; runtime-coupled skills go to the **agent-exclusive skill directory** for the target runtime
-- A **skill variant** is selected at install time from the **variant source** matching `--target`
-- Codex **custom agent** TOML files are deployed alongside Codex skill variants for implementer and reviewer
+- The **SSOT** (`~/.agents/skills/`) is the canonical home for all toolkit skills; agent-exclusive directories hold only **bootstrap symlinks** into it
+- **Bootstrap** is driven by filesystem convention: `<name>/<runtime>/SKILL.md` exists → create symlink
+- The **fallback variant** (`<name>/SKILL.md`) is used when no native variant exists for the agent's runtime
+- The **manifest** defines ownership: only directories it lists are removed during upgrade
+- **deploy.rs pack** produces the tarball; **deploy.rs dev** provides the dev fast path
+- Upstream skills are tracked in `.skill-lock.json` (source repo) and in `.autopilot/.skill-lock.json` (tarball copy)
 
 ## Autopilot Workflow
 

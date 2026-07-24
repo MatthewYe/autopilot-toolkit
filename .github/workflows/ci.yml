@@ -18,7 +18,22 @@ jobs:
       - name: Run SKILL.md frontmatter validation
         run: rust-script validation/run.rs
 
-  test:
+  test-rust:
+    name: test (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install rust-script
+        run: cargo install rust-script
+      - name: Run deployment contract tests
+        run: rust-script --test tests/test_install.rs
+      - name: Run toolkit-setup tests
+        run: rust-script --test tests/test_toolkit_setup.rs
+
+
+  test-shell:
     name: test
     runs-on: ubuntu-latest
     steps:
@@ -27,8 +42,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install rust-script
         run: cargo install rust-script
-      - name: Run install.rs integration tests
-        run: rust-script tests/test_install.rs
+      - name: Build tarball
+        run: rust-script deploy.rs pack
+      - name: Run bootstrap tests
+        run: bash tests/test_bootstrap.sh
+      - name: Run install tests
+        run: bash tests/test_install.sh
 
   fmt:
     name: fmt
@@ -39,10 +58,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check workspace formatting
-        run: cargo fmt --check
       - name: Check rust-script formatting
-        run: rustfmt --check install.rs validation/run.rs scripts/check.rs scripts/env-check.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs
+        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs scripts/check.rs scripts/env-check.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs
 
   clippy:
     name: clippy
@@ -53,8 +70,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Run clippy (warnings as errors)
-        run: cargo clippy -- -D warnings
+      - name: Run clippy on validation crate
+        run: cargo clippy --manifest-path crates/validation/Cargo.toml --all-targets -- -D warnings
 
   clippy-scripts:
     name: clippy-scripts
@@ -70,7 +87,7 @@ jobs:
       - name: Run clippy on rust-script files
         run: |
           set -e
-          for f in install.rs validation/run.rs scripts/check.rs scripts/env-check.rs; do
+          for f in deploy.rs validation/run.rs scripts/check.rs scripts/env-check.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)
             rust-script --package --pkg-path "$tmpdir" "$f"
@@ -78,7 +95,7 @@ jobs:
             rm -rf "$tmpdir"
             echo "::endgroup::"
           done
-          for f in tests/test_install.rs tests/test_toolkit_setup.rs \
+          for f in tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs \
                    tests/test_check.rs tests/test_github_verify.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)

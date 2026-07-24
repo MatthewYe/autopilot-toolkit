@@ -94,10 +94,16 @@ fn read_codex_agent(name: &str) -> String {
 
 fn frontmatter_value(markdown: &str, key: &str) -> String {
     let needle = format!("{key}: ");
-    markdown
+    let raw = markdown
         .lines()
         .find_map(|line| line.strip_prefix(&needle))
-        .unwrap_or_else(|| panic!("frontmatter key {key} not found"))
+        .unwrap_or_else(|| panic!("frontmatter key {key} not found"));
+    // A YAML double/single-quoted scalar parses to its inner text — compare
+    // parsed values, not raw source text.
+    raw.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .or_else(|| raw.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+        .unwrap_or(raw)
         .to_string()
 }
 

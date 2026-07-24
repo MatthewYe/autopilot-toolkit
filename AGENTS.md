@@ -1,18 +1,24 @@
 # autopilot-toolkit
 
-19 Reasonix skills — 13 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Deployed via symlinks to `~/.agents/skills/`.
+19 skills for Reasonix, Codex, and Kimi Code — 13 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources.
 
 ## Project
 
-A skill-pack repo for Reasonix. The "code" is SKILL.md files — markdown with YAML frontmatter (`name`, `description`, optional `runAs`/`allowed-tools`). There is no runtime language; scaffolding and validation are bash. The upstream subtree (`skills/upstream/`) is a vendored snapshot of [mattpocock/skills](https://github.com/mattpocock/skills). The autopilot skills (`skills/autopilot/`) are custom additions for the agent workflow loop.
+A skill-pack repo. The "code" is SKILL.md files — markdown with YAML frontmatter. Tooling (install, validation, tests) is Rust via `rust-script`. The upstream subtree (`skills/upstream/`) is a vendored snapshot of [mattpocock/skills](https://github.com/mattpocock/skills). The autopilot skills (`skills/autopilot/`) are custom additions for the agent workflow loop.
 
 ## Commands
 
 ```bash
-bash install.sh sync <name> <src> # atomic symlink sync (subcommand)
-bash tests/test_install.sh        # integration tests for install.sh
-bash validation/run.sh            # validate all 19 SKILL.md frontmatter files
-bash validation/validate.test.sh  # unit tests for the validation library
+rust-script deploy.rs dev <name> <src> [--target reasonix|codex] [--shared] [--agent]
+rust-script deploy.rs unlink <name> [--target ...] [--shared]
+rust-script deploy.rs link-principles <src>
+rust-script validation/run.rs            # validate all SKILL.md frontmatter (all variants)
+rust-script --test validation/run.rs     # runner unit tests
+cargo test                               # validation library unit tests
+rust-script --test tests/test_install.rs # integration tests for deploy.rs
+rust-script --test tests/test_toolkit_setup.rs
+rust-script --test tests/test_github_verify.rs
+rust-script --test tests/test_check.rs
 ```
 
 No build step — skills are consumed directly from the source tree by the agent runtime.
@@ -27,35 +33,45 @@ skills/
 │   └── misc/          # git-guardrails-claude-code, scaffold-exercises, …
 ├── autopilot/         # 6 custom autopilot skills
 │   ├── autopilot-orchestrator/   # scans .scratch/ + GitHub Issues for ready work
-│   ├── autopilot-implementer/    # TDD-driven implementation agent
+│   │   ├── reasonix/  # per-runtime variant sources (runtime-coupled skills)
+│   │   ├── codex/
+│   │   ├── kimi/
+│   │   └── references/          # shared reference docs
+│   ├── autopilot-implementer/    # TDD-driven implementation agent (same variant layout)
 │   ├── autopilot-reviewer/       # four-axis review (behavior, TDD, code, plan)
 │   ├── audit-autopilot/          # post-hoc fidelity audit of agent execution
-│   ├── toolkit-setup/            # install/update orchestration
-│   └── zoom-out/                 # higher-level perspective
-install.sh             # symlink deployment to ~/.agents/skills/
-.skill-lock.json       # upstream skill manifest (name, path, hashes)
-validation/            # frontmatter validation library + runner
-tests/                 # integration tests for install.sh
+│   ├── toolkit-setup/            # install/update orchestration (agnostic)
+│   └── zoom-out/                 # higher-level perspective (agnostic)
+deploy.rs             # deploy tool (dev symlink + pack/release) (--target reasonix|codex, --shared → ~/.agents/skills/)
+crates/validation/     # frontmatter validation library (strict YAML + field checks)
+validation/run.rs      # validation runner — discovers all variant sources
+tests/                 # rust-script integration tests
 docs/
 ├── agents/            # issue-tracker, triage-labels, domain config
-├── issues/            # archived issue docs
-├── prd/               # PRD-0001
+├── issues/            # local issue docs
+├── prd/               # PRD-0001..0003
 └── reports/           # smoke-test results
 .scratch/              # local-markdown issue tracker (legacy)
 ```
 
+## Install model
+
+- **Runtime-agnostic skills** (upstream 13 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
+- **Runtime-coupled skills** (the 4 workflow skills) ship variant sources per runtime: `reasonix/` → `~/.reasonix/skills/` (`--target reasonix`), `codex/` → `~/.codex/skills/` (`--target codex`, plus `agent.toml` custom agents for implementer/reviewer), `kimi/` → `~/.agents/skills/` (`--shared`; Kimi Code has no agent-exclusive directory).
+- `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
+
 ## Conventions
 
-- **SKILL.md frontmatter** — every skill opens with `---`-delimited YAML. Required: `name` (alphanumeric, 1-64 chars, hyphens/underscores/dots ok), `description` (≤120 chars). Optional: `runAs` (`inline`|`subagent`), `allowed-tools` (required when `runAs: subagent`).
-- **Bash scripts** — `#!/usr/bin/env bash`, `set -euo pipefail`. Section dividers: `# ── name ──`. Variable naming: `UPPER_CASE` for constants, `lower_case` for locals.
-- **Tests** — assert-style: `assert "description" "condition"` and `assert_eq "desc" "expected" "actual"` with PASS/FAIL counters. Source `validation/validate.sh` for the `validate_skill` library.
-- **Issue tracking** — primary: GitHub Issues on `matthewye/autopilot-toolkit` (see docs/agents/). Legacy local-markdown tracker under `.scratch/` is historical.
+- **SKILL.md frontmatter** — every skill opens with `---`-delimited YAML that must parse under a **strict** YAML parser (quote values containing `: `). Required: `name` (alphanumeric, 1-64 chars, hyphens/underscores/dots ok), `description`. Reasonix variants may add `runAs` (`inline`|`subagent`) + `allowed-tools` (required when `runAs: subagent`); kimi variants carry only `name` + `description`.
+- **Rust scripts** — `rust-script` with a `//! ```cargo` dependency header. Section dividers: `# ── name ──`.
+- **Tests** — `#[test]` fns run via `rust-script --test`; integration tests drive `install.rs` through `std::process::Command` with temp-dir env overrides (`AGENTS_SKILLS_DIR` etc.).
+- **Issue tracking** — local markdown tracker in `docs/issues/` + PRDs in `docs/prd/` (GitHub Issues configured but `gh` not currently available on this machine).
 
 ## Agent skills
 
 ### Issue tracker
 
-GitHub Issues on `matthewye/autopilot-toolkit`; external PRs are a triage surface. See `docs/agents/issue-tracker.md`.
+Local tracker: `docs/issues/` (numbered, `Parent` → PRD in `docs/prd/`). GitHub Issues on `neilc6321/autopilot-toolkit` is the configured remote tracker (see `docs/agents/issue-tracker.md`), used when `gh` is available.
 
 ### Triage labels
 

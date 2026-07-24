@@ -1,40 +1,64 @@
 # autopilot-toolkit
 
-19 skills for reasonix — upstream engineering/productivity skills plus autopilot workflow (orchestrator → implementer → reviewer). Deployed via symlinks to `~/.agents/skills/`.
+19 skills for Reasonix, Codex, and Kimi Code — 13 upstream engineering/productivity skills plus 6 autopilot workflow skills. Self-contained tarball distribution with one-command install.
 
-## Prerequisites
-
-The Rust-based installer (`install.rs`) requires [rust-script](https://github.com/fornwall/rust-script):
+## Install
 
 ```bash
-brew install rust-script
-# or: cargo install rust-script
+curl -sSL https://github.com/neilc6321/autopilot-toolkit/releases/latest/download/install.sh | bash
 ```
 
-## Installation
+Installs all skills to `~/.agents/skills/`, auto-detects your agent runtimes and configures symlinks.
 
-First-time setup — clone the repository and run toolkit setup:
+## Uninstall
 
 ```bash
-git clone git@github.com:matthewye/autopilot-toolkit.git && cd autopilot-toolkit && /toolkit-setup
+curl -sSL https://github.com/neilc6321/autopilot-toolkit/releases/latest/download/uninstall.sh | bash
+```
+
+Or locally:
+
+```bash
+bash ~/.agents/skills/.autopilot/uninstall.sh
+```
+
+## Development
+
+Requires [rust-script](https://github.com/fornwall/rust-script):
+
+```bash
+brew install rust-script   # or: cargo install rust-script
+```
+
+Clone and symlink skills for local iteration:
+
+```bash
+git clone git@github.com:neilc6321/autopilot-toolkit.git
+cd autopilot-toolkit
+rust-script deploy.rs dev      # symlink all skills from source tree
+```
+
+Iterate on skill files, then test changes in your agent. When done:
+
+```bash
+rust-script deploy.rs dev-clean   # remove all dev symlinks
 ```
 
 ## Commands
 
-Manage skill symlinks with `install.rs`:
-
-```bash
-./install.rs sync <name> <src>       # symlink ~/.agents/skills/<name> → <src>
-./install.rs unlink <name>           # remove a toolkit-owned symlink
-./install.rs link-principles <src>   # symlink ~/.agents/principles → <src>
+```
+deploy.rs                        pack + release (no-args shortcut)
+deploy.rs dev                    symlink all skills into agent dirs
+deploy.rs dev-clean              remove all dev symlinks
+deploy.rs pack                   build tarball into dist/
+deploy.rs release                push tarball to GitHub Releases
+deploy.rs link-principles <src>  symlink ~/.agents/principles
 ```
 
-## Updating
+## How it works
 
-Pull the latest changes and re-run toolkit setup to sync skills:
+Skills are YAML-frontmatter markdown files (`SKILL.md`) consumed directly by agents. The install tarball deploys them to `~/.agents/skills/` as real files — no symlinks to a source repo, so cross-machine sync works. Agents that need skills in their own directory (Reasonix, Codex) get bootstrap symlinks created automatically.
 
-```bash
-cd autopilot-toolkit && git pull && /toolkit-setup
-```
+Release versioning uses git commit hashes. Each `deploy.rs` run builds a tarball, creates a lightweight tag, and pushes to GitHub Releases. The install URL never changes — `/latest/download/` always points to the newest release.
 
-Full skill inventory and project details: [`docs/prd/0001-autopilot-toolkit.md`](docs/prd/0001-autopilot-toolkit.md).
+Full details: [PRD 0004](docs/prd/0004-self-contained-tarball-install.md), [ADR 0008](docs/adr/0008-self-contained-tarball-install.md).

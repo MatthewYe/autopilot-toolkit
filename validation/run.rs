@@ -118,21 +118,23 @@ fn discover_autopilot(root: &Path, skills: &mut Vec<Skill>) {
                         let relative_path = format!("skills/autopilot/{}/SKILL.md", name);
                         entries.push((name.to_string(), relative_path, None));
                     }
-                    // Check reasonix variant
-                    let reasonix_skill = path.join("reasonix/SKILL.md");
-                    if reasonix_skill.is_file() {
-                        let relative_path = format!("skills/autopilot/{}/reasonix/SKILL.md", name);
-                        entries.push((
-                            name.to_string(),
-                            relative_path,
-                            Some("reasonix".to_string()),
-                        ));
-                    }
-                    // Check codex variant
-                    let codex_skill = path.join("codex/SKILL.md");
-                    if codex_skill.is_file() {
-                        let relative_path = format!("skills/autopilot/{}/codex/SKILL.md", name);
-                        entries.push((name.to_string(), relative_path, Some("codex".to_string())));
+                    // Any subdirectory carrying a SKILL.md is a runtime variant
+                    // source named after the directory (reasonix/, codex/, kimi/, …)
+                    if let Ok(sub_dirs) = fs::read_dir(&path) {
+                        let mut variants: Vec<String> = sub_dirs
+                            .flatten()
+                            .filter(|sub| sub.path().is_dir())
+                            .filter_map(|sub| {
+                                let sub_name = sub.file_name().to_str()?.to_string();
+                                sub.path().join("SKILL.md").is_file().then_some(sub_name)
+                            })
+                            .collect();
+                        variants.sort();
+                        for variant in variants {
+                            let relative_path =
+                                format!("skills/autopilot/{}/{}/SKILL.md", name, variant);
+                            entries.push((name.to_string(), relative_path, Some(variant)));
+                        }
                     }
                 }
             }
@@ -712,6 +714,71 @@ mod tests {
     }
 
     // ── Variant scanning tests ──────────────────────────────────────────
+
+    /// Build a temp fixture tree with one autopilot skill carrying the given
+    /// variant directory names, run discovery against it, and clean up.
+    fn discover_with_variants(variant_dirs: &[&str]) -> Vec<Skill> {
+        let unique = format!(
+            "run-rs-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let root = std::env::temp_dir().join(unique);
+        let skill_dir = root.join("skills/autopilot/fixture-skill");
+        for dir in variant_dirs {
+            fs::create_dir_all(skill_dir.join(dir)).unwrap();
+            fs::write(
+                skill_dir.join(dir).join("SKILL.md"),
+                "---\nname: fixture-skill\ndescription: fixture\n---\n",
+            )
+            .unwrap();
+        }
+        let mut skills = Vec::new();
+        discover_autopilot(&root, &mut skills);
+        let _ = fs::remove_dir_all(&root);
+        skills
+    }
+
+    #[test]
+    fn discovers_arbitrary_variant_directory_names() {
+        // Discovery must not hardcode runtime names — a future variant source
+        // (e.g. kimi/) is picked up without code changes.
+        let skills = discover_with_variants(&["kimi"]);
+        assert!(
+            skills
+                .iter()
+                .any(|s| s.name == "fixture-skill" && s.variant.as_deref() == Some("kimi")),
+            "should discover kimi variant, got: {:?}",
+            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn variant_directories_without_skill_md_are_ignored() {
+        // e.g. codex/ dirs that only carry agent.toml are not skill variants.
+        let root_fixture = {
+            let unique = format!("run-rs-test-empty-{}", std::process::id());
+            let root = std::env::temp_dir().join(unique);
+            let codex_dir = root.join("skills/autopilot/fixture-skill/codex");
+            fs::create_dir_all(&codex_dir).unwrap();
+            fs::write(codex_dir.join("agent.toml"), "name = \"fixture\"\n").unwrap();
+            let mut skills = Vec::new();
+            discover_autopilot(&root, &mut skills);
+            let _ = fs::remove_dir_all(&root);
+            skills
+        };
+        assert!(
+            root_fixture.is_empty(),
+            "variant dir without SKILL.md must not be discovered, got: {:?}",
+            root_fixture
+                .iter()
+                .map(|s| &s.relative_path)
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn discovers_reasonix_variants_for_coupled_skills() {

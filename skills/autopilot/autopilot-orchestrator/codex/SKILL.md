@@ -1,6 +1,6 @@
 ---
 name: autopilot-orchestrator
-description: Codex autopilot loop: scan -> implement -> review -> retry via spawn agent, then global meta-review.
+description: "Codex autopilot loop: scan -> implement -> review -> retry via spawn agent, then global meta-review."
 ---
 
 Before anything else, read `~/.agents/principles/karpathy.md`. Apply Principle 1 "Think Before Analyzing" variant plus Principles 2 and 4.

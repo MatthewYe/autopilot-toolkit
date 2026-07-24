@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="__VERSION__"
+
+# Env var overrides for testability
+SKILLS_DIR="${AGENTS_SKILLS_DIR:-${HOME}/.agents/skills}"
+PRINCIPLES_DIR="${AGENTS_PRINCIPLES_DIR:-${HOME}/.agents/principles}"
+
+AUTOPILOT_DIR="${SKILLS_DIR}/.autopilot"
+BOOTSTRAP_SCRIPT="${AUTOPILOT_DIR}/bootstrap.sh"
+MANIFEST_FILE="${AUTOPILOT_DIR}/manifest.json"
+VERSION_FILE="${AUTOPILOT_DIR}/.version"
+
+# ── usage ────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+Usage: install.sh [--version <hash>] [--tarball <path>]
+
+Install autopilot-toolkit skills into ~/.agents/skills/.
+
+Options:
+  --version <hash>   Install a specific version (default: ${VERSION})
+  --tarball <path>   Use a local tarball instead of downloading
+EOF
+    exit 1
+}
+
+# ── detect runtimes and bootstrap ────────────────────────────────────────
+
+detect_and_bootstrap() {
+    # Run bootstrap.sh in the same environment so it inherits env var overrides
+    if [[ -d "${HOME}/.reasonix" ]]; then
+        echo "Bootstrapping Reasonix..."
+        REASONIX_SKILLS_DIR="${REASONIX_SKILLS_DIR:-${HOME}/.reasonix/skills}" "${BOOTSTRAP_SCRIPT}" --target reasonix
+    fi
+    if [[ -d "${HOME}/.codex" ]]; then
+        echo "Bootstrapping Codex..."
+        CODEX_SKILLS_DIR="${CODEX_SKILLS_DIR:-${HOME}/.codex/skills}" CODEX_AGENTS_DIR="${CODEX_AGENTS_DIR:-${HOME}/.codex/agents}" "${BOOTSTRAP_SCRIPT}" --target codex
+    fi
+}
+
+# ── parse args ───────────────────────────────────────────────────────────
+
+REQUESTED_VERSION="${VERSION}"
+LOCAL_TARBALL=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --version)
+            shift
+            REQUESTED_VERSION="$1"
+            ;;
+        --tarball)
+            shift
+            LOCAL_TARBALL="$1"
+            ;;
+        --help|-h)
+            usage
+            ;;
+        *)
+            echo "ERROR: unknown argument: $1"
+            usage
+            ;;
+    esac
+    shift
+done
+
+RELEASE_URL="__REPO_URL__/releases/latest/download/autopilot-toolkit.tar.gz"
+
+# ── check if already installed ───────────────────────────────────────────
+
+if [[ -f "${VERSION_FILE}" ]]; then
+    INSTALLED_VERSION="$(cat "${VERSION_FILE}")"
+    if [[ "${INSTALLED_VERSION}" == "${REQUESTED_VERSION}" ]]; then
+        echo "autopilot-toolkit ${VERSION:0:8} is already installed."
+        echo "Re-verifying bootstrap symlinks..."
+        if [[ -x "${BOOTSTRAP_SCRIPT}" ]]; then
+            detect_and_bootstrap
+        fi
+        echo "Done."
+        exit 0
+    fi
+    echo "Upgrading from ${INSTALLED_VERSION:0:8} to ${VERSION:0:8}..."
+fi
+
+# ── download tarball ─────────────────────────────────────────────────────
+
+cleanup_tarball() {
+    if [[ -n "${TARBALL_TMP:-}" && -f "${TARBALL_TMP}" ]]; then
+        rm -f "${TARBALL_TMP}"
+    fi
+}
+trap cleanup_tarball EXIT
+
+if [[ -n "${LOCAL_TARBALL}" ]]; then
+    TARBALL_PATH="${LOCAL_TARBALL}"
+else
+    TARBALL_TMP="$(mktemp "/tmp/autopilot-toolkit-XXXXXX.tar.gz")"
+    echo "Downloading autopilot-toolkit..."
+    if command -v curl &>/dev/null; then
+        curl -fsSL "${RELEASE_URL}" -o "${TARBALL_TMP}"
+    elif command -v wget &>/dev/null; then
+        wget -q "${RELEASE_URL}" -O "${TARBALL_TMP}"
+    else
+        echo "ERROR: curl or wget is required to download the tarball."
+        exit 1
+    fi
+    TARBALL_PATH="${TARBALL_TMP}"
+fi
+
+# ── remove old toolkit-owned directories ─────────────────────────────────
+
+if [[ -f "${MANIFEST_FILE}" ]]; then
+    echo "Removing previous toolkit-owned directories..."
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json, sys, shutil, os
+with open('${MANIFEST_FILE}') as f:
+    manifest = json.load(f)
+for name in manifest.get('skills', {}):
+    d = os.path.join('${SKILLS_DIR}', name)
+    if os.path.isdir(d) or os.path.islink(d):
+        shutil.rmtree(d)
+        print(f'  removed {name}')
+" || true
+    fi
+    rm -rf "${AUTOPILOT_DIR}"
+fi
+
+# ── extract tarball ──────────────────────────────────────────────────────
+
+echo "Extracting..."
+mkdir -p "${SKILLS_DIR}"
+tar -xzf "${TARBALL_PATH}" -C "${SKILLS_DIR}"
+
+# Tarball bundles skills under skills/ — move them up to SKILLS_DIR
+if [[ -d "${SKILLS_DIR}/skills" ]]; then
+    for skill_dir in "${SKILLS_DIR}/skills"/*/; do
+        skill_name="$(basename "${skill_dir}")"
+        mv -f "${skill_dir}" "${SKILLS_DIR}/${skill_name}"
+    done
+    rmdir "${SKILLS_DIR}/skills"
+fi
+
+# ── deploy principles ────────────────────────────────────────────────────
+
+if [[ -d "${SKILLS_DIR}/principles" && "${SKILLS_DIR}/principles" != "${PRINCIPLES_DIR}" ]]; then
+    echo "Deploying principles..."
+    rm -rf "${PRINCIPLES_DIR}"
+    cp -r "${SKILLS_DIR}/principles" "${PRINCIPLES_DIR}"
+fi
+
+if [[ -x "${BOOTSTRAP_SCRIPT}" ]]; then
+    detect_and_bootstrap
+fi
+
+echo ""
+echo "autopilot-toolkit ${REQUESTED_VERSION} installed successfully."
+echo "  Skills:  ${SKILLS_DIR}"
+echo "  Version: ${REQUESTED_VERSION}"
