@@ -48,6 +48,17 @@ assert_file() {
     fi
 }
 
+assert_executable() {
+    local label="$1" path="$2"
+    if [[ -x "${path}" && -f "${path}" ]]; then
+        echo "  PASS: ${label}"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: ${label} — ${path} is not an executable file"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 assert_dir() {
     local label="$1" path="$2"
     if [[ -d "${path}" ]]; then
@@ -90,6 +101,16 @@ assert_not_exists() {
     fi
 }
 
+make_path_without_python() {
+    local bin_dir="$1"
+    mkdir -p "${bin_dir}"
+    for tool in bash basename cat cp ln mkdir mv rm rmdir tar uname; do
+        local tool_path
+        tool_path="$(command -v "${tool}")"
+        ln -sf "${tool_path}" "${bin_dir}/${tool}"
+    done
+}
+
 # Use the full tarball (built from the pipeline).
 # Extract install.sh from it for testing.
 extract_install_sh() {
@@ -113,6 +134,16 @@ build_mock_tarball() {
     cat > "${staging}/.autopilot/manifest.json" << JSONEOF
 {
   "version": "${version}",
+  "executables": {
+    "distill": {
+      "platforms": {
+        "darwin-arm64": "bin/distill-artifacts/darwin-arm64/distill",
+        "darwin-x64": "bin/distill-artifacts/darwin-x64/distill",
+        "linux-arm64": "bin/distill-artifacts/linux-arm64/distill",
+        "linux-x64": "bin/distill-artifacts/linux-x64/distill"
+      }
+    }
+  },
   "skills": {
     "toolkit-setup": {"type": "agnostic"},
     "autopilot-implementer": {"type": "coupled", "variants": ["reasonix", "codex", "kimi"], "codex_agent": true},
@@ -126,6 +157,16 @@ JSONEOF
 
     # Copy install.sh from the full tarball
     mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${staging}/.autopilot/install.sh"
+    cp "${PROJECT_ROOT}/templates/uninstall.sh" "${staging}/.autopilot/uninstall.sh"
+
+    for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+        mkdir -p "${staging}/.autopilot/bin/distill-artifacts/${platform}"
+        cat > "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill" << SHEOF
+#!/usr/bin/env bash
+echo "distill ${platform} ${version}"
+SHEOF
+        chmod +x "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill"
+    done
 
     # Add some mock skill directories
     mkdir -p "${staging}/skills/toolkit-setup"
@@ -147,6 +188,41 @@ JSONEOF
 
     # Create tarball
     tar -czf "${tarball_path}" -C "${staging}" .
+}
+
+# ── Test: uninstall removes owned executable artifacts only ──────────────
+
+test_uninstall_removes_distill_artifacts_and_preserves_user_skills() {
+    echo ""
+    echo "=== test: uninstall removes Distill artifacts and preserves user skills ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-uninstall-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-uninstall-001" > /dev/null 2>&1
+
+    mkdir -p "${skills_dir}/user-owned"
+    echo "# user" > "${skills_dir}/user-owned/SKILL.md"
+    assert_executable "distill installed before uninstall" "${skills_dir}/.autopilot/bin/distill"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+        bash "${skills_dir}/.autopilot/uninstall.sh" > /dev/null 2>&1
+
+    assert_not_exists ".autopilot removed by uninstall" "${skills_dir}/.autopilot"
+    assert_not_exists "toolkit skill removed by uninstall" "${skills_dir}/toolkit-setup"
+    assert_dir "user skill survives uninstall" "${skills_dir}/user-owned"
+    assert_file "user skill file survives uninstall" "${skills_dir}/user-owned/SKILL.md"
 }
 
 # ── Test: fresh install extracts skills and deploys principles ───────────
@@ -183,6 +259,7 @@ test_fresh_install_extraction() {
     assert_file ".autopilot/.version exists" "${skills_dir}/.autopilot/.version"
     assert_file ".autopilot/manifest.json exists" "${skills_dir}/.autopilot/manifest.json"
     assert_file ".autopilot/bootstrap.sh exists" "${skills_dir}/.autopilot/bootstrap.sh"
+    assert_executable "selected distill executable installed" "${skills_dir}/.autopilot/bin/distill"
 
     local installed_version
     installed_version="$(cat "${skills_dir}/.autopilot/.version")"
@@ -190,6 +267,98 @@ test_fresh_install_extraction() {
 
     # Principles deployed
     assert_file "principles/karpathy.md deployed" "${principles_dir}/karpathy.md"
+}
+
+# ── Test: platform-selected Distill executable ──────────────────────────
+
+test_distill_platform_selection() {
+    echo ""
+    echo "=== test: platform-selected Distill executable ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-platform-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="linux-x64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-platform-001" > /dev/null 2>&1
+
+    assert_executable "distill shim exists at stable path" "${skills_dir}/.autopilot/bin/distill"
+    assert_eq "distill selects linux-x64 artifact" "distill linux-x64 distill-platform-001" "$("${skills_dir}/.autopilot/bin/distill")"
+    assert_file "distill target path exported" "${skills_dir}/.autopilot/distill.env"
+    grep -q "AUTOPILOT_DISTILL_BIN=" "${skills_dir}/.autopilot/distill.env" \
+        && echo "  PASS: distill.env exports AUTOPILOT_DISTILL_BIN" && PASS=$((PASS + 1)) \
+        || { echo "  FAIL: distill.env should export AUTOPILOT_DISTILL_BIN"; FAIL=$((FAIL + 1)); }
+}
+
+# ── Test: Distill selection does not require Python ─────────────────────
+
+test_distill_platform_selection_without_python() {
+    echo ""
+    echo "=== test: platform-selected Distill executable without python ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+    local no_python_bin="${TMP_BASE}/no-python-bin"
+
+    build_mock_tarball "${mock_tarball}" "distill-no-python-001"
+    make_path_without_python "${no_python_bin}"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    PATH="${no_python_bin}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="linux-arm64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-no-python-001" > /dev/null 2>&1
+
+    assert_executable "distill shim exists without python" "${skills_dir}/.autopilot/bin/distill"
+    assert_eq "distill selects linux-arm64 without python" "distill linux-arm64 distill-no-python-001" "$("${skills_dir}/.autopilot/bin/distill")"
+}
+
+# ── Test: unsupported platform fails before installing wrong executable ─
+
+test_distill_unsupported_platform() {
+    echo ""
+    echo "=== test: unsupported platform fails before installing wrong executable ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-unsupported-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    local output
+    if output="$(HOME="${home}" \
+        AGENTS_SKILLS_DIR="${skills_dir}" \
+        AUTOPILOT_PLATFORM_OVERRIDE="sunos-sparc" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-unsupported-001" 2>&1)"; then
+        echo "  FAIL: unsupported platform should fail"
+        FAIL=$((FAIL + 1))
+    else
+        echo "${output}" | grep -q "unsupported platform" \
+            && echo "  PASS: unsupported platform error is clear" && PASS=$((PASS + 1)) \
+            || { echo "  FAIL: should mention unsupported platform, got: ${output}"; FAIL=$((FAIL + 1)); }
+    fi
+
+    assert_not_exists "no wrong-platform distill shim installed" "${skills_dir}/.autopilot/bin/distill"
 }
 
 # ── Test: install.sh --version overrides embedded version ────────────────
@@ -281,6 +450,10 @@ test_upgrade() {
         bash "${install_sh}" --tarball "${old_tarball}" --version "old-version" > /dev/null 2>&1
 
     assert_eq "old version installed" "old-version" "$(cat "${skills_dir}/.autopilot/.version")"
+    assert_eq "old distill executable selected" "distill darwin-arm64 old-version" "$("${skills_dir}/.autopilot/bin/distill")"
+
+    mkdir -p "${skills_dir}/user-owned"
+    echo "# user skill" > "${skills_dir}/user-owned/SKILL.md"
 
     # Install new version
     local output
@@ -290,6 +463,11 @@ test_upgrade() {
     echo "${output}" | grep -q "Upgrading" && echo "  PASS: reports upgrading" && PASS=$((PASS + 1)) || { echo "  FAIL: should report upgrading"; FAIL=$((FAIL + 1)); }
 
     assert_eq "new version installed" "new-version" "$(cat "${skills_dir}/.autopilot/.version")"
+    assert_eq "new distill executable replaces old one" "distill darwin-arm64 new-version" "$("${skills_dir}/.autopilot/bin/distill")"
+    assert_file "distill.env survives upgrade" "${skills_dir}/.autopilot/distill.env"
+    assert_dir "owned distill artifact directory exists after upgrade" "${skills_dir}/.autopilot/bin/distill-artifacts"
+    assert_dir "user skill preserved during executable upgrade" "${skills_dir}/user-owned"
+    assert_file "user skill file preserved during executable upgrade" "${skills_dir}/user-owned/SKILL.md"
 }
 
 # ── Test: auto-detects Codex runtime and bootstraps ──────────────────────
@@ -893,6 +1071,10 @@ echo "install.sh integration tests"
 echo "=============================="
 
 test_fresh_install_extraction
+test_distill_platform_selection
+test_distill_platform_selection_without_python
+test_distill_unsupported_platform
+test_uninstall_removes_distill_artifacts_and_preserves_user_skills
 test_version_override
 test_already_installed_same_version
 test_upgrade

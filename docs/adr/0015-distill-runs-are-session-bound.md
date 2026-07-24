@@ -1,0 +1,3 @@
+# Distill runs are session-bound
+
+An unfinished Distill run is exclusively bound to one agent session, and a session may own at most one unfinished run. Reinvoking the Distill skill in that session resumes its bound run; finishing or aborting releases the session for another run. Projects may have concurrent runs in different sessions, and an explicit takeover operation may rebind a stranded run to a new session while preserving a handoff record. Codex, Reasonix, and Kimi adapters must supply an unambiguous runtime-native session identity; if an adapter cannot do so, the runner fails closed rather than guessing from recency, working directory, or an agent-provided bearer token.

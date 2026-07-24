@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "marker": "ISSUE62_NATIVE_SMOKE_R1_20260724",
+  "runtime": {
+    "kind": "kimi",
+    "binary": "/Users/xlchen/.kimi-code/bin/kimi",
+    "version": "0.29.0",
+    "prompt_mode": true
+  },
+  "fixture": {
+    "work_dir": "/Users/xlchen/.codex/worktrees/9507/autopilot-toolkit/docs/reports/62-kimi-native-smoke-fixture",
+    "retained": false
+  },
+  "native_session": {
+    "session_id": "session_d03aeda7-b1a1-4c89-8cfb-0cc78213531d",
+    "session_dir": "/Users/xlchen/.kimi-code/sessions/wd_62-kimi-native-smoke-fixture_3ef1cef28ee1/session_d03aeda7-b1a1-4c89-8cfb-0cc78213531d",
+    "session_dir_sha256": "6f7e0e501ad1588986d473646d483cf4272ec39e58211bd7e280258d1a345673",
+    "state_json_sha256": "4dd7abc55d021637a9b9b4b5f3aedbcf4f985ee34d5c91b35b5c81fc6859b43b",
+    "work_dir": "/Users/xlchen/.codex/worktrees/9507/autopilot-toolkit/docs/reports/62-kimi-native-smoke-fixture",
+    "match_count": 1,
+    "source": "~/.kimi-code/session_index.jsonl plus state.json workDir, lastPrompt marker, and agents.main.homedir",
+    "last_prompt_marker": "ISSUE62_NATIVE_SMOKE_R1_20260724",
+    "trace_reference": {
+      "state_json_redacted": true,
+      "agents_main_homedir_inside_session_dir": true
+    }
+  },
+  "runner": {
+    "run_id": "run-sessiond03aeda7-b1a1-4c8-1784897249926",
+    "final_report": {
+      "run_id": "run-sessiond03aeda7-b1a1-4c8-1784897249926",
+      "runtime": "kimi",
+      "session_id": "session_d03aeda7-b1a1-4c89-8cfb-0cc78213531d",
+      "status": "completed",
+      "stage": "completed",
+      "revision": 4,
+      "session_released": true,
+      "released_revision": 4,
+      "report_json_path": ".distill/runs/run-sessiond03aeda7-b1a1-4c8-1784897249926/report.json",
+      "report_markdown_path": ".distill/runs/run-sessiond03aeda7-b1a1-4c8-1784897249926/report.md",
+      "canonical_hash": "5cd6d78020905668528a379fde2aab248b213f1be884abfa021f09907351e1b0",
+      "report_json_sha256": "ae7c9dd438b390c01e8c3b6779e02862abaf05905970d23729566ea50633cb92",
+      "report_markdown_sha256": "33e32d3fede3ce06df1d0bf1935210b1e160dac0d9d0d7efe0cfd665b029af10",
+      "prd_path": ".scratch/distill-tracer/PRD.md",
+      "prd_payload_hash": "0dfce2f76e4baea31ddca9f60cc8f926eb1e5ff057eb9fb841a08d9258e1273a",
+      "published_issue_count": 2,
+      "issue_payload_hashes": [
+        "aceda22295a44e3ebc3fc7eaed9210f156ba1f5e7fb7683b24860793261d56cc",
+        "49664ec0253c0d80573004dd978b7366a1729571f140c0ba4a7381167fa43c88"
+      ]
+    },
+    "stage_checkpoints": [
+      "explicit-text-captured",
+      "clarification-complete",
+      "testing-seam-confirmed",
+      "slice-breakdown-approved"
+    ]
+  },
+  "lifecycle": {
+    "run_id": "run-sessiond03aeda7-b1a1-4c8-1784897346858",
+    "same_session_resume": {
+      "same_run_id": true,
+      "revision": 1,
+      "stage": "clarification"
+    },
+    "cross_session_rejection": {
+      "session_id": "session_00000000-0000-4000-8000-000000000062",
+      "exit_status": 1,
+      "error": "ERROR: session id does not match active run binding"
+    },
+    "takeover": {
+      "status": "succeeded",
+      "from_session": "session_d03aeda7-b1a1-4c89-8cfb-0cc78213531d",
+      "to_session": "session_00000000-0000-4000-8000-000000000063",
+      "revision": 2,
+      "user_authorized": true
+    },
+    "stale_revision_recovery": {
+      "stale_exit_status": 1,
+      "stale_error": "ERROR: expected revision 1 is stale; current revision is 2",
+      "inspect_exit_status": 0,
+      "recovered_revision": 2,
+      "recovered_stage": "clarification"
+    },
+    "cleanup": {
+      "status": "purged",
+      "stage": "purged",
+      "revision": 2
+    }
+  }
+}

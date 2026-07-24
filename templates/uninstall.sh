@@ -54,7 +54,7 @@ fi
 # 3. Remove bootstrap symlinks from agent-exclusive directories
 cleanup_symlinks() {
     local dir="$1"
-    [[ -d "${dir}" ]] || return
+    [[ -d "${dir}" ]] || return 0
     for entry in "${dir}"/*; do
         if [[ -L "${entry}" ]]; then
             target="$(readlink "${entry}" 2>/dev/null || true)"

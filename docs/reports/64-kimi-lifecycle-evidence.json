@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "runtime": "kimi",
+  "native_session": {
+    "session_id": "session_2f76e699-a786-42fb-b4b3-6e7cf24c3872",
+    "source": "kimi runtime-owned trace: ~/.kimi-code/session_index.jsonl entry matched by state.json workDir=/private/tmp/distill-kimi-64-live AND agents.main.homedir inside sessionDir AND lastPrompt equal to the current invocation prompt, then disambiguated from the twin candidate session_a581a665-5cc7-4a2f-b8eb-59ffa21effa3 by live-process evidence: lsof shows kimi PID 84807 (cwd=/private/tmp/distill-kimi-64-live) holding session_2f76e699.../agents/main/wire.jsonl open, and that wire contains this session's live tool trace; the twin's wire.jsonl is frozen before this invocation",
+    "match_count": 1,
+    "user_supplied": false,
+    "env_var_used": false,
+    "rejected_candidates": [
+      "session_a581a665-5cc7-4a2f-b8eb-59ffa21effa3 (identical workDir+lastPrompt but wire.jsonl not held by any live kimi process; dead earlier invocation)"
+    ]
+  },
+  "fixture": {
+    "kind": "local-markdown",
+    "worktree": "/private/tmp/distill-kimi-64-live",
+    "requirement": "Build a release readiness dashboard that publishes a PRD and one ready-for-agent implementation issue to the local markdown tracker.",
+    "retained": false,
+    "nested_fake_adapter_fixture": {
+      "path": "/private/tmp/distill-kimi-64-live/fixtures/fake-adapter",
+      "tracker_config": "docs/agents/issue-tracker.md containing 'Fake Adapter'",
+      "adapter_state": ".fake-tracker/"
+    }
+  },
+  "runner": {
+    "run_id": "run-session2f76e699-a786-42f-1784900716995",
+    "status": "completed",
+    "revision": 4,
+    "session_released": true,
+    "released_revision": 4,
+    "implementation_started": false,
+    "canonical_report_hash": "f6c86e7f9eb94ec3bb7d194e3da8dd0815b29de1f354537749b541aca48bc6d9",
+    "report_json_path": ".distill/runs/run-session2f76e699-a786-42f-1784900716995/report.json",
+    "report_markdown_path": ".distill/runs/run-session2f76e699-a786-42f-1784900716995/report.md",
+    "report_json_sha256": "e88155be480e7b932d2c7d12a552a1c24b65f7a2a7ab0b2f278055cc8e8074bb",
+    "report_markdown_sha256": "403ba6fff0e81c0c18798ea53534d1afda446dfbbbc679b74294626b35a0d728",
+    "state_json_sha256": "f4195fe47927f9b181348b3fbf0eac53ac7aca30ddd68f8392b928d3a90b3e1f",
+    "prd_payload_hash": "9ed548e0b80ba66b2a5dbdbc1d3c28413b36d62dc6a37f46ae9ad731f709a04d",
+    "issue_payload_hashes": [
+      "12f39dbb4fa0f04dc44538e03eb877aff3ab411ab112437052141341ed053fee"
+    ],
+    "published_prd": ".scratch/distill-tracer/PRD.md",
+    "published_issues": [
+      ".scratch/distill-tracer/issues/01-release-readiness-dashboard-tracker-scan-to-rendered-readiness-view.md"
+    ],
+    "stage_checkpoints": [
+      "explicit-text-captured",
+      "clarification-complete",
+      "testing-seam-confirmed",
+      "slice-breakdown-approved"
+    ],
+    "authorized_skills": [
+      "grill-with-docs",
+      "to-prd",
+      "to-issues"
+    ],
+    "events": [
+      "session-bound",
+      "intake-completed",
+      "stage-completed",
+      "stage-completed",
+      "publication-recorded",
+      "stage-completed",
+      "publication-recorded",
+      "session-released",
+      "terminal-completed"
+    ],
+    "drift_acknowledgments": [
+      {
+        "detected": {
+          "domain_documents": {
+            "baseline": [
+              {
+                "hash": "19239489cf206747",
+                "path": "docs/agents/domain.md"
+              }
+            ],
+            "current": [
+              {
+                "hash": "28fd59ade21dd193",
+                "path": "docs/agents/domain.md"
+              }
+            ]
+          },
+          "git_status": {
+            "baseline": "",
+            "current": "M docs/agents/domain.md"
+          }
+        },
+        "material": false,
+        "reason": "grill-with-docs added domain glossary entries to docs/agents/domain.md; vocabulary-only change, does not alter the captured requirement or scope.",
+        "stage": "clarification"
+      }
+    ]
+  },
+  "scenarios": {
+    "uploaded_file_intake": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900963466",
+      "detail": "start --intake-json with one uploaded_file source accepted; source_count=1; raw bytes retained gzipped; run then purged to keep acceptance bounded",
+      "terminal_state": "purged"
+    },
+    "invoke_skill_waiting_boundary": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900716995",
+      "detail": "after intake the runner yields next_action=invoke-skill with authorized_action.skill=grill-with-docs at revision 1 and does not advance until this Kimi session submits the stage checkpoint; same boundary observed for to-prd and to-issues"
+    },
+    "same_session_resume": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900716995",
+      "detail": "second start with the same native session id returned the identical unfinished run at revision 1 with no mutation"
+    },
+    "cross_session_rejection": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900716995",
+      "foreign_session": "session_a581a665-5cc7-4a2f-b8eb-59ffa21effa3",
+      "submit_error": "session id does not match active run binding",
+      "inspect_error": "session id does not match run binding"
+    },
+    "one_unfinished_run_enforcement": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900716995",
+      "detail": "start with the same session id and a different requirement text returned the existing run unchanged; no second unfinished run can be created; zero unfinished runs remain"
+    },
+    "explicit_user_authorized_takeover": {
+      "result": "pass",
+      "run_id": "run-sessiona581a665-5cc7-4a2-1784900991655",
+      "unauthorized_error": "takeover requires --user-authorized",
+      "user_authorized": true,
+      "from_session": "session_a581a665-5cc7-4a2f-b8eb-59ffa21effa3",
+      "to_native_session": "session_2f76e699-a786-42fb-b4b3-6e7cf24c3872",
+      "revision": 2,
+      "terminal_state": "purged"
+    },
+    "context_drift_block_and_acknowledge": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784900716995",
+      "blocked_error": "context drift detected; submit a reasoned immaterial acknowledgment or supersede the run",
+      "reasoned_immaterial_acknowledgment_accepted": true
+    },
+    "fake_adapter_timeout_before_response_reconciliation": {
+      "result": "pass",
+      "run_id": "run-session2f76e699-a786-42f-1784901070907",
+      "worktree": "/private/tmp/distill-kimi-64-live/fixtures/fake-adapter",
+      "injection": "DISTILL_FAKE_TRACKER_MODE=timeout-before-response on the prd submit",
+      "first_status": "needs-reconciliation",
+      "first_revision": 3,
+      "resumed_status": "confirmed",
+      "resumed_revision": 4,
+      "create_count": 1,
+      "create_log_entries_before": 1,
+      "create_log_entries_after": 1,
+      "duplicate_create": false,
+      "canonical_report_hash": "dc0a5166c8cff0316b9a578e36f60be414126a573995abe5cc86d45020598d60",
+      "report_json_sha256": "d4dec4cf32a3e8ca867617ffbf4792ed39bebcffa7913ebe3369df0037104f61",
+      "report_markdown_sha256": "4d5ebd407e29cc505b6712315c2d424d6e408059618ba7accf2f273d49b4b6eb",
+      "state_json_sha256": "40527bbcebccfa5e775a3d0aed24438f37cff8e9898bac8029ac57f29de9a075",
+      "events": [
+        "session-bound",
+        "intake-completed",
+        "stage-completed",
+        "publication-reconciliation",
+        "stage-completed",
+        "publication-recorded",
+        "stage-completed",
+        "publication-recorded",
+        "session-released",
+        "terminal-completed"
+      ]
+    },
+    "terminal_session_release": {
+      "result": "pass",
+      "detail": "main run released at revision 4; fake-adapter run released at revision 5",
+      "runs": {
+        "run-session2f76e699-a786-42f-1784900716995": {
+          "released": true,
+          "released_revision": 4
+        },
+        "run-session2f76e699-a786-42f-1784901070907": {
+          "released": true,
+          "released_revision": 5
+        }
+      }
+    },
+    "no_product_implementation": {
+      "result": "pass",
+      "detail": "implementation_started=false on every run and in both terminal reports; no dashboard product code was written"
+    }
+  }
+}

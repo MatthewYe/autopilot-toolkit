@@ -1,0 +1,33 @@
+{
+  "version": "distill.v1",
+  "stages": [
+    {
+      "id": "intake",
+      "executor": "runner",
+      "skill": null,
+      "checkpoint": "explicit-text-captured",
+      "next_action": "capture-text-requirement"
+    },
+    {
+      "id": "clarification",
+      "executor": "skill",
+      "skill": "grill-with-docs",
+      "checkpoint": "clarification-complete",
+      "next_action": "invoke-skill"
+    },
+    {
+      "id": "prd",
+      "executor": "skill",
+      "skill": "to-prd",
+      "checkpoint": "testing-seam-confirmed",
+      "next_action": "invoke-skill"
+    },
+    {
+      "id": "issues",
+      "executor": "skill",
+      "skill": "to-issues",
+      "checkpoint": "slice-breakdown-approved",
+      "next_action": "invoke-skill"
+    }
+  ]
+}

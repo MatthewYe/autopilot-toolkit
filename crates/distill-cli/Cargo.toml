@@ -1,0 +1,19 @@
+[package]
+name = "distill-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = "0.22"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+flate2 = "1"
+tempfile = "3"
+
+[[bin]]
+name = "distill"
+path = "src/main.rs"

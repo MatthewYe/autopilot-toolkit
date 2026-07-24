@@ -14,6 +14,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -74,10 +75,135 @@ fn git_rev_parse(repo: &Path) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
+fn setup_mock_project_for_distill(root: &Path) {
+    fs::copy(install_script(), root.join("deploy.rs")).unwrap();
+
+    let distill_skill = root.join("skills/autopilot/distill");
+    for variant in &["codex", "kimi", "reasonix"] {
+        let dir = distill_skill.join(variant);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!(
+                "---\nname: distill\ndescription: Distill {}\n---\nRun ~/.agents/skills/.autopilot/bin/distill.\n",
+                variant
+            ),
+        )
+        .unwrap();
+    }
+
+    let cli = root.join("crates/distill-cli/src");
+    fs::create_dir_all(&cli).unwrap();
+    fs::write(
+        root.join("crates/distill-cli/Cargo.toml"),
+        "[package]\nname = \"distill-cli\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"distill\"\npath = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    fs::write(cli.join("main.rs"), "fn main() {}\n").unwrap();
+
+    fs::create_dir_all(root.join("templates")).unwrap();
+    fs::write(
+        root.join("templates/install.sh.in"),
+        "#!/bin/bash\nVERSION=\"__VERSION__\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("templates/uninstall.sh"), "#!/bin/bash\n").unwrap();
+    fs::write(root.join("bootstrap.sh"), "#!/bin/bash\n").unwrap();
+    fs::create_dir_all(root.join("principles")).unwrap();
+    fs::write(root.join("principles/karpathy.md"), "# Principles\n").unwrap();
+    fs::write(root.join(".skill-lock.json"), r#"{"version":4,"skills":{}}"#).unwrap();
+    fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"crates/*\"]\n").unwrap();
+
+    Command::new("git").args(["init"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+}
+
+fn setup_full_pack_project(root: &Path) {
+    fs::create_dir_all(root).unwrap();
+    let source = project_root();
+    for file in ["deploy.rs", "bootstrap.sh", ".skill-lock.json", "Cargo.toml"] {
+        fs::copy(source.join(file), root.join(file)).unwrap();
+    }
+    fs::create_dir_all(root.join("crates/distill-cli")).unwrap();
+    fs::copy(
+        source.join("crates/distill-cli/Cargo.toml"),
+        root.join("crates/distill-cli/Cargo.toml"),
+    )
+    .unwrap();
+    for directory in ["templates", "skills", "principles"] {
+        let status = Command::new("cp")
+            .args([
+                "-R",
+                &source.join(directory).to_string_lossy(),
+                &root.join(directory).to_string_lossy(),
+            ])
+            .status()
+            .expect("fixture directory copy should run");
+        assert!(status.success(), "fixture directory {directory} should copy");
+    }
+
+    Command::new("git").args(["init"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git").args(["add", "-A"]).current_dir(root).output().unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+}
+
+fn write_mock_distill_artifacts(root: &Path) {
+    for platform in &[
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+    ] {
+        let artifact = root
+            .join("dist")
+            .join("distill")
+            .join(platform)
+            .join("distill");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(
+            &artifact,
+            format!("#!/usr/bin/env bash\necho distill {}\n", platform),
+        )
+        .unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     version: String,
     skills: HashMap<String, SkillEntry>,
+    #[serde(default)]
+    executables: HashMap<String, ExecutableEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +214,11 @@ struct SkillEntry {
     variants: Vec<String>,
     #[serde(default)]
     codex_agent: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecutableEntry {
+    platforms: HashMap<String, String>,
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -101,6 +232,8 @@ mod tests {
         eprintln!("Running tests sequentially...");
         __build_produces_tarball();
         __build_tarball_structure_and_metadata();
+        __distill_artifacts_command_builds_supported_targets();
+        __pack_fails_when_distill_artifact_set_is_incomplete();
         __build_creates_dist_dir_if_missing();
         __build_exits_nonzero_when_not_in_git_repo();
         __sync_still_works_after_build_changes();
@@ -108,19 +241,17 @@ mod tests {
     }
 
     fn __build_produces_tarball() {
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let dist_dir = root.join("dist");
-
-        // Clean dist if it exists from a previous run
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
 
         let git_hash = git_rev_parse(&root);
         assert!(!git_hash.is_empty(), "git rev-parse should return a hash");
 
         let tarball_name = "autopilot-toolkit.tar.gz";
         let tarball_path = dist_dir.join(tarball_name);
+        write_mock_distill_artifacts(&root);
 
         // Run build
         let (out, err, code) = run_build(&["pack"], Some(&root));
@@ -159,15 +290,14 @@ mod tests {
     }
 
     fn __build_tarball_structure_and_metadata() {
-        let _ = std::fs::remove_dir_all(project_root().join("dist"));
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let git_hash = git_rev_parse(&root);
         assert!(!git_hash.is_empty());
 
         let dist_dir = root.join("dist");
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
+        write_mock_distill_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);
@@ -182,8 +312,8 @@ mod tests {
         assert!(tarball_path.is_file());
 
         // Extract to temp dir
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let extract_dir = tmp.path().join("extracted");
+        let extract_tmp = tempfile::tempdir().expect("tempdir");
+        let extract_dir = extract_tmp.path().join("extracted");
         fs::create_dir_all(&extract_dir).unwrap();
 
         let status = Command::new("tar")
@@ -220,7 +350,7 @@ mod tests {
         );
 
         // ── AC 7: dist/install.sh is executable and embeds correct version ──
-        let install_sh = project_root().join("dist").join("install.sh");
+        let install_sh = root.join("dist").join("install.sh");
         assert!(install_sh.is_file(), "dist/install.sh should exist");
         let metadata = fs::metadata(&install_sh).unwrap();
         // Check executable bit (on Unix)
@@ -293,6 +423,7 @@ mod tests {
 
         // Coupled skills
         for coupled_name in &[
+            "distill",
             "autopilot-implementer",
             "autopilot-reviewer",
             "autopilot-orchestrator",
@@ -376,6 +507,7 @@ mod tests {
         for name in &[
             "toolkit-setup",
             "zoom-out",
+            "distill",
             "autopilot-implementer",
             "autopilot-reviewer",
             "autopilot-orchestrator",
@@ -387,16 +519,148 @@ mod tests {
                 name
             );
         }
+
+        for variant in &["codex", "kimi", "reasonix"] {
+            let skill = fs::read_to_string(skills_dir.join("distill").join(variant).join("SKILL.md"))
+                .unwrap_or_else(|err| panic!("distill {} SKILL.md should be readable: {}", variant, err));
+            assert!(
+                skill.contains(".autopilot/bin/distill"),
+                "distill {} variant should tell the runtime how to execute the installed binary",
+                variant
+            );
+        }
+
+        let distill = manifest
+            .executables
+            .get("distill")
+            .expect("manifest should own distill executable");
+        for platform in &[
+            "darwin-arm64",
+            "darwin-x64",
+            "linux-arm64",
+            "linux-x64",
+        ] {
+            let rel = distill
+                .platforms
+                .get(*platform)
+                .unwrap_or_else(|| panic!("distill platform {} should be in manifest", platform));
+            let executable = autopilot_dir.join(rel);
+            assert!(
+                executable.is_file(),
+                "distill executable for {} should exist at {:?}",
+                platform,
+                executable
+            );
+            assert!(
+                fs::metadata(&executable).unwrap().permissions().mode() & 0o111 != 0,
+                "distill executable for {} should be executable",
+                platform
+            );
+        }
+    }
+
+    fn __distill_artifacts_command_builds_supported_targets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        let cargo = fake_bin.join("cargo");
+        fs::write(
+            &cargo,
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "{}"
+echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+target=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--target" ]]; then
+    shift
+    target="$1"
+  fi
+  shift || true
+done
+mkdir -p "target/${{target}}/release"
+printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
+chmod +x "target/${{target}}/release/distill"
+"#,
+                log.display(),
+                log.display(),
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .env("DISTILL_LINUX_ARM64_LINKER", "/toolchains/aarch64-linker")
+            .env("DISTILL_LINUX_X64_LINKER", "/toolchains/x86_64-linker")
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            output.status.success(),
+            "distill-artifacts should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        for triple in &[
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "aarch64-unknown-linux-musl",
+            "x86_64-unknown-linux-musl",
+        ] {
+            assert!(
+                logged.contains(&format!("--target {}", triple)),
+                "cargo should build target {}, log:\n{}",
+                triple,
+                logged
+            );
+        }
+        assert!(logged.contains("arm64_linker=/toolchains/aarch64-linker"));
+        assert!(logged.contains("x64_linker=/toolchains/x86_64-linker"));
+    }
+
+    fn __pack_fails_when_distill_artifact_set_is_incomplete() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+
+        let artifact = project
+            .join("dist/distill/darwin-arm64/distill");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, "#!/usr/bin/env bash\necho darwin-arm64\n").unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_ne!(
+            code, 0,
+            "pack should fail when only one Distill platform artifact exists, stdout: {}, stderr: {}",
+            out, err
+        );
+        assert!(
+            err.contains("missing Distill CLI artifact"),
+            "pack should report missing Distill artifact, stderr: {}",
+            err
+        );
     }
 
     fn __build_creates_dist_dir_if_missing() {
-        let _ = std::fs::remove_dir_all(project_root().join("dist"));
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let dist_dir = root.join("dist");
-
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
+        write_mock_distill_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "runtime": "reasonix",
+  "native_session": {
+    "source": "unique Reasonix project session metadata trace for the live process",
+    "session_id": "20260724-134446.330981000-deepseek-v4-flash + planner deepseek-v4-pro",
+    "match_count": 1
+  },
+  "same_fixture_main_run": {
+    "requirement": "Build a release readiness dashboard that publishes a PRD and one ready-for-agent implementation issue to the local markdown tracker.",
+    "run_id": "run-20260724-133157826775000-1784899962186",
+    "status": "completed",
+    "revision": 4,
+    "session_released": true,
+    "implementation_started": false,
+    "state_json_sha256": "c4933dc9d6099ff8189f0a91d123a0fd24a70e78459a35a3fb1ca0802b426628"
+  },
+  "lifecycle": {
+    "uploaded_file_intake": {
+      "status": "passed",
+      "run_id": "run-20260724-133157826775000-1784900275280"
+    },
+    "waiting_boundary": {
+      "status": "passed",
+      "run_id": "run-test-waiting-v2-1784900853123",
+      "revision": 1,
+      "stage": "clarification",
+      "next_action": "invoke-skill",
+      "authorized_skill": "grill-with-docs"
+    },
+    "one_unfinished_run": {
+      "status": "passed",
+      "run_id": "run-test-unfinished-v2-1784900860612",
+      "same_run_id_from_two_starts": true
+    },
+    "cross_session_rejection": {
+      "status": "passed",
+      "error": "session id does not match active run binding"
+    },
+    "explicit_takeover": {
+      "status": "passed",
+      "run_id": "run-test-takeover-old-v2-1784900870481",
+      "from_session": "test-takeover-old-v2",
+      "to_native_session": "20260724-134446.330981000-deepseek-v4-flash + planner deepseek-v4-pro",
+      "user_authorized": true,
+      "revision": 2
+    },
+    "recoverable_context_drift": {
+      "status": "passed",
+      "reasoned_immaterial_acknowledgment_accepted": true
+    },
+    "publication_reconciliation": {
+      "status": "passed",
+      "run_id": "run-test-reconcile-v2-1784900886161",
+      "first_status": "needs-reconciliation",
+      "first_revision": 3,
+      "resumed_status": "confirmed",
+      "resumed_revision": 4,
+      "create_count": 1
+    },
+    "terminal_release": {
+      "status": "passed",
+      "session_released": true,
+      "implementation_started": false
+    }
+  }
+}
