@@ -241,7 +241,7 @@ test_already_installed_same_version() {
 
     # Capture mtime of .version
     local mtime1
-    mtime1="$(stat -f "%m" "${skills_dir}/.autopilot/.version" 2>/dev/null || stat -c "%Y" "${skills_dir}/.autopilot/.version")"
+    mtime1="$(stat -c "%Y" "${skills_dir}/.autopilot/.version" 2>/dev/null || stat -f "%m" "${skills_dir}/.autopilot/.version")"
 
     # Second install — same version
     local output
@@ -252,7 +252,7 @@ test_already_installed_same_version() {
 
     # .version should be unchanged
     local mtime2
-    mtime2="$(stat -f "%m" "${skills_dir}/.autopilot/.version" 2>/dev/null || stat -c "%Y" "${skills_dir}/.autopilot/.version")"
+    mtime2="$(stat -c "%Y" "${skills_dir}/.autopilot/.version" 2>/dev/null || stat -f "%m" "${skills_dir}/.autopilot/.version")"
     assert_eq "version file unchanged (no re-extract)" "${mtime1}" "${mtime2}"
 }
 
