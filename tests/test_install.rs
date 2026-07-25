@@ -83,6 +83,12 @@ fn setup_mock_project(root: &Path) {
 
     // Create coupled skill with variants
     let coupled = root.join("skills/autopilot/coupled-skill");
+    fs::create_dir_all(&coupled).unwrap();
+    fs::write(
+        coupled.join("SKILL.md"),
+        "---\nname: coupled-skill\ndescription: default variant\n---\n",
+    )
+    .unwrap();
     for variant in &["reasonix", "codex", "kimi"] {
         let vdir = coupled.join(variant);
         fs::create_dir_all(&vdir).unwrap();
@@ -154,6 +160,20 @@ fn setup_mock_project(root: &Path) {
         .output();
 }
 
+fn count_named_files(root: &Path, name: &str) -> usize {
+    fs::read_dir(root)
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .map(|entry| {
+            if entry.path().is_dir() {
+                count_named_files(&entry.path(), name)
+            } else {
+                usize::from(entry.file_name() == name)
+            }
+        })
+        .sum()
+}
+
 // ── Tests ──
 
 #[cfg(test)]
@@ -182,12 +202,28 @@ mod tests {
         assert!(link.is_symlink(), "test-skill should be a symlink");
         assert!(link.is_dir(), "symlink should resolve to a directory");
 
-        // Coupled skill: kimi variant in ~/.agents/skills/
+        // Coupled skill: one shared runtime router in ~/.agents/skills/
         let coupled_link = skills.join("coupled-skill");
         assert!(
             coupled_link.is_symlink(),
             "coupled-skill should be a symlink"
         );
+        assert_eq!(
+            count_named_files(&coupled_link, "SKILL.md"),
+            1,
+            "coupled skill should expose one discoverable SKILL.md"
+        );
+        for variant in &["reasonix", "codex", "kimi"] {
+            assert!(
+                coupled_link
+                    .join("runtime")
+                    .join(variant)
+                    .join("INSTRUCTIONS.md")
+                    .is_file(),
+                "{} runtime instructions should be retained",
+                variant
+            );
+        }
     }
 
     #[test]

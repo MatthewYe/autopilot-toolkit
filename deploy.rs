@@ -290,8 +290,13 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let skill_name = entry.file_name();
             let skill_name_str = skill_name.to_string_lossy().to_string();
             let src_dir = entry.path();
-            // Copy skill directory into staging
-            copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
+            let (skill_type, _, _) = classify_skill(&src_dir);
+            let staged_skill = skills_staging.join(&skill_name_str);
+            if skill_type == SkillType::Coupled {
+                stage_coupled_skill(&src_dir, &staged_skill)?;
+            } else {
+                copy_dir_all(&src_dir, &staged_skill)?;
+            }
         }
     }
 
@@ -445,6 +450,117 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
             copy_dir_all(&entry.path(), &dest)?;
         } else {
             std::fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
+    let body = content
+        .strip_prefix("---\n")
+        .context("SKILL.md must start with YAML frontmatter")?;
+    let closing = body
+        .find("\n---")
+        .context("SKILL.md frontmatter is missing its closing delimiter")?;
+    Ok(&content[..closing + 8])
+}
+
+fn copy_instruction_tree(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let file_name = entry.file_name();
+        let dest_name = if file_name == "SKILL.md" {
+            "INSTRUCTIONS.md".into()
+        } else {
+            file_name
+        };
+        let dest = dst.join(dest_name);
+        if ty.is_dir() {
+            copy_instruction_tree(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    if dst.exists() {
+        std::fs::remove_dir_all(dst)?;
+    }
+    std::fs::create_dir_all(dst)?;
+
+    let top_level_skill = src.join("SKILL.md");
+    let fallback_variant = ["codex", "kimi", "reasonix"]
+        .iter()
+        .map(|variant| src.join(variant))
+        .find(|variant_dir| variant_dir.join("SKILL.md").is_file());
+    let reasonix_skill = src.join("reasonix").join("SKILL.md");
+    let frontmatter_source = if reasonix_skill.is_file() {
+        // Reasonix consumes execution metadata such as runAs/allowed-tools
+        // from discovery frontmatter. Other runtimes ignore those extra keys.
+        reasonix_skill
+    } else if top_level_skill.is_file() {
+        top_level_skill.clone()
+    } else {
+        fallback_variant
+            .as_ref()
+            .context("runtime-coupled skill has no SKILL.md source")?
+            .join("SKILL.md")
+    };
+    let default_content = std::fs::read_to_string(frontmatter_source)?;
+    let frontmatter = skill_frontmatter(&default_content)?;
+    let router = format!(
+        "{frontmatter}\n\n# Runtime routing\n\n\
+This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
+1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
+2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
+3. Otherwise read `runtime/default/INSTRUCTIONS.md` completely.\n\
+4. Follow only the selected instruction file and its relative references. Do not load another runtime's instructions.\n"
+    );
+    std::fs::write(dst.join("SKILL.md"), router)?;
+
+    let runtime_root = dst.join("runtime");
+    let default_dst = runtime_root.join("default");
+    std::fs::create_dir_all(&default_dst)?;
+    if top_level_skill.is_file() {
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            if ["codex", "kimi", "reasonix"]
+                .iter()
+                .any(|variant| name == *variant)
+            {
+                continue;
+            }
+            let ty = entry.file_type()?;
+            let dest_name = if name == "SKILL.md" {
+                "INSTRUCTIONS.md".into()
+            } else {
+                name
+            };
+            let dest = default_dst.join(dest_name);
+            if ty.is_dir() {
+                copy_instruction_tree(&entry.path(), &dest)?;
+            } else {
+                std::fs::copy(entry.path(), &dest)?;
+            }
+        }
+    } else {
+        copy_instruction_tree(
+            fallback_variant
+                .as_ref()
+                .context("runtime-coupled skill has no default instruction source")?,
+            &default_dst,
+        )?;
+    }
+
+    for variant in &["codex", "kimi", "reasonix"] {
+        let variant_src = src.join(variant);
+        if variant_src.is_dir() {
+            copy_instruction_tree(&variant_src, &runtime_root.join(variant))?;
         }
     }
     Ok(())
@@ -665,39 +781,16 @@ fn dev_all(
             let name = entry.file_name().to_string_lossy().to_string();
             let src_dir = entry.path();
 
-            let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
+            let (skill_type, _, codex_agent) = classify_skill(&src_dir);
 
             if skill_type == SkillType::Coupled {
-                // Coupled skill: symlink variant for each detected runtime
-                for variant in &variants {
-                    let target_dir = match variant.as_str() {
-                        "reasonix" => reasonix_skills_dir,
-                        "codex" => codex_skills_dir,
-                        "kimi" => shared_skills_dir,
-                        _ => continue,
-                    };
-                    // Only symlink if the runtime directory exists on this machine
-                    let runtime_home = match variant.as_str() {
-                        "reasonix" => std::env::var("HOME")
-                            .ok()
-                            .map(|h| PathBuf::from(h).join(".reasonix")),
-                        "codex" => std::env::var("HOME")
-                            .ok()
-                            .map(|h| PathBuf::from(h).join(".codex")),
-                        "kimi" => Some(PathBuf::from("/")), // always assume kimi
-                        _ => None,
-                    };
-                    if let Some(ref home) = runtime_home {
-                        if !home.exists() && variant.as_str() != "kimi" {
-                            continue;
-                        }
-                    }
-                    let variant_src = src_dir.join(variant);
-                    if variant_src.is_dir() {
-                        sync_skill(&name, &variant_src, target_dir)?;
-                        count += 1;
-                    }
-                }
+                let dev_staging = project_root.join("dist").join("dev-skills").join(&name);
+                stage_coupled_skill(&src_dir, &dev_staging)?;
+                sync_skill(&name, &dev_staging, shared_skills_dir)?;
+                remove_project_symlink(&reasonix_skills_dir.join(&name), project_root)?;
+                remove_project_symlink(&codex_skills_dir.join(&name), project_root)?;
+                count += 1;
+
                 // Codex agent.toml
                 if codex_agent {
                     let agent_src = src_dir.join("codex").join("agent.toml");
@@ -741,6 +834,17 @@ fn dev_all(
     }
 
     println!("==> Done: {} symlinks created/verified.", count);
+    Ok(())
+}
+
+fn remove_project_symlink(path: &Path, project_root: &Path) -> Result<(), anyhow::Error> {
+    if !path.is_symlink() {
+        return Ok(());
+    }
+    let target = std::fs::read_link(path)?;
+    if target.starts_with(project_root) {
+        std::fs::remove_file(path)?;
+    }
     Ok(())
 }
 

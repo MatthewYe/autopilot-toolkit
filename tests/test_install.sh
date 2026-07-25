@@ -171,13 +171,14 @@ SHEOF
     mkdir -p "${staging}/skills/toolkit-setup"
     echo "# toolkit-setup" > "${staging}/skills/toolkit-setup/SKILL.md"
 
-    mkdir -p "${staging}/skills/autopilot-implementer/reasonix"
-    mkdir -p "${staging}/skills/autopilot-implementer/codex"
-    mkdir -p "${staging}/skills/autopilot-implementer/kimi"
-    echo "# impl reasonix" > "${staging}/skills/autopilot-implementer/reasonix/SKILL.md"
-    echo "# impl codex" > "${staging}/skills/autopilot-implementer/codex/SKILL.md"
-    echo "# impl kimi" > "${staging}/skills/autopilot-implementer/kimi/SKILL.md"
-    echo '[agent]' > "${staging}/skills/autopilot-implementer/codex/agent.toml"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/reasonix"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/codex"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/kimi"
+    echo "# impl router" > "${staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl reasonix" > "${staging}/skills/autopilot-implementer/runtime/reasonix/INSTRUCTIONS.md"
+    echo "# impl codex" > "${staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
+    echo "# impl kimi" > "${staging}/skills/autopilot-implementer/runtime/kimi/INSTRUCTIONS.md"
+    echo '[agent]' > "${staging}/skills/autopilot-implementer/runtime/codex/agent.toml"
 
     mkdir -p "${staging}/skills/zoom-out"
     echo "# zoom" > "${staging}/skills/zoom-out/SKILL.md"
@@ -251,6 +252,11 @@ test_fresh_install_extraction() {
     # Skills extracted
     assert_dir "skills/toolkit-setup extracted" "${skills_dir}/toolkit-setup"
     assert_dir "skills/autopilot-implementer extracted" "${skills_dir}/autopilot-implementer"
+    local discoverable_count
+    discoverable_count="$(find "${skills_dir}/autopilot-implementer" -name SKILL.md -type f | wc -l | tr -d ' ')"
+    assert_eq "coupled skill has one discoverable router" "1" "${discoverable_count}"
+    assert_file "codex runtime instructions retained" \
+        "${skills_dir}/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
     assert_dir "skills/zoom-out extracted" "${skills_dir}/zoom-out"
 
     # .autopilot/ metadata
@@ -498,15 +504,13 @@ test_autodetect_codex() {
     CODEX_AGENTS_DIR="${codex_agents}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-codex-001"
 
-    # Codex skill symlink created
-    assert_symlink "codex: implementer skill symlinked" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: no duplicate implementer skill symlink" \
+        "${codex_skills}/autopilot-implementer"
 
     # Codex agent.toml symlink created
     assert_symlink "codex: implementer agent.toml symlinked" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 
     # Agnostic skill should NOT be symlinked (no codex variant)
     assert_not_exists "codex: zoom-out not symlinked (agnostic)" \
@@ -540,10 +544,8 @@ test_autodetect_reasonix() {
     REASONIX_SKILLS_DIR="${reasonix_skills}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-reasonix-001"
 
-    # Reasonix skill symlink created
-    assert_symlink "reasonix: implementer skill symlinked" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix: no duplicate implementer skill symlink" \
+        "${reasonix_skills}/autopilot-implementer"
 
     # Agnostic skill should NOT be symlinked (no reasonix variant)
     assert_not_exists "reasonix: zoom-out not symlinked (agnostic)" \
@@ -566,6 +568,11 @@ test_autodetect_both() {
 
     mkdir -p "${home}/.reasonix"
     mkdir -p "${home}/.codex"
+    mkdir -p "${reasonix_skills}" "${codex_skills}"
+    ln -s "${skills_dir}/autopilot-implementer/reasonix" \
+        "${reasonix_skills}/autopilot-implementer"
+    ln -s "${skills_dir}/autopilot-implementer/codex" \
+        "${codex_skills}/autopilot-implementer"
 
     build_mock_tarball "${mock_tarball}" "test-both-001"
 
@@ -580,17 +587,15 @@ test_autodetect_both() {
     CODEX_AGENTS_DIR="${codex_agents}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-both-001"
 
-    assert_symlink "reasonix symlink exists" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix duplicate symlink absent" \
+        "${reasonix_skills}/autopilot-implementer"
 
-    assert_symlink "codex symlink exists" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex duplicate symlink absent" \
+        "${codex_skills}/autopilot-implementer"
 
     assert_symlink "codex agent.toml exists" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 }
 
 # ── Test: no runtimes → no bootstrap errors ──────────────────────────────
@@ -752,18 +757,14 @@ test_full_tree_verification() {
     # Verify principles
     assert_file "principles/karpathy.md" "${principles_dir}/karpathy.md"
 
-    # Verify Reasonix symlinks
-    assert_symlink "reasonix: autopilot-implementer" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix: no duplicate autopilot-implementer" \
+        "${reasonix_skills}/autopilot-implementer"
 
-    # Verify Codex symlinks
-    assert_symlink "codex: autopilot-implementer" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: no duplicate autopilot-implementer" \
+        "${codex_skills}/autopilot-implementer"
     assert_symlink "codex: agent.toml" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 
     # Verify version
     local installed_version
@@ -817,8 +818,9 @@ JSONEOF
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
     echo "# zoom-out v2" > "${v2_staging}/skills/zoom-out/SKILL.md"
-    mkdir -p "${v2_staging}/skills/autopilot-implementer/codex"
-    echo "# impl codex v2" > "${v2_staging}/skills/autopilot-implementer/codex/SKILL.md"
+    mkdir -p "${v2_staging}/skills/autopilot-implementer/runtime/codex"
+    echo "# impl router v2" > "${v2_staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl codex v2" > "${v2_staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
     echo "# principles v2" > "${v2_staging}/principles/karpathy.md"
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
@@ -909,9 +911,10 @@ JSONEOF
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
     echo "# zoom-out v2" > "${v2_staging}/skills/zoom-out/SKILL.md"
-    mkdir -p "${v2_staging}/skills/autopilot-implementer/codex"
-    echo "# impl v2" > "${v2_staging}/skills/autopilot-implementer/codex/SKILL.md"
-    echo '[agent]' > "${v2_staging}/skills/autopilot-implementer/codex/agent.toml"
+    mkdir -p "${v2_staging}/skills/autopilot-implementer/runtime/codex"
+    echo "# impl router v2" > "${v2_staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl v2" > "${v2_staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
+    echo '[agent]' > "${v2_staging}/skills/autopilot-implementer/runtime/codex/agent.toml"
     echo "# principles v2" > "${v2_staging}/principles/karpathy.md"
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
@@ -958,10 +961,8 @@ JSONEOF
     # AC: .version updated
     assert_eq "version updated to v2" "v2.0.0" "$(cat "${skills_dir}/.autopilot/.version")"
 
-    # Verify codex bootstrap ran
-    assert_symlink "codex: implementer symlinked" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: duplicate implementer symlink absent" \
+        "${codex_skills}/autopilot-implementer"
 }
 
 # ── Test: manifest edge cases ────────────────────────────────────────────

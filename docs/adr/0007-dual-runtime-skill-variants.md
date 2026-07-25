@@ -1,5 +1,9 @@
 # ADR 0007: Dual-Runtime Skill Variants with Agent-Exclusive Install Directories
 
+> Superseded for installation and discovery by
+> [ADR 0036](0036-single-discoverable-runtime-router.md). Per-runtime source
+> variants remain.
+
 ## Context
 
 autopilot-toolkit targets both Reasonix and Codex. While 17 of 19 skills are runtime-agnostic (pure methodology instructions), the 4 autopilot workflow skills (orchestrator, implementer, reviewer, audit-autopilot) depend on runtime-specific mechanisms:

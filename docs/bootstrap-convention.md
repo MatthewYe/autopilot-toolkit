@@ -1,40 +1,46 @@
 # Bootstrap Convention
 
-How `bootstrap.sh` discovers and links runtime-coupled skills from the SSOT into agent-exclusive directories.
+Runtime-coupled skills use one discoverable router in the shared skills
+directory:
 
-## Convention
-
-A skill is runtime-coupled if it has a subdirectory named after a runtime containing a `SKILL.md`:
-
-```
-~/.agents/skills/<name>/<runtime>/SKILL.md
-```
-
-Examples:
-- `autopilot-orchestrator/reasonix/SKILL.md` — Reasonix variant
-- `autopilot-orchestrator/codex/SKILL.md` — Codex variant
-- `autopilot-orchestrator/kimi/SKILL.md` — Kimi variant
-
-`bootstrap.sh` scans `~/.agents/skills/` for this pattern. For each match, it creates a symlink:
-
-```
-~/.<runtime>/skills/<name> -> ~/.agents/skills/<name>/<runtime>
+```text
+~/.agents/skills/<name>/
+├── SKILL.md
+└── runtime/
+    ├── default/INSTRUCTIONS.md
+    ├── codex/INSTRUCTIONS.md
+    ├── kimi/INSTRUCTIONS.md
+    └── reasonix/INSTRUCTIONS.md
 ```
 
-## Codex custom agents
+Only the router is named `SKILL.md`. This prevents runtimes that recursively
+scan `~/.agents/skills/` from indexing the default and runtime-specific
+instructions as separate copies of the same skill. The router selects the
+current runtime's `INSTRUCTIONS.md`, falling back to `runtime/default/`.
 
-Additionally, if a coupled skill has `<name>/codex/agent.toml`, bootstrap creates:
+Source files remain under `<name>/<runtime>/SKILL.md`; `deploy.rs pack` and
+`deploy.rs dev` transform them into the installed router layout.
 
+## Bootstrap behavior
+
+Codex and Reasonix discover the shared router directly, so `bootstrap.sh` does
+not create runtime-specific skill symlinks. During an upgrade it removes only
+legacy skill symlinks whose target is inside `~/.agents/skills/`; unrelated
+user directories and symlinks are preserved.
+
+Codex custom agents remain runtime-specific:
+
+```text
+~/.codex/agents/<name>.toml
+  -> ~/.agents/skills/<name>/runtime/codex/agent.toml
 ```
-~/.codex/agents/<name>.toml -> ~/.agents/skills/<name>/codex/agent.toml
-```
 
-## Adding a new runtime
+Kimi needs no bootstrap step.
 
-1. Create `<name>/<new-runtime>/SKILL.md` for each coupled skill
-2. Add the target directory logic to `bootstrap.sh` (mirror the Reasonix/Codex pattern)
-3. No other changes needed — the filesystem convention drives discovery
+## Adding a runtime
 
-## Fallback
-
-Agents without a native variant symlink to the root-level `<name>/SKILL.md` — a vendor-neutral fallback describing the generic workflow. The fallback instructs the agent to adapt using its native subagent mechanism.
+1. Add `<name>/<new-runtime>/SKILL.md` in the source tree.
+2. Add the runtime identifier to the variant lists and router text in
+   `deploy.rs`.
+3. Add runtime-specific bootstrap behavior only if it has artifacts other than
+   skill instructions.

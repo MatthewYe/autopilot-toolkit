@@ -4,6 +4,7 @@
 //! serde = { version = "1", features = ["derive"] }
 //! serde_json = "1"
 //! tempfile = "3"
+//! walkdir = "2"
 //! ```
 //!
 //! Integration tests for deploy.rs pack subcommand.
@@ -551,16 +552,43 @@ mod tests {
             );
         }
 
+        for coupled_name in &[
+            "autopilot-distill",
+            "autopilot-implementer",
+            "autopilot-reviewer",
+            "autopilot-orchestrator",
+            "audit-autopilot",
+        ] {
+            let discoverable_count = walkdir::WalkDir::new(skills_dir.join(coupled_name))
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_file() && entry.file_name() == "SKILL.md")
+                .count();
+            assert_eq!(
+                discoverable_count, 1,
+                "{} should expose exactly one discoverable SKILL.md",
+                coupled_name
+            );
+        }
+        let implementer_router =
+            fs::read_to_string(skills_dir.join("autopilot-implementer/SKILL.md")).unwrap();
+        assert!(
+            implementer_router.contains("runAs: subagent")
+                && implementer_router.contains("allowed-tools:"),
+            "shared router must preserve Reasonix execution metadata"
+        );
+
         for variant in &["codex", "kimi", "reasonix"] {
             let skill = fs::read_to_string(
                 skills_dir
                     .join("autopilot-distill")
+                    .join("runtime")
                     .join(variant)
-                    .join("SKILL.md"),
+                    .join("INSTRUCTIONS.md"),
             )
             .unwrap_or_else(|err| {
                 panic!(
-                    "autopilot-distill {} SKILL.md should be readable: {}",
+                    "autopilot-distill {} INSTRUCTIONS.md should be readable: {}",
                     variant, err
                 )
             });
