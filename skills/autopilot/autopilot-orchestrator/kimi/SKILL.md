@@ -124,6 +124,10 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 3. 对匹配项，检查是否为 PRD：读取 frontmatter 中 `Type: prd` 字段，或读取 body 检查是否满足 PRD 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。PRD 条目**不纳入调度队列**，单独记录
 4. 收集所有非 PRD 的匹配项
 
+#### LOCAL_ISSUE_DEDUP_CONTRACT
+
+排序或调度本地候选项之前，按完整 Markdown 字节内容分组（可比较 SHA-256），identical 内容的文件每组只保留一个候选项。如果同组同时包含 `.scratch/distill-tracer/issues/` 和其他本地 issue 路径，优先保留非 tracer 路径；否则按自然序保留第一个。报告所有被抑制的重复路径。只有 `.scratch/distill-tracer/issues/` 中单独存在的 issue 仍然可实现，不得排除。
+
 ### GitHub 扫描
 
 5. `gh issue list --label "ready-for-agent" --state open --json number,title,labels --limit 50`

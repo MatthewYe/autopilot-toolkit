@@ -1,5 +1,5 @@
 ---
-name: distill
+name: autopilot-distill
 description: "Run the Distill requirement-to-issues workflow in Reasonix through the installed toolkit CLI."
 ---
 
@@ -48,6 +48,20 @@ Run to the next Distill boundary in the same Reasonix session:
 ```bash
 "${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<current-reasonix-session-id>" --expected-revision "<revision>" --stage issues --evidence '{"checkpoint":"slice-breakdown-approved","summary":"<issue slicing summary>","issues":[{"title":"<issue title>","body":"<exact issue markdown>"}]}'
 ```
+
+## LOCAL_ISSUE_HANDOFF_CONTRACT
+
+When `docs/agents/issue-tracker.md` configures Local Markdown, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: submit the approved payloads to the runner and let it create each local issue exactly once under `.scratch/distill-tracer/issues/`. Do not create a second issue copy elsewhere under `.scratch/`.
+
+Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
+
+```markdown
+---
+Status: ready-for-agent
+---
+```
+
+The exact Markdown including this frontmatter is the frozen issue payload. When the configured tracker is GitHub, keep the external publication and receipt flow below.
 
 After each `submit-evidence` response, inspect the returned `run_id`, `stage`, `revision`, `next_action`, and `authorized_action`, then continue the loop until the runner yields a terminal, waiting, blocked, or needs-reconciliation state. Pass the returned `revision` as `--expected-revision` on the next mutation. The runner authorizes stage order; do not skip a stage or submit evidence for a stage other than the returned `stage`.
 

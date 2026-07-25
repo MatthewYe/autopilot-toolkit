@@ -512,9 +512,10 @@ mod tests {
 
     #[test]
     fn reasonix_distill_variant_drives_shared_runner_with_native_session_identity() {
-        let skill = read_reasonix_skill("distill");
+        let skill = read_reasonix_skill("autopilot-distill");
 
         for required in [
+            "name: autopilot-distill",
             "current Reasonix session identity",
             "project session trace",
             "contains the current `/distill` invocation",

@@ -314,8 +314,10 @@ fn rejects_skipped_or_reordered_stage_evidence() {
 
 #[test]
 fn codex_skill_runs_to_boundaries_with_unmodified_stage_skills() {
-    let skill = fs::read_to_string(repo_root().join("skills/autopilot/distill/codex/SKILL.md"))
-        .expect("codex distill skill should exist");
+    let skill =
+        fs::read_to_string(repo_root().join("skills/autopilot/autopilot-distill/codex/SKILL.md"))
+            .expect("codex autopilot-distill skill should exist");
+    assert!(skill.contains("name: autopilot-distill"));
 
     assert!(skill.contains("~/.agents/skills/.autopilot/bin/distill"));
     assert!(skill.contains("--session-id"));

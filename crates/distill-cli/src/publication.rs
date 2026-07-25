@@ -103,6 +103,16 @@ pub(crate) fn publish_issues(
     if issues.is_empty() {
         return Err("issues evidence must include at least one issue".to_string());
     }
+    if tracker_kind(worktree)? == TrackerKind::LocalMarkdown {
+        for issue in &issues {
+            if !local_issue_is_agent_ready(&issue.body) {
+                return Err(format!(
+                    "local issue {:?} must declare Status: ready-for-agent before publication",
+                    issue.title
+                ));
+            }
+        }
+    }
 
     let mut files = Vec::new();
     let mut publications = Vec::new();
@@ -144,6 +154,23 @@ pub(crate) fn publish_issues(
 
     state["publications"]["issues"] = json!(publications);
     Ok(PublicationOutcome { files, blocked })
+}
+
+fn local_issue_is_agent_ready(body: &str) -> bool {
+    let normalized = body.replace("\r\n", "\n");
+    if normalized.lines().next() == Some("Status: ready-for-agent") {
+        return true;
+    }
+    let Some(frontmatter) = normalized
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---"))
+        .map(|(frontmatter, _)| frontmatter)
+    else {
+        return false;
+    };
+    frontmatter
+        .lines()
+        .any(|line| line.trim() == "Status: ready-for-agent")
 }
 
 struct PublishedItem {

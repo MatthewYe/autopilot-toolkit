@@ -1,5 +1,5 @@
 ---
-name: distill
+name: autopilot-distill
 description: "Run the Distill requirement-to-issues workflow in Kimi through the installed toolkit CLI."
 ---
 
@@ -67,6 +67,20 @@ If `authorized_action.skill` is `to-issues`, invoke the unmodified `to-issues` s
 ```bash
 "${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage issues --evidence '{"checkpoint":"slice-breakdown-approved","summary":"<issue slicing summary>","issues":[{"title":"<issue title>","body":"<exact issue markdown>"}]}'
 ```
+
+## LOCAL_ISSUE_HANDOFF_CONTRACT
+
+When `docs/agents/issue-tracker.md` configures Local Markdown, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: submit the approved payloads to the runner and let it create each local issue exactly once under `.scratch/distill-tracer/issues/`. Do not create a second issue copy elsewhere under `.scratch/`.
+
+Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
+
+```markdown
+---
+Status: ready-for-agent
+---
+```
+
+The exact Markdown including this frontmatter is the frozen issue payload. When the configured tracker is GitHub, keep the external publication and receipt flow below.
 
 After every `submit-evidence` response, use the returned `revision` as the next `--expected-revision`.
 

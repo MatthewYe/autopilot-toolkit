@@ -117,12 +117,6 @@
       "install_selection_status": "verified"
     },
     {
-      "platform": "darwin-x64",
-      "rust_target": "x86_64-apple-darwin",
-      "artifact_status": "verified",
-      "install_selection_status": "verified"
-    },
-    {
       "platform": "linux-arm64",
       "rust_target": "aarch64-unknown-linux-musl",
       "artifact_status": "verified",

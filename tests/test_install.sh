@@ -138,7 +138,6 @@ build_mock_tarball() {
     "distill": {
       "platforms": {
         "darwin-arm64": "bin/distill-artifacts/darwin-arm64/distill",
-        "darwin-x64": "bin/distill-artifacts/darwin-x64/distill",
         "linux-arm64": "bin/distill-artifacts/linux-arm64/distill",
         "linux-x64": "bin/distill-artifacts/linux-x64/distill"
       }
@@ -159,7 +158,7 @@ JSONEOF
     mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${staging}/.autopilot/install.sh"
     cp "${PROJECT_ROOT}/templates/uninstall.sh" "${staging}/.autopilot/uninstall.sh"
 
-    for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+    for platform in darwin-arm64 linux-arm64 linux-x64; do
         mkdir -p "${staging}/.autopilot/bin/distill-artifacts/${platform}"
         cat > "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill" << SHEOF
 #!/usr/bin/env bash
@@ -348,7 +347,7 @@ test_distill_unsupported_platform() {
     local output
     if output="$(HOME="${home}" \
         AGENTS_SKILLS_DIR="${skills_dir}" \
-        AUTOPILOT_PLATFORM_OVERRIDE="sunos-sparc" \
+        AUTOPILOT_PLATFORM_OVERRIDE="darwin-x64" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-unsupported-001" 2>&1)"; then
         echo "  FAIL: unsupported platform should fail"
         FAIL=$((FAIL + 1))

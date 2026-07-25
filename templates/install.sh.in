@@ -86,9 +86,6 @@ detect_platform() {
         Darwin:arm64|Darwin:aarch64)
             echo "darwin-arm64"
             ;;
-        Darwin:x86_64|Darwin:amd64)
-            echo "darwin-x64"
-            ;;
         Linux:arm64|Linux:aarch64)
             echo "linux-arm64"
             ;;
@@ -122,7 +119,7 @@ select_distill_artifact() {
     done < <(tar -tzf "${tarball}")
 
     if [[ "${has_distill_artifacts}" == "1" ]]; then
-        echo "ERROR: selected Distill CLI artifact is unavailable for ${platform}. Supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64" >&2
+        echo "ERROR: selected Distill CLI artifact is unavailable for ${platform}. Supported platforms: darwin-arm64, linux-arm64, linux-x64" >&2
         return 1
     fi
 }
@@ -170,10 +167,10 @@ fi
 
 CURRENT_PLATFORM="$(detect_platform)"
 case "${CURRENT_PLATFORM}" in
-    darwin-arm64|darwin-x64|linux-arm64|linux-x64)
+    darwin-arm64|linux-arm64|linux-x64)
         ;;
     *)
-    echo "ERROR: unsupported platform for Distill CLI: $(uname -s)/$(uname -m). Supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64"
+    echo "ERROR: unsupported platform for Distill CLI: $(uname -s)/$(uname -m). Supported platforms: darwin-arm64, linux-arm64, linux-x64"
     exit 1
         ;;
 esac

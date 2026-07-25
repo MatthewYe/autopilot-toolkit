@@ -101,9 +101,9 @@ _Avoid_: project binding, implicit resume
 A versioned, declarative sequence of Distill stages and their assigned executors. A run snapshots the definition it starts with, so later workflow changes affect new runs without altering in-progress runs.
 _Avoid_: hard-coded pipeline, skill chain
 
-**Distill skill**:
-The agent-facing entry point for starting, driving, and resuming Distill runs. It wraps the Distill runner but does not own workflow state or authorize stage transitions.
-_Avoid_: Distill runner, workflow controller
+**autopilot-distill skill**:
+The agent-facing entry point for starting, driving, and resuming Distill runs. It wraps the installed `distill` CLI runner but does not own workflow state, authorize stage transitions, or rename the CLI contract.
+_Avoid_: Distill runner, workflow controller, distill skill
 
 **Distill stage**:
 One gated phase of a Distill run. Its assigned executor declares completion by submitting valid completion evidence; users provide requirement knowledge but do not decide whether the executor has enough information.

@@ -317,7 +317,7 @@ fn package_evidence_matches_native_artifacts_and_release_tarball() {
         let bytes = fs::read(&path).unwrap();
         assert_eq!(sha256(&path), artifact["sha256"]);
         match platform {
-            "darwin-arm64" | "darwin-x64" => {
+            "darwin-arm64" => {
                 assert_eq!(&bytes[..4], &[0xcf, 0xfa, 0xed, 0xfe])
             }
             "linux-arm64" | "linux-x64" => assert_eq!(&bytes[..4], b"\x7fELF"),
@@ -332,7 +332,7 @@ fn package_evidence_matches_native_artifacts_and_release_tarball() {
         .expect("tar should inspect release candidate");
     assert!(listing.status.success());
     let listing = String::from_utf8(listing.stdout).unwrap();
-    for platform in ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"] {
+    for platform in ["darwin-arm64", "linux-arm64", "linux-x64"] {
         assert!(listing.contains(&format!(
             "./.autopilot/bin/distill-artifacts/{platform}/distill"
         )));

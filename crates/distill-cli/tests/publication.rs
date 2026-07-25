@@ -394,6 +394,44 @@ fn local_markdown_resume_reports_human_drift_without_overwrite() {
 }
 
 #[test]
+fn local_markdown_rejects_issue_without_agent_ready_triage_before_writing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-local-triage");
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        "session-local-triage",
+        prd_revision,
+        "prd",
+        &prd_evidence(),
+    ));
+    let issues_revision = after_prd["revision"].as_u64().unwrap();
+    let evidence = json!({
+        "checkpoint": "slice-breakdown-approved",
+        "summary": "One local issue.",
+        "issues": [{
+            "title": "Missing triage",
+            "body": "## What to build\n\nA local issue without status metadata.\n"
+        }]
+    });
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            "session-local-triage",
+            issues_revision,
+            "issues",
+            &evidence,
+        ),
+        "Status: ready-for-agent",
+    );
+    assert!(!worktree.join(".scratch/distill-tracer/issues").exists());
+}
+
+#[test]
 fn timeout_before_response_enters_reconciliation_and_retry_does_not_duplicate() {
     let tmp = tempfile::tempdir().unwrap();
     let worktree = tmp.path();

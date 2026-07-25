@@ -203,12 +203,6 @@ const DISTILL_TARGETS: &[DistillTarget] = &[
         linker_override_env: None,
     },
     DistillTarget {
-        platform: "darwin-x64",
-        rust_target: "x86_64-apple-darwin",
-        cargo_linker_env: None,
-        linker_override_env: None,
-    },
-    DistillTarget {
         platform: "linux-arm64",
         rust_target: "aarch64-unknown-linux-musl",
         cargo_linker_env: Some("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"),
@@ -526,11 +520,30 @@ fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Error> {
     let cargo = env::var("DISTILL_CARGO").unwrap_or_else(|_| "cargo".to_string());
     let rustc = env::var("DISTILL_RUSTC").ok();
     let linux_linker = env::var("DISTILL_LINUX_LINKER").ok();
+    let derived_linux_linker = if linux_linker.is_none() {
+        derive_rust_lld(&rustc)?
+    } else {
+        None
+    };
     for target in DISTILL_TARGETS {
         println!(
             "==> Building distill for {} ({})",
             target.platform, target.rust_target
         );
+        let status = Command::new("rustup")
+            .args(["target", "add", target.rust_target])
+            .current_dir(project_root)
+            .status()
+            .with_context(|| {
+                format!(
+                    "rustup target add failed to start for {}",
+                    target.rust_target
+                )
+            })?;
+        if !status.success() {
+            anyhow::bail!("rustup target add failed for {}", target.rust_target);
+        }
+
         let mut command = Command::new(&cargo);
         command
             .args([
@@ -549,7 +562,8 @@ fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let target_linker = target
                 .linker_override_env
                 .and_then(|name| env::var(name).ok())
-                .or_else(|| linux_linker.clone());
+                .or_else(|| linux_linker.clone())
+                .or_else(|| derived_linux_linker.clone());
             if let Some(linker) = target_linker {
                 command.env(linker_env, linker);
             }
@@ -586,6 +600,48 @@ fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Error> {
         }
     }
     Ok(())
+}
+
+fn derive_rust_lld(rustc: &Option<String>) -> Result<Option<String>, anyhow::Error> {
+    let rustc_bin = rustc.as_deref().unwrap_or("rustc");
+    let sysroot = Command::new(rustc_bin)
+        .args(["--print", "sysroot"])
+        .output()
+        .with_context(|| format!("{} --print sysroot failed to start", rustc_bin))?;
+    if !sysroot.status.success() {
+        return Ok(None);
+    }
+    let sysroot = String::from_utf8(sysroot.stdout)
+        .context("rustc sysroot output not valid UTF-8")?
+        .trim()
+        .to_string();
+    if sysroot.is_empty() {
+        return Ok(None);
+    }
+
+    let version = Command::new(rustc_bin)
+        .arg("-vV")
+        .output()
+        .with_context(|| format!("{} -vV failed to start", rustc_bin))?;
+    if !version.status.success() {
+        return Ok(None);
+    }
+    let version = String::from_utf8(version.stdout).context("rustc -vV output not valid UTF-8")?;
+    let host = version
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::trim)
+        .filter(|host| !host.is_empty());
+    Ok(host.map(|host| {
+        Path::new(&sysroot)
+            .join("lib")
+            .join("rustlib")
+            .join(host)
+            .join("bin")
+            .join("rust-lld")
+            .to_string_lossy()
+            .to_string()
+    }))
 }
 
 fn dev_all(
@@ -855,9 +911,8 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
-    // No subcommand: auto pack + release
+    // No subcommand: release builds artifacts, packs once, then publishes.
     if args.len() < 2 {
-        pack_command(&project_root)?;
         release_command(&project_root)?;
         return Ok(());
     }

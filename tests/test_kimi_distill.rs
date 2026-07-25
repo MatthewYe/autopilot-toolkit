@@ -4,12 +4,12 @@
 //! serde_json = "1"
 //! ```
 //!
-//! Kimi-specific static verification for the Distill skill variant.
+//! Kimi-specific static verification for the autopilot-distill skill variant.
 //! Run with: rust-script --test tests/test_kimi_distill.rs
 
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde_json::Value;
 
 fn main() {
     println!("Run with: rust-script --test tests/test_kimi_distill.rs");
@@ -19,7 +19,7 @@ fn project_root() -> PathBuf {
     let src = Path::new(file!());
     if let Some(root) = src.parent().and_then(|p| p.parent()) {
         if root
-            .join("skills/autopilot/distill/kimi/SKILL.md")
+            .join("skills/autopilot/autopilot-distill/kimi/SKILL.md")
             .exists()
         {
             return root.to_path_buf();
@@ -28,7 +28,7 @@ fn project_root() -> PathBuf {
     if let Ok(root) = std::env::var("PROJECT_ROOT") {
         let root = PathBuf::from(root);
         if root
-            .join("skills/autopilot/distill/kimi/SKILL.md")
+            .join("skills/autopilot/autopilot-distill/kimi/SKILL.md")
             .exists()
         {
             return root;
@@ -38,8 +38,8 @@ fn project_root() -> PathBuf {
 }
 
 fn kimi_skill() -> String {
-    fs::read_to_string(project_root().join("skills/autopilot/distill/kimi/SKILL.md"))
-        .expect("Kimi Distill skill should be readable")
+    fs::read_to_string(project_root().join("skills/autopilot/autopilot-distill/kimi/SKILL.md"))
+        .expect("Kimi autopilot-distill skill should be readable")
 }
 
 fn smoke_report() -> String {
@@ -156,7 +156,10 @@ fn smoke_evidence_is_machine_readable_and_uses_native_kimi_session() {
     let evidence = smoke_evidence();
     assert_eq!(evidence["schema_version"], 1);
     assert_eq!(evidence["runtime"]["kind"], "kimi");
-    assert_eq!(evidence["runtime"]["binary"], "/Users/xlchen/.kimi-code/bin/kimi");
+    assert_eq!(
+        evidence["runtime"]["binary"],
+        "/Users/xlchen/.kimi-code/bin/kimi"
+    );
     assert_eq!(evidence["runtime"]["version"], "0.29.0");
 
     let native = &evidence["native_session"];
@@ -165,15 +168,16 @@ fn smoke_evidence_is_machine_readable_and_uses_native_kimi_session() {
         .expect("native session id should be recorded");
     assert!(session_id.starts_with("session_"));
     assert!(!session_id.contains("smoke-62"));
-    assert!(!native["source"].as_str().unwrap().contains("KIMI_SESSION_ID"));
+    assert!(!native["source"]
+        .as_str()
+        .unwrap()
+        .contains("KIMI_SESSION_ID"));
     assert_eq!(native["match_count"], 1);
     assert_eq!(native["work_dir"], evidence["fixture"]["work_dir"]);
-    assert!(
-        native["session_dir"]
-            .as_str()
-            .expect("session dir should be recorded")
-            .contains(session_id)
-    );
+    assert!(native["session_dir"]
+        .as_str()
+        .expect("session dir should be recorded")
+        .contains(session_id));
     assert_hex_hash(&native["session_dir_sha256"], 64);
     assert_hex_hash(&native["state_json_sha256"], 64);
 
