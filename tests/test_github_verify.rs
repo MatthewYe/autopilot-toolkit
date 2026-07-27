@@ -295,11 +295,8 @@ mod tests {
     #[test]
     fn ac5_skill_defines_retry_limit() {
         let skill = read_orchestrator_skill();
-        let has_stall = contains(&skill, "空转检测")
-            || contains(&skill, "Stall Detection");
-        let has_retry = skill
-            .lines()
-            .any(|l| l.contains("retry_count"));
+        let has_stall = contains(&skill, "空转检测") || contains(&skill, "Stall Detection");
+        let has_retry = skill.lines().any(|l| l.contains("retry_count"));
         assert!(
             has_stall || has_retry,
             "SKILL.md must define stall detection or retry tracking"
