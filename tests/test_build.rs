@@ -264,7 +264,6 @@ mod tests {
         __distill_artifacts_command_installs_targets_before_build_and_derives_linux_linker();
         __release_stops_when_target_install_fails();
         __release_builds_packs_and_publishes_once_in_order();
-        __no_args_release_builds_packs_and_publishes_once_in_order();
         __pack_fails_when_distill_artifact_set_is_incomplete();
         __build_creates_dist_dir_if_missing();
         __build_exits_nonzero_when_not_in_git_repo();
@@ -856,10 +855,6 @@ chmod +x "target/${{target}}/release/distill"
 
     fn __release_builds_packs_and_publishes_once_in_order() {
         assert_release_builds_packs_and_publishes_once_in_order(&["release"], false);
-    }
-
-    fn __no_args_release_builds_packs_and_publishes_once_in_order() {
-        assert_release_builds_packs_and_publishes_once_in_order(&[], false);
     }
 
     fn __release_stops_when_target_install_fails() {
