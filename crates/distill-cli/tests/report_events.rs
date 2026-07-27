@@ -191,7 +191,7 @@ fn completed_run_exposes_versioned_state_events_and_canonical_report() {
     assert_eq!(report["report_version"], "distill.report.v1");
     assert_eq!(report["status"], "completed");
     assert_eq!(report["run_id"], run_id);
-    assert!(report["sources"].as_array().unwrap().len() >= 1);
+    assert!(!report["sources"].as_array().unwrap().is_empty());
     assert!(report["requirement"]["text"]
         .as_str()
         .unwrap()
