@@ -14,7 +14,8 @@ use std::path::PathBuf;
 ///
 /// Only the fields needed by consumers are extracted; the full JSON blob
 /// contains additional metadata (`source`, `sourceUrl`, `pluginName`,
-/// `installedAt`, `updatedAt`) that is deliberately omitted.
+/// `updatedAt`) that is deliberately omitted. `installedAt` is retained
+/// for consumers that need to preserve the original install timestamp.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct LockedSkill {
     /// The skill name (key in the `skills` JSON object).
@@ -32,6 +33,9 @@ pub struct LockedSkill {
     /// Git tree hash of the skill's directory at lock time.
     #[serde(rename = "skillFolderHash")]
     pub skill_folder_hash: String,
+    /// Timestamp when the skill was first installed (ISO 8601).
+    #[serde(rename = "installedAt", default)]
+    pub installed_at: Option<String>,
 }
 
 /// Top-level structure of `.skill-lock.json`.

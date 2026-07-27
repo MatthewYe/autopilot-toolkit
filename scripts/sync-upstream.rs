@@ -4,6 +4,8 @@
 //! serde = { version = "1", features = ["derive"] }
 //! serde_json = { version = "1", features = ["preserve_order"] }
 //! chrono = "0.4"
+//! git-utils = { path = "../crates/git-utils" }
+//! shared = { path = "../crates/shared" }
 //! ```
 //!
 //! Sync the vendored upstream (skills/upstream/) to a tagged release of
@@ -18,7 +20,7 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{self, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -26,64 +28,6 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const UPSTREAM_REPO: &str = "https://github.com/mattpocock/skills.git";
 const PLUGIN_NAME: &str = "mattpocock-skills";
-
-// ── Git helpers ────────────────────────────────────────────────────────────
-
-fn compute_tree_hash(folder: &Path) -> Result<String, String> {
-    if !folder.is_dir() {
-        return Err(format!("folder not found: {}", folder.display()));
-    }
-    let n = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let tmp = std::env::temp_dir().join(format!("sync-upstream-hash-{}-{}", process::id(), n));
-    fs::create_dir(&tmp).map_err(|e| format!("cannot create temp dir: {}", e))?;
-
-    let result = (|| -> Result<String, String> {
-        run_git(&tmp, &["init", "--quiet"])?;
-        run_git_worktree(&tmp, folder, &["add", "-A"])?;
-        let hash = run_git_stdout(&tmp, &["write-tree"])?;
-        Ok(hash.trim().to_string())
-    })();
-
-    let _ = fs::remove_dir_all(&tmp);
-    result
-}
-
-fn run_git(git_dir: &Path, args: &[&str]) -> Result<(), String> {
-    run_git_inner(git_dir, None, args, false).map(|_| ())
-}
-
-fn run_git_worktree(git_dir: &Path, work_tree: &Path, args: &[&str]) -> Result<(), String> {
-    run_git_inner(git_dir, Some(work_tree), args, false).map(|_| ())
-}
-
-fn run_git_stdout(git_dir: &Path, args: &[&str]) -> Result<String, String> {
-    run_git_inner(git_dir, None, args, true)
-}
-
-fn run_git_inner(
-    git_dir: &Path,
-    work_tree: Option<&Path>,
-    args: &[&str],
-    capture_stdout: bool,
-) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg(format!("--git-dir={}", git_dir.display()));
-    if let Some(wt) = work_tree {
-        cmd.arg(format!("--work-tree={}", wt.display()));
-    }
-    cmd.args(args);
-
-    let output = cmd.output().map_err(|e| format!("git error: {}", e))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git error: {}", stderr.trim()));
-    }
-    if capture_stdout {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Ok(String::new())
-    }
-}
 
 // ── Skill discovery ────────────────────────────────────────────────────────
 
@@ -136,7 +80,7 @@ fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
                 continue;
             }
 
-            let hash = compute_tree_hash(&path)?;
+            let hash = git_utils::compute_tree_hash(&path)?;
             let skill_path = format!("skills/{}/{}/SKILL.md", bucket, name);
             let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
@@ -183,39 +127,24 @@ fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
 /// Merge discovered skills into the existing lock file.
 /// - Skill exists in both → update hash, preserve installedAt
 /// - Skill only in new → add with defaults
-/// - Skill only in old → detected as orphan (returned separately)
-fn merge_lock_file(old_skills: &SkillMap, new_skills: &SkillMap) -> (SkillMap, Vec<String>) {
+fn merge_lock_file(installed_ats: &BTreeMap<String, String>, new_skills: &SkillMap) -> SkillMap {
     let mut merged: SkillMap = BTreeMap::new();
-    let mut orphans: Vec<String> = Vec::new();
 
-    // Keep existing skills that still exist upstream (update hash)
-    // and note skills that are gone (orphans).
-    for (name, old_entry) in old_skills {
-        if let Some(new_entry) = new_skills.get(name) {
-            let mut entry = new_entry.clone();
-            // Preserve original installedAt if it exists
-            if let Some(old_installed) = old_entry.get("installedAt").and_then(|v| v.as_str()) {
-                if let Some(obj) = entry.as_object_mut() {
-                    obj.insert(
-                        "installedAt".to_string(),
-                        serde_json::Value::String(old_installed.to_string()),
-                    );
-                }
+    for (name, new_entry) in new_skills {
+        let mut entry = new_entry.clone();
+        // Preserve original installedAt if it exists
+        if let Some(old_installed) = installed_ats.get(name) {
+            if let Some(obj) = entry.as_object_mut() {
+                obj.insert(
+                    "installedAt".to_string(),
+                    serde_json::Value::String(old_installed.clone()),
+                );
             }
-            merged.insert(name.clone(), entry);
-        } else {
-            orphans.push(name.clone());
         }
+        merged.insert(name.clone(), entry);
     }
 
-    // Add new skills not previously in the lock file.
-    for (name, entry) in new_skills {
-        if !merged.contains_key(name) {
-            merged.insert(name.clone(), entry.clone());
-        }
-    }
-
-    (merged, orphans)
+    merged
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -229,18 +158,7 @@ fn main() {
     };
 
     // Derive project root
-    let project_root = env::var("PROJECT_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let script_path = PathBuf::from(&args[0]);
-            script_path
-                .canonicalize()
-                .unwrap_or_else(|_| script_path.clone())
-                .parent()
-                .and_then(|p| p.parent())
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-        });
+    let project_root = shared::project_root();
 
     let upstream_dir = project_root.join("skills").join("upstream");
     let lockfile_path = project_root.join(".skill-lock.json");
@@ -288,20 +206,41 @@ fn main() {
     }
 
     // ── 3. Read existing lock file ─────────────────────────────────────
-    let old_skills: SkillMap = if lockfile_path.exists() {
-        let content = fs::read_to_string(&lockfile_path).expect("cannot read .skill-lock.json");
-        let data: serde_json::Value =
-            serde_json::from_str(&content).expect("cannot parse .skill-lock.json");
-        data.get("skills")
-            .and_then(|s| s.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default()
-    } else {
-        BTreeMap::new()
-    };
+    let (installed_ats, existing_names, version): (BTreeMap<String, String>, Vec<String>, u64) =
+        if lockfile_path.exists() {
+            match shared::load_skill_lock_at(&project_root) {
+                Ok(lock) => {
+                    let ats: BTreeMap<String, String> = lock
+                        .skills
+                        .iter()
+                        .filter_map(|s| {
+                            s.installed_at
+                                .clone()
+                                .map(|at| (s.name.clone(), at))
+                        })
+                        .collect();
+                    let names: Vec<String> =
+                        lock.skills.iter().map(|s| s.name.clone()).collect();
+                    let ver = lock.version as u64;
+                    (ats, names, ver)
+                }
+                Err(e) => {
+                    eprintln!("WARNING: cannot parse lock file: {}", e);
+                    (BTreeMap::new(), vec![], 4u64)
+                }
+            }
+        } else {
+            (BTreeMap::new(), vec![], 4u64)
+        };
 
     // ── 4. Merge and detect orphans ────────────────────────────────────
-    let (merged, orphans) = merge_lock_file(&old_skills, &new_skills);
+    let merged = merge_lock_file(&installed_ats, &new_skills);
+
+    let orphans: Vec<String> = existing_names
+        .iter()
+        .filter(|n| !new_skills.contains_key(*n))
+        .cloned()
+        .collect();
 
     if !orphans.is_empty() {
         println!("\nOrphan skills (removed from lock file):");
@@ -312,7 +251,7 @@ fn main() {
 
     let added: Vec<_> = merged
         .keys()
-        .filter(|k| !old_skills.contains_key(*k))
+        .filter(|k| !existing_names.contains(k))
         .collect();
     if !added.is_empty() {
         println!("\nNew skills (added to lock file):");
@@ -332,13 +271,6 @@ fn main() {
     copy_dir_except_git(&clone_dir, &upstream_dir);
 
     // ── 6. Write updated lock file ─────────────────────────────────────
-    let version = if lockfile_path.exists() {
-        let content = fs::read_to_string(&lockfile_path).unwrap_or_default();
-        let data: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
-        data.get("version").and_then(|v| v.as_u64()).unwrap_or(4)
-    } else {
-        4u64
-    };
 
     let mut lock_json = serde_json::Map::new();
     lock_json.insert(
