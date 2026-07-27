@@ -460,6 +460,7 @@ test_upgrade() {
 
     # Install old version
     HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
         bash "${install_sh}" --tarball "${old_tarball}" --version "old-version" > /dev/null 2>&1
 
     assert_eq "old version installed" "old-version" "$(cat "${skills_dir}/.autopilot/.version")"
@@ -471,6 +472,7 @@ test_upgrade() {
     # Install new version
     local output
     output="$(HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
+        AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
         bash "${install_sh}" --tarball "${new_tarball}" --version "new-version" 2>&1)"
 
     echo "${output}" | grep -q "Upgrading" && echo "  PASS: reports upgrading" && PASS=$((PASS + 1)) || { echo "  FAIL: should report upgrading"; FAIL=$((FAIL + 1)); }
