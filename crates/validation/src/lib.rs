@@ -43,6 +43,8 @@ pub enum SkillVariant {
     Codex,
     /// Kimi Code runtime (allows OpenCode-specific fields, same as Codex).
     Kimi,
+    /// OpenCode runtime (allows OpenCode-specific fields, same as Codex/Kimi).
+    Opencode,
     /// Runtime-agnostic (rejects OpenCode-specific fields, same as Reasonix).
     Agnostic,
 }
@@ -256,8 +258,11 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
         }
     }
 
-    // Check 3: No opencode fields (skip for Codex and Kimi variants)
-    if variant != SkillVariant::Codex && variant != SkillVariant::Kimi {
+    // Check 3: No opencode fields (skip for Codex, Kimi, and Opencode variants)
+    if variant != SkillVariant::Codex
+        && variant != SkillVariant::Kimi
+        && variant != SkillVariant::Opencode
+    {
         for &field in OPENCODE_FIELDS {
             if let Some(val) = fields.get(field) {
                 if !val.is_empty() {

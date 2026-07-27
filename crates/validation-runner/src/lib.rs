@@ -160,6 +160,7 @@ pub fn validate_all(project_root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
                 Some("reasonix") => SkillVariant::Reasonix,
                 Some("codex") => SkillVariant::Codex,
                 Some("kimi") => SkillVariant::Kimi,
+                Some("opencode") => SkillVariant::Opencode,
                 _ => SkillVariant::Agnostic,
             };
             let validation_result = validate_skill_with_variant(&content, variant);
@@ -252,13 +253,13 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
     wln!(report, "{}", sep);
     wln!(report);
 
-    // Check 1: 0 opencode-specific fields (exclude codex and kimi variants)
+    // Check 1: 0 opencode-specific fields (exclude codex, kimi, opencode variants)
     let oc_count: usize = skills
         .iter()
         .zip(results.iter())
         .filter(|(s, _)| {
             let v = s.variant.as_deref();
-            v != Some("codex") && v != Some("kimi")
+            v != Some("codex") && v != Some("kimi") && v != Some("opencode")
         })
         .map(|(_, r)| {
             r.result
@@ -272,12 +273,12 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
         .iter()
         .filter(|s| {
             let v = s.variant.as_deref();
-            v != Some("codex") && v != Some("kimi")
+            v != Some("codex") && v != Some("kimi") && v != Some("opencode")
         })
         .count();
     wln!(
         report,
-        "Check: 0 opencode-specific fields across {} skills ({} non-codex/kimi)",
+        "Check: 0 opencode-specific fields across {} skills ({} non-codex/kimi/opencode)",
         non_codex_count,
         non_codex_count
     );

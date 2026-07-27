@@ -62,7 +62,7 @@ pub struct Manifest {
 // ── Runtime variant names ───────────────────────────────────────────────────
 
 /// The known runtime variant directory names.
-const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "reasonix"];
+const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "opencode", "reasonix"];
 
 // ── classify_skill ──────────────────────────────────────────────────────────
 
@@ -335,7 +335,7 @@ mod tests {
             .expect("toolkit-setup not found");
         assert_eq!(ts.skill_type, SkillType::Agnostic);
 
-        // autopilot-orchestrator should be coupled with reasonix/kimi/codex
+        // autopilot-orchestrator should be coupled with reasonix/kimi/codex/opencode
         let orch = skills
             .iter()
             .find(|s| s.name == "autopilot-orchestrator")
@@ -343,5 +343,6 @@ mod tests {
         assert_eq!(orch.skill_type, SkillType::Coupled);
         assert!(orch.variants.contains(&"reasonix".to_string()));
         assert!(orch.variants.contains(&"kimi".to_string()));
+        assert!(orch.variants.contains(&"opencode".to_string()));
     }
 }
