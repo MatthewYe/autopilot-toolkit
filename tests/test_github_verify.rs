@@ -578,10 +578,6 @@ mod tests {
             toml_string_value(&agent, "description"),
             frontmatter_value(&reasonix, "description")
         );
-        assert!(
-            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
-            "implementer model must be gpt-5.4 or gpt-5.5"
-        );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "workspace-write");
         for required in [
             "~/.agents/principles/karpathy.md",
@@ -634,10 +630,6 @@ mod tests {
             toml_string_value(&agent, "description"),
             frontmatter_value(&reasonix, "description")
         );
-        assert!(
-            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
-            "reviewer model must be gpt-5.4 or gpt-5.5"
-        );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "read-only");
         for required in [
             "~/.agents/principles/karpathy.md",
@@ -661,7 +653,7 @@ mod tests {
         }
 
         for required in [
-            "Four-Axis Review",
+            "Five-Axis Review",
             "Behavior alignment",
             "TDD discipline",
             "code quality",

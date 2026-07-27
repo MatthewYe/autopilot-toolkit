@@ -1,6 +1,6 @@
 ---
 name: autopilot-reviewer
-description: "Autopilot task reviewer. Five-axis review: Behavior alignment, TDD discipline, code quality (包括上游 code-review 的 Fowler 气味基线), plan fidelity, and upstream code-review consolidation. Read-only."
+description: "Autopilot task reviewer. Five-axis review: Behavior alignment, TDD discipline, code quality (including upstream code-review Fowler baseline), plan fidelity, and upstream code-review consolidation. Read-only."
 ---
 
 Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "Think Before Judging" variant + Principles 2, 4.
