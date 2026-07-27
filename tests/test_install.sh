@@ -8,21 +8,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOOTSTRAP_SCRIPT="${SCRIPT_DIR}/../bootstrap.sh"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# We need a built install.sh — use the build pipeline output
-TARBALL_DIR="${SCRIPT_DIR}/../dist"
-TARBALL_NAME="autopilot-toolkit.tar.gz"
-FULL_TARBALL="${TARBALL_DIR}/${TARBALL_NAME}"
-
 PASS=0
 FAIL=0
 TMP_BASE=""
+TEST_ARTIFACT_ROOT=""
+TEST_INSTALL_SH=""
 
 cleanup() {
     if [[ -n "${TMP_BASE}" && -d "${TMP_BASE}" ]]; then
         rm -rf "${TMP_BASE}"
     fi
+    if [[ -n "${TEST_ARTIFACT_ROOT}" && -d "${TEST_ARTIFACT_ROOT}" ]]; then
+        rm -rf "${TEST_ARTIFACT_ROOT}"
+    fi
 }
 trap cleanup EXIT
+
+prepare_test_install_script() {
+    TEST_ARTIFACT_ROOT="$(mktemp -d)"
+    TEST_INSTALL_SH="${TEST_ARTIFACT_ROOT}/install.sh"
+    sed \
+        -e 's/__VERSION__/test-embedded-version/g' \
+        -e 's|__REPO_URL__|https://github.com/test/autopilot-toolkit|g' \
+        "${PROJECT_ROOT}/templates/install.sh.in" > "${TEST_INSTALL_SH}"
+    chmod +x "${TEST_INSTALL_SH}"
+}
 
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
@@ -111,11 +121,9 @@ make_path_without_python() {
     done
 }
 
-# Use the full tarball (built from the pipeline).
-# Extract install.sh from it for testing.
 extract_install_sh() {
     local dest="$1"
-    mkdir -p "$(dirname "${dest}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${dest}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${dest}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${dest}/.autopilot/install.sh"
 }
 
 # ── helper: build a minimal mock tarball for fast tests ──────────────────
@@ -154,8 +162,8 @@ JSONEOF
     # Copy bootstrap.sh into staging
     cp "${BOOTSTRAP_SCRIPT}" "${staging}/.autopilot/bootstrap.sh"
 
-    # Copy install.sh from the full tarball
-    mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${staging}/.autopilot/install.sh"
+    # Copy the independently rendered test installer into the mock tarball.
+    mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${staging}/.autopilot/install.sh"
     cp "${PROJECT_ROOT}/templates/uninstall.sh" "${staging}/.autopilot/uninstall.sh"
 
     for platform in darwin-arm64 linux-arm64 linux-x64; do
@@ -204,7 +212,7 @@ test_uninstall_removes_distill_artifacts_and_preserves_user_skills() {
     build_mock_tarball "${mock_tarball}" "distill-uninstall-001"
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     HOME="${home}" \
@@ -242,7 +250,7 @@ test_fresh_install_extraction() {
     # Extract install.sh
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -288,7 +296,7 @@ test_distill_platform_selection() {
     build_mock_tarball "${mock_tarball}" "distill-platform-001"
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     HOME="${home}" \
@@ -320,7 +328,7 @@ test_distill_platform_selection_without_python() {
     make_path_without_python "${no_python_bin}"
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     HOME="${home}" \
@@ -347,7 +355,7 @@ test_distill_unsupported_platform() {
     build_mock_tarball "${mock_tarball}" "distill-unsupported-001"
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     local output
@@ -381,7 +389,7 @@ test_version_override() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -407,7 +415,7 @@ test_already_installed_same_version() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # First install
     HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -448,7 +456,7 @@ test_upgrade() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # Install old version
     HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -496,7 +504,7 @@ test_autodetect_codex() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -537,7 +545,7 @@ test_autodetect_reasonix() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -578,7 +586,7 @@ test_autodetect_both() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -613,7 +621,7 @@ test_no_runtimes() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # No ~/.reasonix/ or ~/.codex/ directories
     if HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -650,7 +658,7 @@ test_upgrade_cleans_old_skills() {
 {"version":"old-version","skills":{"old-skill":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${old_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${old_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${old_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${old_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${old_staging}/.autopilot/install.sh"
     mkdir -p "${old_staging}/skills/old-skill"
     echo "# old" > "${old_staging}/skills/old-skill/SKILL.md"
     echo "# old principles" > "${old_staging}/principles/karpathy.md"
@@ -664,14 +672,14 @@ JSONEOF
 {"version":"new-version","skills":{"new-skill":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${new_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${new_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${new_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${new_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${new_staging}/.autopilot/install.sh"
     mkdir -p "${new_staging}/skills/new-skill"
     echo "# new" > "${new_staging}/skills/new-skill/SKILL.md"
     echo "# new principles" > "${new_staging}/principles/karpathy.md"
     tar -czf "${new_tarball}" -C "${new_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # Install old version
@@ -716,7 +724,7 @@ test_full_tree_verification() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -797,7 +805,7 @@ test_user_skill_preservation() {
 {"version":"v1.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v1_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v1_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v1_staging}/.autopilot/install.sh"
     mkdir -p "${v1_staging}/skills/toolkit-setup"
     echo "# toolkit-setup" > "${v1_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v1_staging}/skills/zoom-out"
@@ -813,7 +821,7 @@ JSONEOF
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"autopilot-implementer":{"type":"coupled","variants":["reasonix","codex","kimi"],"codex_agent":true}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v2_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v2_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v2_staging}/.autopilot/install.sh"
     mkdir -p "${v2_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
@@ -825,7 +833,7 @@ JSONEOF
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # Install v1
@@ -888,7 +896,7 @@ test_full_upgrade_cycle() {
 {"version":"v1.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"old-skill-only":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v1_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v1_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v1_staging}/.autopilot/install.sh"
     mkdir -p "${v1_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v1" > "${v1_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v1_staging}/skills/zoom-out"
@@ -906,7 +914,7 @@ JSONEOF
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"autopilot-implementer":{"type":"coupled","variants":["codex"],"codex_agent":true}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v2_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v2_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v2_staging}/.autopilot/install.sh"
     mkdir -p "${v2_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
@@ -919,7 +927,7 @@ JSONEOF
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # === Phase 1: Install v1 ===
@@ -973,7 +981,7 @@ test_manifest_edge_cases() {
 
     local install_sh
     install_sh="$(mktemp)"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # ── subtest: missing manifest (install on top of previous without manifest) ──
@@ -990,7 +998,7 @@ test_manifest_edge_cases() {
     mkdir -p "${nm_staging}"/{.autopilot,skills/toolkit-setup,principles}
     echo "v1.0.0" > "${nm_staging}/.autopilot/.version"
     cp "${BOOTSTRAP_SCRIPT}" "${nm_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${nm_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${nm_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${nm_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${nm_staging}/.autopilot/install.sh"
     echo "# toolkit" > "${nm_staging}/skills/toolkit-setup/SKILL.md"
     echo "# p" > "${nm_staging}/principles/karpathy.md"
     tar -czf "${no_manifest_tarball}" -C "${nm_staging}" .
@@ -1008,7 +1016,7 @@ test_manifest_edge_cases() {
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${wm_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${wm_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${wm_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${wm_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${wm_staging}/.autopilot/install.sh"
     echo "# toolkit v2" > "${wm_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${wm_staging}/skills/zoom-out"
     echo "# zoom" > "${wm_staging}/skills/zoom-out/SKILL.md"
@@ -1043,7 +1051,7 @@ JSONEOF
 {"version":"v3.0.0","skills":{}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${em_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${em_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${em_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${em_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${em_staging}/.autopilot/install.sh"
     echo "# toolkit v3" > "${em_staging}/skills/toolkit-setup/SKILL.md"
     echo "# p v3" > "${em_staging}/principles/karpathy.md"
     tar -czf "${empty_manifest_tarball}" -C "${em_staging}" .
@@ -1061,14 +1069,10 @@ JSONEOF
 
 # ── Run all tests ────────────────────────────────────────────────────────
 
-if [[ ! -f "${FULL_TARBALL}" ]]; then
-    echo "ERROR: Build tarball not found: ${FULL_TARBALL}"
-    echo "Run 'rust-script deploy.rs pack' first."
-    exit 1
-fi
-
 echo "install.sh integration tests"
 echo "=============================="
+
+prepare_test_install_script
 
 test_fresh_install_extraction
 test_distill_platform_selection
