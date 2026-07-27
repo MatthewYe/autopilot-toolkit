@@ -207,7 +207,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     let default_content = std::fs::read_to_string(frontmatter_source)?;
     let frontmatter = skill_frontmatter(&default_content)?;
     let router = format!(
-        "{frontmatter}\n\n# Runtime routing\n\n\
+        "---\n{frontmatter}\n---\n\n# Runtime routing\n\n\
 This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
 1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
 2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
@@ -494,7 +494,9 @@ mod tests {
 
         // Router SKILL.md at root
         let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
+        assert!(router.starts_with("---\n"), "router must start with YAML frontmatter delimiter");
         assert!(router.contains("name: myskill"));
+        assert!(router.contains("\n---\n"), "router must have closing frontmatter delimiter");
         assert!(router.contains("Runtime routing"));
 
         // runtime/reasonix/INSTRUCTIONS.md
