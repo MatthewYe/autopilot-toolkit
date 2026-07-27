@@ -68,6 +68,11 @@ pub(crate) fn publish_prd(
     let markdown = evidence["prd_markdown"]
         .as_str()
         .ok_or("prd evidence requires prd_markdown")?;
+    let fallback_path = if tracker_kind(worktree)? == TrackerKind::LocalMarkdown {
+        format!("{}/PRD.md", local_feature_root(evidence)?)
+    } else {
+        ".scratch/distill-tracer/PRD.md".to_string()
+    };
     let item = PublicationItem {
         operation_id: state["publications"]["prd"]["operation_id"]
             .as_str()
@@ -76,7 +81,7 @@ pub(crate) fn publish_prd(
         kind: "prd".to_string(),
         title: None,
         body: markdown.to_string(),
-        fallback_path: ".scratch/distill-tracer/PRD.md".to_string(),
+        fallback_path,
         dependency_indices: Vec::new(),
         external_publication: evidence.get("external_publication").cloned(),
     };
@@ -103,7 +108,13 @@ pub(crate) fn publish_issues(
     if issues.is_empty() {
         return Err("issues evidence must include at least one issue".to_string());
     }
-    if tracker_kind(worktree)? == TrackerKind::LocalMarkdown {
+    let tracker = tracker_kind(worktree)?;
+    let local_feature_root = if tracker == TrackerKind::LocalMarkdown {
+        Some(local_feature_root_from_prd_state(state)?)
+    } else {
+        None
+    };
+    if tracker == TrackerKind::LocalMarkdown {
         for issue in &issues {
             if !local_issue_is_agent_ready(&issue.body) {
                 return Err(format!(
@@ -137,7 +148,12 @@ pub(crate) fn publish_issues(
             kind: "issue".to_string(),
             title: Some(issue.title.clone()),
             body: issue.body.clone(),
-            fallback_path: format!(".scratch/distill-tracer/issues/{filename}"),
+            fallback_path: format!(
+                "{}/issues/{filename}",
+                local_feature_root
+                    .as_deref()
+                    .unwrap_or(".scratch/distill-tracer")
+            ),
             dependency_indices: issue.depends_on.clone(),
             external_publication: issue.external_publication.clone(),
         };
@@ -154,6 +170,39 @@ pub(crate) fn publish_issues(
 
     state["publications"]["issues"] = json!(publications);
     Ok(PublicationOutcome { files, blocked })
+}
+
+fn local_feature_root(evidence: &Value) -> Result<String, String> {
+    let Some(feature_slug) = evidence.get("feature_slug").and_then(Value::as_str) else {
+        return Ok(".scratch/distill-tracer".to_string());
+    };
+    if feature_slug.is_empty() || feature_slug.len() > 80 || slugify(feature_slug) != feature_slug {
+        return Err(
+            "prd evidence feature_slug must be 1-80 lowercase ASCII letters, digits, or hyphens"
+                .to_string(),
+        );
+    }
+    Ok(format!(".scratch/{feature_slug}"))
+}
+
+fn local_feature_root_from_prd_state(state: &Value) -> Result<String, String> {
+    let prd_path = state["publications"]["prd"]["path"]
+        .as_str()
+        .ok_or("local issue publication requires a confirmed PRD path")?;
+    let feature_root = prd_path
+        .strip_suffix("/PRD.md")
+        .ok_or("local PRD publication path must end with /PRD.md")?;
+    let feature_slug = feature_root
+        .strip_prefix(".scratch/")
+        .ok_or("local PRD publication path must be under .scratch")?;
+    if feature_slug.contains('/')
+        || feature_slug.is_empty()
+        || feature_slug.len() > 80
+        || slugify(feature_slug) != feature_slug
+    {
+        return Err("local PRD publication path contains an invalid feature slug".to_string());
+    }
+    Ok(feature_root.to_string())
 }
 
 fn local_issue_is_agent_ready(body: &str) -> bool {
@@ -484,6 +533,19 @@ fn publish_via_tracker(
     match tracker {
         TrackerKind::LocalMarkdown => {
             let path = item.fallback_path.clone();
+            let absolute_path = worktree.join(&path);
+            if absolute_path.exists() {
+                let existing = fs::read(&absolute_path).map_err(|err| {
+                    PublishFailure::Unavailable(format!(
+                        "cannot read existing local tracker path {path}: {err}"
+                    ))
+                })?;
+                if sha256_hex(&existing) != payload_hash {
+                    return Err(PublishFailure::Unavailable(format!(
+                        "local tracker path already exists with different content: {path}"
+                    )));
+                }
+            }
             Ok(AdapterResult {
                 artifact_id: path.clone(),
                 artifact_path: path,

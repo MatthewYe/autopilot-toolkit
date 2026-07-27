@@ -59,6 +59,16 @@ mod tests {
                 skill.contains("exactly once"),
                 "{path} must assign local issue publication to exactly one owner"
             );
+            assert!(
+                skill.contains("feature_slug")
+                    && skill.contains(".scratch/<feature_slug>/PRD.md")
+                    && skill.contains(".scratch/<feature_slug>/issues/"),
+                "{path} must route local publications through one stable feature slug"
+            );
+            assert!(
+                skill.contains("already contains different content"),
+                "{path} must treat an occupied feature path as a material collision"
+            );
         }
     }
 

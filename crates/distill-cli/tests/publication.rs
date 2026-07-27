@@ -354,6 +354,100 @@ fn fake_adapter_success_freezes_payloads_and_records_revision() {
 }
 
 #[test]
+fn local_markdown_rejects_preexisting_prd_from_another_run_without_overwrite() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let tracker_path = worktree.join(".scratch/distill-tracer/PRD.md");
+    fs::create_dir_all(tracker_path.parent().unwrap()).unwrap();
+    let existing = "existing feature PRD\n";
+    fs::write(&tracker_path, existing).unwrap();
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-local-path-collision");
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            "session-local-path-collision",
+            prd_revision,
+            "prd",
+            &prd_evidence(),
+        ),
+        "local tracker path already exists with different content",
+    );
+    assert_eq!(fs::read_to_string(&tracker_path).unwrap(), existing);
+}
+
+#[test]
+fn local_markdown_publishes_prd_and_issues_under_the_supplied_feature_slug() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-local-feature-slug");
+    let mut prd = prd_evidence();
+    prd["feature_slug"] = json!("search-performance");
+
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        "session-local-feature-slug",
+        prd_revision,
+        "prd",
+        &prd,
+    ));
+    assert_eq!(
+        after_prd["publications"]["prd"]["path"],
+        ".scratch/search-performance/PRD.md"
+    );
+    assert_eq!(
+        fs::read_to_string(worktree.join(".scratch/search-performance/PRD.md")).unwrap(),
+        prd["prd_markdown"].as_str().unwrap()
+    );
+
+    let completed = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        "session-local-feature-slug",
+        after_prd["revision"].as_u64().unwrap(),
+        "issues",
+        &issue_evidence(),
+    ));
+    assert_eq!(completed["status"], "completed");
+    assert_eq!(
+        completed["publications"]["issues"][0]["path"],
+        ".scratch/search-performance/issues/01-build-api-slice.md"
+    );
+    assert_eq!(
+        completed["publications"]["issues"][1]["path"],
+        ".scratch/search-performance/issues/02-build-ui-slice.md"
+    );
+}
+
+#[test]
+fn local_markdown_rejects_unsafe_feature_slug_before_writing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-local-unsafe-slug");
+    let mut prd = prd_evidence();
+    prd["feature_slug"] = json!("../existing-feature");
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            "session-local-unsafe-slug",
+            prd_revision,
+            "prd",
+            &prd,
+        ),
+        "feature_slug must be 1-80 lowercase ASCII letters, digits, or hyphens",
+    );
+    assert!(!worktree.join(".scratch/existing-feature/PRD.md").exists());
+    assert!(!worktree.join(".scratch/distill-tracer/PRD.md").exists());
+}
+
+#[test]
 fn local_markdown_resume_reports_human_drift_without_overwrite() {
     let tmp = tempfile::tempdir().unwrap();
     let worktree = tmp.path();
