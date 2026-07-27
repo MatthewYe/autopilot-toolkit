@@ -41,7 +41,7 @@ autopilot supports two issue sources. Determine which based on the `target` para
 - Infer the repo from `git remote -v`.
 - State is expressed via labels: `in-progress`, `resolved`, `needs-info`.
 - Append comments: `gh issue comment <N> --body "..."`.
-- Contract comes from the issue body (contains Acceptance Criteria and What to build, created by `to-issues`).
+- Contract comes from the issue body (contains Acceptance Criteria and What to build, created by `to-tickets`).
 - Read issue: `gh issue view <N> --json number,title,body,labels,state`.
 
 ### Shared concepts

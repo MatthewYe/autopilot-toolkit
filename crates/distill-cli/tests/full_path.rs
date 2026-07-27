@@ -141,7 +141,7 @@ fn codex_text_requirement_advances_only_by_authorized_stage_evidence() {
     assert_eq!(after_clarification["status"], "active");
     assert_eq!(after_clarification["stage"], "prd");
     assert_eq!(after_clarification["revision"], 2);
-    assert_eq!(after_clarification["authorized_action"]["skill"], "to-prd");
+    assert_eq!(after_clarification["authorized_action"]["skill"], "to-spec");
 
     let prd_markdown = "# Audit Dashboard PRD\n\n## Problem Statement\n\nBuild a small audit dashboard for deployment status.\n\n## Testing Decisions\n\nUse CLI-level JSON and filesystem assertions.\n";
     let prd = json!({
@@ -169,7 +169,7 @@ fn codex_text_requirement_advances_only_by_authorized_stage_evidence() {
     assert_eq!(after_prd["status"], "active");
     assert_eq!(after_prd["stage"], "issues");
     assert_eq!(after_prd["revision"], 3);
-    assert_eq!(after_prd["authorized_action"]["skill"], "to-issues");
+    assert_eq!(after_prd["authorized_action"]["skill"], "to-tickets");
 
     let issues = json!({
         "checkpoint": "slice-breakdown-approved",
@@ -327,6 +327,6 @@ fn codex_skill_runs_to_boundaries_with_unmodified_stage_skills() {
     assert!(skill.contains("authorized_action"));
     assert!(skill.contains("next_action"));
     assert!(skill.contains("grill-with-docs"));
-    assert!(skill.contains("to-prd"));
-    assert!(skill.contains("to-issues"));
+    assert!(skill.contains("to-spec"));
+    assert!(skill.contains("to-tickets"));
 }

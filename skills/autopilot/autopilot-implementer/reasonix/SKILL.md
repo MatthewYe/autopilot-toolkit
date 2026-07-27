@@ -11,11 +11,11 @@ Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "
 
 ## 内置方法论
 
-Subagent 无法调用 `/tdd` 或 `/diagnose`，通过 `read_file` 加载上游权威源。
+Subagent 无法调用 `/tdd` 或 `/diagnosing-bugs`，通过 `read_file` 加载上游权威源。
 
 ### TDD 纪律
 
-- 读取 `skills/upstream/skills/engineering/tdd/SKILL.md` Philosophy 节（测试行为 vs 实现细节）和 Workflow 节（红灯-绿灯-重构循环）。跳过 Planning 节——合约（AGENT-BRIEF）已定义构建目标。
+- 读取 `skills/upstream/skills/engineering/tdd/SKILL.md` `## What a good test is`（测试质量标准）、`## Anti-patterns`（反模式：implementation-coupled、tautological）、`## Rules of the loop`（循环规则：红先绿后、逐片推进）。上游已明确 Refactoring 属于 review 阶段（不由 implementer 负责）——本实现保持内部轻量重构步骤（步骤 3），但不将重构视为独立阶段。
 - Mock 纪律：读取 `skills/upstream/skills/engineering/tdd/mocking.md`。
 
 **项目特定强化：铁律——无失败测试不写生产代码。**
@@ -28,7 +28,7 @@ Subagent 无法调用 `/tdd` 或 `/diagnose`，通过 `read_file` 加载上游�
 
 调用方通过 `run_skill` arguments 传入任务信息，可能来自两个来源：
 
-- **本地 `.scratch/` issue**：传入 `issue_dir` 路径。合约在 `<issue_dir>/AGENT-BRIEF.md`，背景在 `<issue_dir>/issue.md`。
+- **本地 `.scratch/` issue**：传入 `issue_file` 路径和权威 `contract` 文本。扁平 ticket 直接读取 `.scratch/<feature>/issues/<NN-slug>.md`；旧目录式 issue 才回退读取 `<issue_dir>/AGENT-BRIEF.md` 和 `<issue_dir>/issue.md`。
 - **GitHub Issue**：传入 `IS_GITHUB: true` + 合约文本（从 issue body 提取的 AC 和 What to build）。没有 AGENT-BRIEF.md 文件，合约内容由调用方直接传入。如传入 GitHub issue 号，可用 `TODO: reasonix equivalent for GitHub CLI — gh issue view <N> --json body` 补读完整背景。
 
 `run_skill` arguments 还可能传入 `CROSS_ISSUE_SUGGESTIONS` — 从已完成 issue 的 reviewer 中提取的、与当前 AGENT-BRIEF 匹配的跨 issue 建议。格式为 JSON 数组，每条包含：
@@ -49,7 +49,7 @@ Subagent 无法调用 `/tdd` 或 `/diagnose`，通过 `read_file` 加载上游�
 首先检查 `run_skill` arguments 是否包含 `ROUND:` 和 `PREV_REVIEW:` 信息：
 
 - **如果未传入** → 这是首次实现，按"完整流程"执行
-- **如果传入了** → 这是 retry 修复，只修复 `PREV_REVIEW` 中列出的 Critical 问题，不重做已通过的 AC，不添加新功能
+- **如果传入了** → 这是 retry 修复，修复 `PREV_REVIEW` 中全部 Critical and Important 问题，不重做已通过的 AC，不添加新功能
 
 同时检查 `run_skill` arguments 是否包含 `REFACTORING: true`：
 
@@ -61,9 +61,15 @@ Subagent 无法调用 `/tdd` 或 `/diagnose`，通过 `read_file` 加载上游�
 
 ## 完整流程（首次实现）
 
+### AFK permission mode
+
+- Never request sandbox escalation 或交互式提权。
+- 验证命令被 sandbox 拒绝时，在 `TEST_EVIDENCE` 记录命令和拒绝原因，
+  报告 `UNVERIFIED`，不要暂停等待批准。
+
 ### 第一步：理解任务
 
-1. **本地 issue**：读取 `<issue_dir>/issue.md` 了解问题背景，读取 `<issue_dir>/AGENT-BRIEF.md` 获取合约（Acceptance Criteria）
+1. **本地 issue**：以调用方传入的 `contract` 为权威合约，并读取 `issue_file` 补充背景；仅对旧目录式 issue 回退读取 `<issue_dir>/issue.md` 和 `<issue_dir>/AGENT-BRIEF.md`
 2. **GitHub Issue**：调用方已传入合约文本（包含 AC 和 What to build）。如传入 GitHub issue 号，可用 `TODO: reasonix equivalent for GitHub CLI — gh issue view <N> --json body` 补读完整背景
 3. 如果不熟悉相关代码区域，上探一层抽象，了解模块和调用方
 4. 阅读项目的 CONTEXT.md 和 docs/adr/ 了解领域词汇和已做决策
@@ -170,7 +176,7 @@ SUMMARY: 一句话总结
 
 `run_skill` arguments 中包含 `ROUND: N (N>=1)` 和 `PREV_REVIEW:` 时：
 
-1. 只修复 PREV_REVIEW 中 Critical 级别的问题
+1. 修复 PREV_REVIEW 中全部 Critical and Important 级别的问题
 2. 不重做已通过的 AC
 3. 不添加新功能
 4. 每条修复附带对应测试

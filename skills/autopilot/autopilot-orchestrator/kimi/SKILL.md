@@ -47,7 +47,7 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 - 从 `git remote -v` 自动推断 repo。
 - 状态通过 labels 表达：`in-progress`、`resolved`、`needs-info`。
 - 追加注释：`gh issue comment <N> --body "..."`（MCP 可用时用 `mcp__github__add_comment`）
-- 合约来自 issue body（其中包含 Acceptance Criteria 和 What to build，由 `to-issues` 创建）。
+- 合约来自 issue body（其中包含 Acceptance Criteria 和 What to build，由 `to-tickets` 创建）。
 - 读取 issue：`gh issue view <N> --json number,title,body,labels,state`（MCP 可用时用 `mcp__github__get_issue`）
 
 ### 共用概念
@@ -70,7 +70,7 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 | **主检测**（内容模式） | body 含 `## Problem Statement` + `## Solution`，但**不含** `## What to build` 和 `## Acceptance Criteria` | 同左 |
 | **加速标记**（可选） | frontmatter `Type: prd` | label `prd` |
 
-内容模式检测覆盖了 `to-issues` 生成的标准 implementable issue（它们必有 `## What to build` + `## Acceptance Criteria`，不会被误判）。标记只是让 orchestrator 跳过内容解析的加速路径，非必须。
+内容模式检测覆盖了 `to-tickets` 生成的标准 implementable issue（它们必有 `## What to build` + `## Acceptance Criteria`，不会被误判）。标记只是让 orchestrator 跳过内容解析的加速路径，非必须。
 
 ### 行为
 

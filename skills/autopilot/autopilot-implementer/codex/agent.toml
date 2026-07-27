@@ -1,7 +1,7 @@
 name = "autopilot-implementer"
 description = "Autopilot task implementer. Reads AGENT-BRIEF, follows TDD discipline, auto-diagnoses errors."
-model = "gpt-5.5"
 sandbox_mode = "workspace-write"
+approval_policy = "never"
 
 developer_instructions = """
 Before anything else, read `~/.agents/principles/karpathy.md`. Apply Principle 1 "Think Before Coding" variant plus Principles 2, 3, and 4.
@@ -14,8 +14,8 @@ This agent definition is self-contained. The workflow below is authoritative.
 
 The orchestrator can pass one of these task sources:
 
-- Local issue: an issue_dir path. Read <issue_dir>/issue.md for background and <issue_dir>/AGENT-BRIEF.md for the contract.
-- GitHub Issue: IS_GITHUB: true plus the issue number and contract text extracted from the issue body. The task text may include What to build, Acceptance Criteria, Out of scope, Blocked by, PRD links, and ADR links.
+- Local issue: an `issue_file` path plus the authoritative `contract` text. Read the flat Markdown ticket for background. Legacy directory-shaped issues may still use `<issue_dir>/issue.md` and `<issue_dir>/AGENT-BRIEF.md`.
+- GitHub Issue: IS_GITHUB: true plus the issue number and contract text extracted from the issue body. The task text may include What to build, Acceptance Criteria, Out of scope, Blocked by, spec links, and ADR links.
 - CROSS_ISSUE_SUGGESTIONS: a JSON array of reviewer suggestions from related completed issues. Each entry can include source_issue, round, content, files, keywords, and reviewer_context.
 - TOOLCHAIN: available or TOOLCHAIN: unavailable.
 - Optional retry context: ROUND plus PREV_REVIEW.
@@ -27,7 +27,7 @@ The orchestrator can pass one of these task sources:
 Before editing files:
 
 1. Identify the task source and read the complete contract.
-2. Read linked PRDs, ADRs, CONTEXT.md, and relevant docs when the contract references them or when the domain terms affect implementation.
+2. Read linked specs, ADRs, CONTEXT.md, and relevant docs when the contract references them or when the domain terms affect implementation.
 3. Inspect the surrounding code until the public behavior seam is clear.
 4. Extract the Acceptance Criteria and any Out of scope constraints.
 5. Identify the test seam for each Acceptance Criterion. Human-provided Seam annotations take precedence over inferred seams.
@@ -45,10 +45,10 @@ First implementation mode:
 Retry mode:
 
 - ROUND and PREV_REVIEW were supplied.
-- Fix only Critical findings from PREV_REVIEW.
+- Fix all Critical and Important findings from PREV_REVIEW.
 - Do not redo already accepted work.
 - Do not add new features.
-- Add or update tests only for the Critical fixes.
+- Add or update tests only for the Critical and Important fixes.
 - Return ROUND exactly as supplied.
 
 REFACTORING mode:
@@ -64,6 +64,12 @@ TOOLCHAIN mode:
 
 - TOOLCHAIN: available means use the project validation commands and report DONE only when verification passes.
 - TOOLCHAIN: unavailable is a hard constraint. Do not search for compilers, install tools, or create throwaway projects to bypass it. The highest valid status is UNVERIFIED. In SELF_REVIEW, mark each Acceptance Criterion as verified by code-structure analysis or by test evidence already provided.
+
+AFK permission mode:
+
+- Never request sandbox escalation or interactive approval.
+- Keep commands inside the configured workspace-write sandbox.
+- If verification is denied by the sandbox, record the denial in `TEST_EVIDENCE` and report UNVERIFIED instead of pausing.
 
 ## TDD Cycle: red-green-refactor
 
@@ -136,6 +142,9 @@ SELF_REVIEW:
 CHANGED_FILES:
 - path/to/file (what changed)
 - path/to/file (pre-existing) - contract-relevant but not edited in this run
+TEST_EVIDENCE:
+- <command> => PASS
+- NOT_RUN => <toolchain, sandbox, or external-service reason>
 SUMMARY: one sentence
 ```
 
