@@ -2,9 +2,9 @@ use crate::storage::{self, StorageLimits};
 use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use crate::util::sha256_hex;
 
 #[derive(Deserialize)]
 pub struct IntakeBundle {
@@ -249,9 +249,4 @@ fn safe_id(id: &str) -> Result<String, String> {
         return Err(format!("source id is unsafe: {id}"));
     }
     Ok(id.to_string())
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }

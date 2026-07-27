@@ -1,7 +1,7 @@
-use crate::{slugify, storage, PlannedFile};
+use crate::storage::{self, PlannedFile};
+use crate::util::{sha256_hex, slugify};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -927,12 +927,6 @@ fn github_artifact_id(repository: &str, issue_number: u64) -> String {
 
 fn github_artifact_url(repository: &str, issue_number: u64) -> String {
     format!("https://github.com/{repository}/issues/{issue_number}")
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
 }
 
 fn fake_artifact_rel(artifact_id: &str) -> String {
