@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-19 skills for Reasonix, Codex, and Kimi Code — 13 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources.
+19 skills for Reasonix, Codex, and Kimi Code — 19 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (upstream counted from .skill-lock.json) (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources.
 
 ## Project
 

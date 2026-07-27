@@ -24,3 +24,4 @@ dist/
 .scratch/
 validation/report.txt
 target
+/.distill/

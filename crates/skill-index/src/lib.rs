@@ -122,32 +122,36 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyh
     }
 
     // ── Upstream skills (from .skill-lock.json) ──
-    let lock_path = project_root.join(".skill-lock.json");
-    if lock_path.is_file() {
-        let lock_bytes = std::fs::read_to_string(&lock_path)?;
-        let lock: serde_json::Value = serde_json::from_str(&lock_bytes)
-            .map_err(|e| anyhow::anyhow!("failed to parse .skill-lock.json: {e}"))?;
-
-        if let Some(skills_map) = lock.get("skills").and_then(|s| s.as_object()) {
-            for (skill_name, skill_entry) in skills_map {
+    // Delegate parsing to the shared crate for a single source of truth.
+    match shared::load_skill_lock() {
+        Ok(lock) => {
+            for skill in &lock.skills {
                 // Check that the source directory exists before adding to the index
-                if let Some(skill_path) = skill_entry.get("skillPath").and_then(|s| s.as_str()) {
-                    let src_parent = Path::new(skill_path).parent().unwrap_or(Path::new(""));
-                    let src_dir = project_root
-                        .join("skills")
-                        .join("upstream")
-                        .join(src_parent);
-                    if !src_dir.is_dir() {
-                        continue;
-                    }
+                let src_parent = Path::new(&skill.skill_path).parent().unwrap_or(Path::new(""));
+                let src_dir = project_root
+                    .join("skills")
+                    .join("upstream")
+                    .join(src_parent);
+                if !src_dir.is_dir() {
+                    continue;
                 }
                 skills.push(DiscoveredSkill {
-                    name: skill_name.clone(),
+                    name: skill.name.clone(),
                     source: "upstream".to_string(),
                     skill_type: SkillType::Agnostic,
                     variants: vec![],
                     codex_agent: false,
                 });
+            }
+        }
+        Err(e) => {
+            // Treat a missing lock file as non-fatal (upstream skills simply omitted).
+            // Parse / IO errors are surfaced.
+            let lock_path = project_root.join(".skill-lock.json");
+            if !lock_path.is_file() {
+                // lock file absent — no upstream skills to discover
+            } else {
+                return Err(anyhow::anyhow!("failed to parse .skill-lock.json: {e}"));
             }
         }
     }
