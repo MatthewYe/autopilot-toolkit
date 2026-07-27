@@ -114,7 +114,7 @@ assert_not_exists() {
 make_path_without_python() {
     local bin_dir="$1"
     mkdir -p "${bin_dir}"
-    for tool in bash basename cat cp ln mkdir mv rm rmdir tar uname; do
+    for tool in bash basename cat cp gzip ln mkdir mv rm rmdir tar uname; do
         local tool_path
         tool_path="$(command -v "${tool}")"
         ln -sf "${tool_path}" "${bin_dir}/${tool}"
