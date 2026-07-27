@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-curl -sSL https://github.com/neilc6321/autopilot-toolkit/releases/latest/download/install.sh | bash
+curl -sSL https://github.com/MatthewYe/autopilot-toolkit/releases/latest/download/install.sh | bash
 ```
 
 Installs all skills to `~/.agents/skills/`, auto-detects your agent runtimes,
@@ -14,7 +14,7 @@ and configures runtime support files.
 ## Uninstall
 
 ```bash
-curl -sSL https://github.com/neilc6321/autopilot-toolkit/releases/latest/download/uninstall.sh | bash
+curl -sSL https://github.com/MatthewYe/autopilot-toolkit/releases/latest/download/uninstall.sh | bash
 ```
 
 Or locally:
@@ -34,7 +34,7 @@ brew install rust-script   # or: cargo install rust-script
 Clone and symlink skills for local iteration:
 
 ```bash
-git clone git@github.com:neilc6321/autopilot-toolkit.git
+git clone git@github.com:MatthewYe/autopilot-toolkit.git
 cd autopilot-toolkit
 rust-script deploy.rs dev      # symlink all skills from source tree
 ```
