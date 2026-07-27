@@ -12,6 +12,12 @@ pub const PROJECT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const EVENT_BYTES: usize = 64 * 1024;
 pub const RUN_EVENT_LOG_BYTES: u64 = 32 * 1024 * 1024;
 
+pub(crate) struct PlannedFile {
+    pub(crate) path: PathBuf,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) counts_against_quota: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorageLimits {
     pub per_source_bytes: u64,
