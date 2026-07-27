@@ -29,7 +29,7 @@ Run to the next Distill boundary in the same Codex thread:
 - If `authorized_action.skill` is `to-prd`, invoke the unmodified `to-prd` skill. Submit the resulting PRD markdown and the required testing-seam checkpoint:
 
 ```bash
-"${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<codex-thread-id>" --expected-revision "<revision>" --stage prd --evidence '{"checkpoint":"testing-seam-confirmed","summary":"<PRD summary>","prd_markdown":"<exact PRD markdown>"}'
+"${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<codex-thread-id>" --expected-revision "<revision>" --stage prd --evidence '{"checkpoint":"testing-seam-confirmed","summary":"<PRD summary>","feature_slug":"<stable-lowercase-feature-slug>","prd_markdown":"<exact PRD markdown>"}'
 ```
 
 - If `authorized_action.skill` is `to-issues`, invoke the unmodified `to-issues` skill. Submit the accepted vertical-slice issue payloads and approval checkpoint:
@@ -40,7 +40,7 @@ Run to the next Distill boundary in the same Codex thread:
 
 ## LOCAL_ISSUE_HANDOFF_CONTRACT
 
-When `docs/agents/issue-tracker.md` configures Local Markdown, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: submit the approved payloads to the runner and let it create each local issue exactly once under `.scratch/distill-tracer/issues/`. Do not create a second issue copy elsewhere under `.scratch/`.
+When `docs/agents/issue-tracker.md` configures Local Markdown, choose a stable lowercase `feature_slug` for the PRD evidence, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: it creates the PRD at `.scratch/<feature_slug>/PRD.md` and each local issue exactly once under `.scratch/<feature_slug>/issues/`. Do not create a second issue copy elsewhere under `.scratch/`. The runner rejects a target path that already contains different content; never acknowledge that collision as immaterial drift.
 
 Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
 
