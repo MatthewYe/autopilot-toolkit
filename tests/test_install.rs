@@ -349,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn no_args_runs_release_flow_without_prepacking() {
+    fn no_args_shows_usage() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let skills = home.join(".agents/skills");

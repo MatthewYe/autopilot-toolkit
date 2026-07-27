@@ -9,13 +9,16 @@ A skill-pack repo. The "code" is SKILL.md files — markdown with YAML frontmatt
 ## Commands
 
 ```bash
-rust-script deploy.rs dev <name> <src> [--target reasonix|codex] [--shared] [--agent]
-rust-script deploy.rs unlink <name> [--target ...] [--shared]
-rust-script deploy.rs link-principles <src>
-rust-script validation/run.rs            # validate all SKILL.md frontmatter (all variants)
-rust-script --test validation/run.rs     # runner unit tests
-cargo test                               # validation library unit tests
-rust-script --test tests/test_install.rs # integration tests for deploy.rs
+rust-script deploy.rs dev                     # Symlink all skills into agent dirs
+rust-script deploy.rs dev-clean               # Remove dev symlinks
+rust-script deploy.rs pack                    # Build tarball into dist/
+rust-script deploy.rs distill-artifacts       # Build Distill CLI for release platforms
+rust-script deploy.rs release                 # Pack + push to GitHub Releases
+rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
+rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
+rust-script --test validation/run.rs          # runner unit tests
+cargo test                                    # validation library unit tests
+rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
 rust-script --test tests/test_check.rs

@@ -155,7 +155,14 @@ pub fn copy_instruction_tree(src: &Path, dst: &Path) -> Result<(), anyhow::Error
 
 /// Extract the YAML frontmatter from a SKILL.md (text between `---` delimiters).
 pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
-    let stripped = content.strip_prefix("---\n").unwrap_or(content);
+    let stripped = content
+        .strip_prefix("---\n")
+        .or_else(|| content.strip_prefix("---"))
+        .ok_or_else(|| anyhow::anyhow!("SKILL.md has no opening frontmatter delimiter"))?;
+    // Bare "---" without newline is malformed — refuse to parse
+    if !content.starts_with("---\n") && content.starts_with("---") {
+        anyhow::bail!("SKILL.md frontmatter opening delimiter must be followed by a newline");
+    }
     if stripped.contains("\n---") {
         Ok(stripped.splitn(2, "\n---").next().unwrap())
     } else {
@@ -439,5 +446,84 @@ mod tests {
 
         assert!(dst.is_symlink());
         assert_eq!(std::fs::read_link(&dst).unwrap(), src);
+    }
+
+    // ── skill_frontmatter ───────────────────────────────────────────────
+
+    #[test]
+    fn frontmatter_standard() {
+        let fm = skill_frontmatter("---\nname: test\ndescription: x\n---\nbody").unwrap();
+        assert_eq!(fm, "name: test\ndescription: x");
+    }
+
+    #[test]
+    fn frontmatter_no_closing_delimiter_is_error() {
+        assert!(skill_frontmatter("---\nname: test\n").is_err());
+    }
+
+    #[test]
+    fn frontmatter_no_opening_delimiter_is_error() {
+        assert!(skill_frontmatter("name: test\n---\n").is_err());
+    }
+
+    #[test]
+    fn frontmatter_bare_dashes_without_newline_is_error() {
+        assert!(skill_frontmatter("---name: test\n---\n").is_err());
+    }
+
+    #[test]
+    fn frontmatter_triple_dash_in_body_not_misparsed() {
+        let fm = skill_frontmatter("---\nkey: value\n---\nbody with --- inside\n").unwrap();
+        assert_eq!(fm, "key: value");
+    }
+
+    // ── stage_coupled_skill ─────────────────────────────────────────────
+
+    #[test]
+    fn stage_coupled_skill_creates_router_layout() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("myskill");
+        std::fs::create_dir_all(src.join("reasonix")).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: myskill\ndescription: test\n---\nfallback\n").unwrap();
+        std::fs::write(src.join("reasonix").join("SKILL.md"), "---\nname: myskill\ndescription: reasonix\n---\nreasonix body\n").unwrap();
+        std::fs::create_dir_all(src.join("codex")).unwrap();
+        std::fs::write(src.join("codex").join("SKILL.md"), "---\nname: myskill\ndescription: codex\n---\ncodex body\n").unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_coupled_skill(&src, &dst).unwrap();
+
+        // Router SKILL.md at root
+        let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
+        assert!(router.contains("name: myskill"));
+        assert!(router.contains("Runtime routing"));
+
+        // runtime/reasonix/INSTRUCTIONS.md
+        let reasonix_instructions = std::fs::read_to_string(
+            dst.join("runtime").join("reasonix").join("INSTRUCTIONS.md"),
+        ).unwrap();
+        assert!(reasonix_instructions.contains("reasonix body"));
+
+        // runtime/default/INSTRUCTIONS.md (from top-level non-variant files)
+        let default_instructions = std::fs::read_to_string(
+            dst.join("runtime").join("default").join("INSTRUCTIONS.md"),
+        ).unwrap();
+        assert!(default_instructions.contains("fallback"));
+    }
+
+    #[test]
+    fn stage_coupled_skill_no_top_level_skill_md() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("myskill");
+        std::fs::create_dir_all(src.join("reasonix")).unwrap();
+        std::fs::write(src.join("reasonix").join("SKILL.md"), "---\nname: myskill\n---\nbody\n").unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_coupled_skill(&src, &dst).unwrap();
+
+        // fallback to reasonix variant
+        let default_instructions = std::fs::read_to_string(
+            dst.join("runtime").join("default").join("INSTRUCTIONS.md"),
+        ).unwrap();
+        assert!(default_instructions.contains("body"));
     }
 }
