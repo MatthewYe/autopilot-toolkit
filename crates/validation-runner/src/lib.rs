@@ -245,6 +245,16 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
             }
             wln!(report);
         }
+
+        let opencode_status = check_opencode_status(root, skills);
+        if !opencode_status.is_empty() {
+            wln!(report, "--- Opencode Variant Status ---");
+            wln!(report);
+            for line in &opencode_status {
+                wln!(report, "  {}", line);
+            }
+            wln!(report);
+        }
     }
 
     // ── Global checks ──
@@ -467,6 +477,52 @@ pub fn check_codex_status(project_root: &Path, skills: &[Skill]) -> Vec<String> 
                         } else {
                             lines.push(format!(
                                 "[INFO] {}: no codex/SKILL.md (placeholder directory)",
+                                name
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    lines.sort();
+    lines
+}
+
+/// Check opencode variant status for autopilot skills.
+///
+/// Returns informational lines about which skills lack opencode SKILL.md.
+/// **Data-driven**: uses the filesystem to determine whether a missing opencode
+/// SKILL.md is because the skill uses agent.md instead (opencode/agent.md
+/// exists) or is simply a placeholder directory (no agent.md).
+pub fn check_opencode_status(project_root: &Path, skills: &[Skill]) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let autopilot_dir = project_root.join("skills/autopilot");
+    if !autopilot_dir.is_dir() {
+        return lines;
+    }
+    if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let opencode_skill = path.join("opencode/SKILL.md");
+                let opencode_dir = path.join("opencode");
+                if opencode_dir.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+                    let has_opencode = opencode_skill.is_file();
+                    let already_found = skills
+                        .iter()
+                        .any(|s| s.name == name && s.variant.as_deref() == Some("opencode"));
+                    if !has_opencode && !already_found {
+                        let has_agent_md = opencode_dir.join("agent.md").is_file();
+                        if has_agent_md {
+                            lines.push(format!(
+                                "[INFO] {}: no opencode/SKILL.md (uses agent.md instead)",
+                                name
+                            ));
+                        } else {
+                            lines.push(format!(
+                                "[INFO] {}: no opencode/SKILL.md (placeholder directory)",
                                 name
                             ));
                         }

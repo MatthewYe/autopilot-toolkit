@@ -9,6 +9,8 @@ MANIFEST="${AUTOPILOT_DIR}/manifest.json"
 REASONIX_SKILLS="${REASONIX_SKILLS_DIR:-$HOME/.reasonix/skills}"
 CODEX_SKILLS="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
 CODEX_AGENTS="${CODEX_AGENTS_DIR:-$HOME/.codex/agents}"
+OPENCODE_SKILLS="${OPENCODE_SKILLS_DIR:-$HOME/.opencode/skills}"
+OPENCODE_AGENTS="${OPENCODE_AGENTS_DIR:-$HOME/.opencode/agents}"
 PRINCIPLES_DIR="${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}"
 
 echo "==> Uninstalling autopilot-toolkit..."
@@ -68,6 +70,7 @@ cleanup_symlinks() {
 
 cleanup_symlinks "${REASONIX_SKILLS}"
 cleanup_symlinks "${CODEX_SKILLS}"
+cleanup_symlinks "${OPENCODE_SKILLS}"
 
 # 4. Remove Codex agent.toml symlinks
 if [[ -d "${CODEX_AGENTS}" ]]; then
@@ -83,7 +86,21 @@ if [[ -d "${CODEX_AGENTS}" ]]; then
     done
 fi
 
-# 5. Remove principles (only if deployed by autopilot)
+# 5. Remove OpenCode agent.md symlinks
+if [[ -d "${OPENCODE_SKILLS}" ]]; then
+    for entry in "${OPENCODE_SKILLS}"/*.md; do
+        [[ -f "${entry}" ]] || continue
+        if [[ -L "${entry}" ]]; then
+            target="$(readlink "${entry}" 2>/dev/null || true)"
+            if [[ "${target}" == "${SKILLS_DIR}"/* ]]; then
+                rm -f "${entry}"
+                REMOVED=$((REMOVED + 1))
+            fi
+        fi
+    done
+fi
+
+# 6. Remove principles (only if deployed by autopilot)
 if [[ -f "${PRINCIPLES_DIR}/karpathy.md" ]]; then
     echo "   Removing principles..."
     rm -rf "${PRINCIPLES_DIR}"

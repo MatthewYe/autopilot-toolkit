@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-19 skills for Reasonix, Codex, and Kimi Code — 19 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
+19 skills for Reasonix, Codex, Kimi Code, and OpenCode — 19 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
 
 ## Project
 
@@ -39,13 +39,14 @@ skills/
 │   │   ├── reasonix/  # per-runtime variant sources (runtime-coupled skills)
 │   │   ├── codex/
 │   │   ├── kimi/
+│   │   ├── opencode/
 │   │   └── references/          # shared reference docs
 │   ├── autopilot-implementer/    # TDD-driven implementation agent (same variant layout)
 │   ├── autopilot-reviewer/       # four-axis review (behavior, TDD, code, plan)
 │   ├── audit-autopilot/          # post-hoc fidelity audit of agent execution
 │   ├── toolkit-setup/            # install/update orchestration (agnostic)
 │   └── zoom-out/                 # higher-level perspective (agnostic)
-deploy.rs             # deploy tool (dev symlink + pack/release) (--target reasonix|codex, --shared → ~/.agents/skills/)
+deploy.rs             # deploy tool (dev symlink + pack/release) (--target reasonix|codex|opencode, --shared → ~/.agents/skills/)
 crates/validation/     # frontmatter validation library (strict YAML + field checks)
 validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
@@ -60,7 +61,7 @@ docs/
 ## Install model
 
 - **Runtime-agnostic skills** (upstream 13 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
-- **Runtime-coupled skills** (the 5 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
+- **Runtime-coupled skills** (the 5 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are linked into `~/.codex/agents/`; OpenCode `agent.md` files are linked into `~/.opencode/skills/`.
 - `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
 
 ## Conventions
