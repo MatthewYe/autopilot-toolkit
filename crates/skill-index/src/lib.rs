@@ -127,7 +127,9 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyh
         Ok(lock) => {
             for skill in &lock.skills {
                 // Check that the source directory exists before adding to the index
-                let src_parent = Path::new(&skill.skill_path).parent().unwrap_or(Path::new(""));
+                let src_parent = Path::new(&skill.skill_path)
+                    .parent()
+                    .unwrap_or(Path::new(""));
                 let src_dir = project_root
                     .join("skills")
                     .join("upstream")

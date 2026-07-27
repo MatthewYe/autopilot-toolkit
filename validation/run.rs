@@ -20,8 +20,7 @@ fn project_root() -> PathBuf {
 
 fn main() {
     let root = project_root();
-    let report = validation_runner::run_validation(&root)
-        .expect("validation should succeed");
+    let report = validation_runner::run_validation(&root).expect("validation should succeed");
 
     // Print report to stdout (println! mirrors bash's `echo "$report"`)
     println!("{}", report.report);
