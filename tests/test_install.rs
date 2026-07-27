@@ -349,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn no_args_runs_release_flow_without_prepacking() {
+    fn no_args_shows_usage() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let skills = home.join(".agents/skills");
@@ -357,21 +357,12 @@ mod tests {
         fs::create_dir_all(&project).unwrap();
         setup_mock_project(&project);
 
-        // No args: release builds artifacts first, then packs and publishes.
-        // This fixture has no Distill artifacts/toolchain setup, so it should
-        // enter release and fail before any prepack tarball is created.
+        // No args: shows usage and exits non-zero.
         let (out, _err, code) = run_deploy(&[], &home, Some(&skills), Some(&project));
-        assert_ne!(code, 0, "release should fail in the minimal fixture");
-
-        let tarball = project.join("dist/autopilot-toolkit.tar.gz");
+        assert_ne!(code, 0, "no-args should exit non-zero");
         assert!(
-            !tarball.exists(),
-            "no-args should not prepack before release artifact build. stdout: {}",
-            out
-        );
-        assert!(
-            out.contains("==> Releasing") && out.contains("==> Building distill"),
-            "no-args should enter the release artifact build flow. stdout: {}",
+            out.contains("Usage:") || out.contains("deploy.rs"),
+            "no-args should show usage. stdout: {}",
             out
         );
     }

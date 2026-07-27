@@ -1,0 +1,8 @@
+[package]
+name = "skill-check"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = { path = "../shared" }
+serde_json = "1"

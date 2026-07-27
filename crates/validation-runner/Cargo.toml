@@ -1,11 +1,13 @@
 [package]
-name = "skill-index"
+name = "validation-runner"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 shared = { path = "../shared" }
-serde = { version = "1", features = ["derive"] }
+skill-index = { path = "../skill-index" }
+validation = { path = "../validation" }
+chrono = "0.4"
 anyhow = "1"
 
 [dev-dependencies]
