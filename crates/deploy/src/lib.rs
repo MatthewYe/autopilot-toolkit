@@ -207,7 +207,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     let default_content = std::fs::read_to_string(frontmatter_source)?;
     let frontmatter = skill_frontmatter(&default_content)?;
     let router = format!(
-        "{frontmatter}\n\n# Runtime routing\n\n\
+        "---\n{frontmatter}\n---\n\n# Runtime routing\n\n\
 This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
 1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
 2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
@@ -494,7 +494,36 @@ mod tests {
 
         // Router SKILL.md at root
         let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
+
+        // Per OpenAI/Codex Skills spec: SKILL.md MUST have YAML frontmatter
+        // delimited by ---, starting on the first line.
+        assert!(
+            router.starts_with("---\n"),
+            "router SKILL.md must start with YAML frontmatter delimiter '---\\n', got: {:?}",
+            &router[..std::cmp::min(40, router.len())]
+        );
+        assert!(
+            router.contains("\n---\n"),
+            "router SKILL.md must have closing YAML frontmatter delimiter '\\n---\\n'"
+        );
+
+        // Frontmatter must contain required `name` and `description` fields
+        // per the Agent Skills specification.
         assert!(router.contains("name: myskill"));
+        assert!(
+            router.contains("description:"),
+            "router SKILL.md frontmatter must contain a 'description:' field"
+        );
+
+        // Round-trip: re-extract frontmatter from the generated router and
+        // verify it matches the source skill's frontmatter.
+        let extracted = skill_frontmatter(&router)
+            .expect("generated router SKILL.md must have parseable YAML frontmatter");
+        assert!(
+            extracted.contains("name: myskill"),
+            "extracted frontmatter must contain name field"
+        );
+
         assert!(router.contains("Runtime routing"));
 
         // runtime/reasonix/INSTRUCTIONS.md
@@ -520,10 +549,38 @@ mod tests {
         let dst = tmp.path().join("staged");
         stage_coupled_skill(&src, &dst).unwrap();
 
+        // Router SKILL.md must still have valid YAML frontmatter
+        let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
+        assert!(
+            router.starts_with("---\n"),
+            "router must start with YAML frontmatter delimiter"
+        );
+        assert!(
+            router.contains("\n---\n"),
+            "router must have closing YAML frontmatter delimiter"
+        );
+        let extracted = skill_frontmatter(&router)
+            .expect("generated router must have parseable YAML frontmatter");
+        assert!(extracted.contains("name: myskill"));
+
         // fallback to reasonix variant
         let default_instructions = std::fs::read_to_string(
             dst.join("runtime").join("default").join("INSTRUCTIONS.md"),
         ).unwrap();
         assert!(default_instructions.contains("body"));
+    }
+
+    /// Regression: a router SKILL.md without YAML frontmatter delimiters
+    /// MUST be rejected by skill_frontmatter. This is the exact bug pattern
+    /// from the Codex "missing YAML frontmatter delimited by ---" warnings.
+    #[test]
+    fn stage_coupled_skill_router_without_frontmatter_delimiters_is_rejected() {
+        // Simulate the old (buggy) router output: frontmatter without --- wrapping
+        let buggy_router = "name: myskill\ndescription: test\n\n# Runtime routing\n\nThis installed skill has one discoverable entry point...\n";
+        let result = skill_frontmatter(buggy_router);
+        assert!(
+            result.is_err(),
+            "router without --- YAML frontmatter delimiters must fail parsing"
+        );
     }
 }
