@@ -187,7 +187,10 @@ with open('${MANIFEST_FILE}') as f:
     manifest = json.load(f)
 for name in manifest.get('skills', {}):
     d = os.path.join('${SKILLS_DIR}', name)
-    if os.path.isdir(d) or os.path.islink(d):
+    if os.path.islink(d):
+        os.unlink(d)
+        print(f'  unlinked {name}')
+    elif os.path.isdir(d):
         shutil.rmtree(d)
         print(f'  removed {name}')
 " || true
