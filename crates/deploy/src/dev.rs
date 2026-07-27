@@ -17,6 +17,8 @@ pub fn dev_all(
     reasonix_skills_dir: &Path,
     codex_skills_dir: &Path,
     codex_agents_dir: &Path,
+    opencode_skills_dir: &Path,
+    _opencode_agents_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     println!("==> Syncing all skills from source tree...");
 
@@ -39,6 +41,7 @@ pub fn dev_all(
                 sync_path(&dev_staging, &shared_skills_dir.join(&name), SyncKind::Dir)?;
                 remove_project_symlink(&reasonix_skills_dir.join(&name), project_root)?;
                 remove_project_symlink(&codex_skills_dir.join(&name), project_root)?;
+                remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
                 count += 1;
 
                 if codex_agent {
@@ -46,6 +49,17 @@ pub fn dev_all(
                     sync_path(
                         &agent_src,
                         &codex_agents_dir.join(format!("{}.toml", name)),
+                        SyncKind::File,
+                    )?;
+                    count += 1;
+                }
+
+                // opencode agent.md → opencode skills (subagent)
+                let opencode_agent_src = src_dir.join("opencode").join("agent.md");
+                if opencode_agent_src.is_file() {
+                    sync_path(
+                        &opencode_agent_src,
+                        &opencode_skills_dir.join(format!("{}.md", name)),
                         SyncKind::File,
                     )?;
                     count += 1;
@@ -99,11 +113,18 @@ pub fn dev_clean(
     reasonix_skills_dir: &Path,
     codex_skills_dir: &Path,
     codex_agents_dir: &Path,
+    opencode_skills_dir: &Path,
+    _opencode_agents_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     println!("==> Removing all dev symlinks...");
     let mut removed = 0u32;
 
-    for dir in &[shared_skills_dir, reasonix_skills_dir, codex_skills_dir] {
+    for dir in &[
+        shared_skills_dir,
+        reasonix_skills_dir,
+        codex_skills_dir,
+        opencode_skills_dir,
+    ] {
         if !dir.is_dir() {
             continue;
         }
@@ -122,8 +143,11 @@ pub fn dev_clean(
         }
     }
 
-    if codex_agents_dir.is_dir() {
-        for entry in std::fs::read_dir(codex_agents_dir)? {
+    for agents_dir in &[codex_agents_dir, _opencode_agents_dir] {
+        if !agents_dir.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(agents_dir)? {
             let entry = entry?;
             let path = entry.path();
             if !path.is_symlink() {

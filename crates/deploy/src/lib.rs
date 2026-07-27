@@ -180,7 +180,8 @@ pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
 ///     ├── default/           ← top-level non-variant files (SKILL.md→INSTRUCTIONS.md)
 ///     ├── reasonix/          ← reasonix variant subtree
 ///     ├── codex/             ← codex variant subtree
-///     └── kimi/              ← kimi variant subtree
+///     ├── kimi/              ← kimi variant subtree
+///     └── opencode/          ← opencode variant subtree
 /// ```
 pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
     if dst.exists() {
@@ -189,7 +190,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     std::fs::create_dir_all(dst)?;
 
     let top_level_skill = src.join("SKILL.md");
-    let fallback_variant = ["codex", "kimi", "reasonix"]
+    let fallback_variant = ["codex", "kimi", "opencode", "reasonix"]
         .iter()
         .map(|variant| src.join(variant))
         .find(|variant_dir| variant_dir.join("SKILL.md").is_file());
@@ -209,7 +210,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     let router = format!(
         "---\n{frontmatter}\n---\n\n# Runtime routing\n\n\
 This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
-1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
+1. Identify the current agent runtime from the system context: `codex`, `kimi`, `opencode`, or `reasonix`.\n\
 2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
 3. Otherwise read `runtime/default/INSTRUCTIONS.md` completely.\n\
 4. Follow only the selected instruction file and its relative references. Do not load another runtime's instructions.\n"
@@ -223,7 +224,7 @@ This installed skill has one discoverable entry point so runtimes do not index d
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
             let name = entry.file_name();
-            if ["codex", "kimi", "reasonix"]
+            if ["codex", "kimi", "opencode", "reasonix"]
                 .iter()
                 .any(|variant| name == *variant)
             {
@@ -251,7 +252,7 @@ This installed skill has one discoverable entry point so runtimes do not index d
         )?;
     }
 
-    for variant in &["codex", "kimi", "reasonix"] {
+    for variant in &["codex", "kimi", "opencode", "reasonix"] {
         let variant_src = src.join(variant);
         if variant_src.is_dir() {
             copy_instruction_tree(&variant_src, &runtime_root.join(variant))?;

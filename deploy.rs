@@ -53,6 +53,13 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
+    let opencode_skills_dir = env::var("OPENCODE_SKILLS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(&home).join(".opencode/skills"));
+    let opencode_agents_dir = env::var("OPENCODE_AGENTS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(&home).join(".opencode/agents"));
+
     // No subcommand: show usage.
     if args.len() < 2 {
         usage();
@@ -91,6 +98,8 @@ fn main() -> anyhow::Result<()> {
                 &reasonix_skills_dir,
                 &codex_skills_dir,
                 &codex_agents_dir,
+                &opencode_skills_dir,
+                &opencode_agents_dir,
             )?;
         }
         "dev-clean" => {
@@ -103,6 +112,8 @@ fn main() -> anyhow::Result<()> {
                 &reasonix_skills_dir,
                 &codex_skills_dir,
                 &codex_agents_dir,
+                &opencode_skills_dir,
+                &opencode_agents_dir,
             )?;
         }
         "link-principles" => {
