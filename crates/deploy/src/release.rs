@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use super::distill::distill_artifacts_command;
 use super::pack::{get_repo_slug, get_version, pack_command};
 
 /// Pack + push to GitHub Releases.
@@ -37,6 +38,7 @@ pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
     }
 
     println!("==> Releasing {} to {}", tag, repo_slug);
+    distill_artifacts_command(project_root)?;
     pack_command(project_root)?;
 
     let tarball = project_root.join("dist").join("autopilot-toolkit.tar.gz");

@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use super::distill::stage_distill_executables;
 use anyhow::Context;
 
 /// Build a self-contained tarball into `dist/`.
@@ -75,7 +76,22 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── generate manifest.json (via skill-index lib) ──
     let skills = skill_index::discover_skills(project_root)?;
     let manifest = skill_index::generate_manifest(&skills, &version);
-    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    let mut manifest_value = serde_json::to_value(manifest)?;
+    let distill_platforms = stage_distill_executables(project_root, &autopilot_staging)?;
+    if !distill_platforms.is_empty() {
+        manifest_value
+            .as_object_mut()
+            .context("manifest must be an object")?
+            .insert(
+                "executables".to_string(),
+                serde_json::json!({
+                    "distill": {
+                        "platforms": distill_platforms,
+                    }
+                }),
+            );
+    }
+    let manifest_json = serde_json::to_string_pretty(&manifest_value)?;
     std::fs::write(autopilot_staging.join("manifest.json"), &manifest_json)?;
 
     // ── write .version ──

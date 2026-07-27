@@ -13,6 +13,7 @@
 //! - `release::release_command(project_root)` — pack + push to GitHub Releases
 
 pub mod dev;
+pub mod distill;
 pub mod pack;
 pub mod release;
 

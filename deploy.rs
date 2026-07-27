@@ -18,6 +18,7 @@ fn usage() -> ! {
     println!("Subcommands:");
     println!("  dev                     Symlink all skills from source tree into agent dirs");
     println!("  pack                    Build a self-contained tarball into dist/");
+    println!("  distill-artifacts       Build Distill CLI executables for release platforms");
     println!("  release                 Pack + push to GitHub Releases");
     println!("  dev-clean               Remove all dev symlinks from agent dirs");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
@@ -61,9 +62,8 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
-    // No subcommand: auto pack + release
+    // No subcommand: release builds artifacts, packs once, then publishes.
     if args.len() < 2 {
-        deploy::pack::pack_command(&project_root)?;
         deploy::release::release_command(&project_root)?;
         return Ok(());
     }
@@ -78,6 +78,12 @@ fn main() -> anyhow::Result<()> {
                 warn(&format!("ignoring extra arguments: {:?}", positional));
             }
             deploy::pack::pack_command(&project_root)?;
+        }
+        "distill-artifacts" => {
+            if !positional.is_empty() {
+                warn(&format!("ignoring extra arguments: {:?}", positional));
+            }
+            deploy::distill::distill_artifacts_command(&project_root)?;
         }
         "release" => {
             if !positional.is_empty() {
@@ -122,7 +128,7 @@ fn main() -> anyhow::Result<()> {
         }
         _ => {
             eprintln!(
-                "ERROR: unknown subcommand '{}'. Available: dev, dev-clean, pack, release, link-principles",
+                "ERROR: unknown subcommand '{}'. Available: dev, dev-clean, pack, distill-artifacts, release, link-principles",
                 subcommand
             );
             usage();
