@@ -213,14 +213,9 @@ fn main() {
                     let ats: BTreeMap<String, String> = lock
                         .skills
                         .iter()
-                        .filter_map(|s| {
-                            s.installed_at
-                                .clone()
-                                .map(|at| (s.name.clone(), at))
-                        })
+                        .filter_map(|s| s.installed_at.clone().map(|at| (s.name.clone(), at)))
                         .collect();
-                    let names: Vec<String> =
-                        lock.skills.iter().map(|s| s.name.clone()).collect();
+                    let names: Vec<String> = lock.skills.iter().map(|s| s.name.clone()).collect();
                     let ver = lock.version as u64;
                     (ats, names, ver)
                 }
