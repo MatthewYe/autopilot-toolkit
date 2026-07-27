@@ -98,7 +98,10 @@ type SkillMap = BTreeMap<String, serde_json::Value>;
 fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
     let skills_dir = upstream_root.join("skills");
     if !skills_dir.is_dir() {
-        return Err(format!("skills/ not found in upstream at {}", upstream_root.display()));
+        return Err(format!(
+            "skills/ not found in upstream at {}",
+            upstream_root.display()
+        ));
     }
 
     let mut map: SkillMap = BTreeMap::new();
@@ -138,16 +141,34 @@ fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
             let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
             let mut obj = serde_json::Map::new();
-            obj.insert("source".to_string(), serde_json::Value::String("mattpocock/skills".to_string()));
-            obj.insert("sourceType".to_string(), serde_json::Value::String("github".to_string()));
+            obj.insert(
+                "source".to_string(),
+                serde_json::Value::String("mattpocock/skills".to_string()),
+            );
+            obj.insert(
+                "sourceType".to_string(),
+                serde_json::Value::String("github".to_string()),
+            );
             obj.insert(
                 "sourceUrl".to_string(),
                 serde_json::Value::String(UPSTREAM_REPO.to_string()),
             );
-            obj.insert("skillPath".to_string(), serde_json::Value::String(skill_path));
-            obj.insert("skillFolderHash".to_string(), serde_json::Value::String(hash));
-            obj.insert("pluginName".to_string(), serde_json::Value::String(PLUGIN_NAME.to_string()));
-            obj.insert("installedAt".to_string(), serde_json::Value::String(now.clone()));
+            obj.insert(
+                "skillPath".to_string(),
+                serde_json::Value::String(skill_path),
+            );
+            obj.insert(
+                "skillFolderHash".to_string(),
+                serde_json::Value::String(hash),
+            );
+            obj.insert(
+                "pluginName".to_string(),
+                serde_json::Value::String(PLUGIN_NAME.to_string()),
+            );
+            obj.insert(
+                "installedAt".to_string(),
+                serde_json::Value::String(now.clone()),
+            );
             obj.insert("updatedAt".to_string(), serde_json::Value::String(now));
 
             map.insert(name, serde_json::Value::Object(obj));
@@ -163,10 +184,7 @@ fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
 /// - Skill exists in both → update hash, preserve installedAt
 /// - Skill only in new → add with defaults
 /// - Skill only in old → detected as orphan (returned separately)
-fn merge_lock_file(
-    old_skills: &SkillMap,
-    new_skills: &SkillMap,
-) -> (SkillMap, Vec<String>) {
+fn merge_lock_file(old_skills: &SkillMap, new_skills: &SkillMap) -> (SkillMap, Vec<String>) {
     let mut merged: SkillMap = BTreeMap::new();
     let mut orphans: Vec<String> = Vec::new();
 
@@ -176,10 +194,7 @@ fn merge_lock_file(
         if let Some(new_entry) = new_skills.get(name) {
             let mut entry = new_entry.clone();
             // Preserve original installedAt if it exists
-            if let Some(old_installed) = old_entry
-                .get("installedAt")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(old_installed) = old_entry.get("installedAt").and_then(|v| v.as_str()) {
                 if let Some(obj) = entry.as_object_mut() {
                     obj.insert(
                         "installedAt".to_string(),
@@ -235,8 +250,8 @@ fn main() {
 
     // ── 1. Clone upstream at tag ───────────────────────────────────────
     let n = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let clone_dir = std::env::temp_dir()
-        .join(format!("sync-upstream-clone-{}-{}", process::id(), n));
+    let clone_dir =
+        std::env::temp_dir().join(format!("sync-upstream-clone-{}-{}", process::id(), n));
 
     println!("\nCloning {} ({}):", UPSTREAM_REPO, tag);
     let clone_output = Command::new("git")
@@ -274,15 +289,12 @@ fn main() {
 
     // ── 3. Read existing lock file ─────────────────────────────────────
     let old_skills: SkillMap = if lockfile_path.exists() {
-        let content = fs::read_to_string(&lockfile_path)
-            .expect("cannot read .skill-lock.json");
+        let content = fs::read_to_string(&lockfile_path).expect("cannot read .skill-lock.json");
         let data: serde_json::Value =
             serde_json::from_str(&content).expect("cannot parse .skill-lock.json");
         data.get("skills")
             .and_then(|s| s.as_object())
-            .map(|obj| {
-                obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            })
+            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default()
     } else {
         BTreeMap::new()
@@ -323,15 +335,16 @@ fn main() {
     let version = if lockfile_path.exists() {
         let content = fs::read_to_string(&lockfile_path).unwrap_or_default();
         let data: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
-        data.get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(4)
+        data.get("version").and_then(|v| v.as_u64()).unwrap_or(4)
     } else {
         4u64
     };
 
     let mut lock_json = serde_json::Map::new();
-    lock_json.insert("version".to_string(), serde_json::Value::Number(version.into()));
+    lock_json.insert(
+        "version".to_string(),
+        serde_json::Value::Number(version.into()),
+    );
     lock_json.insert(
         "skills".to_string(),
         serde_json::Value::Object(merged.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
@@ -370,7 +383,10 @@ fn main() {
                 std::process::exit(1);
             }
             Err(e) => {
-                eprintln!("\nERROR: post-sync validation failed: could not run check.rs: {}", e);
+                eprintln!(
+                    "\nERROR: post-sync validation failed: could not run check.rs: {}",
+                    e
+                );
                 std::process::exit(1);
             }
         }
