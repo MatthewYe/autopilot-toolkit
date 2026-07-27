@@ -40,6 +40,10 @@ detect_and_bootstrap() {
         echo "Bootstrapping Codex..."
         CODEX_SKILLS_DIR="${CODEX_SKILLS_DIR:-${HOME}/.codex/skills}" CODEX_AGENTS_DIR="${CODEX_AGENTS_DIR:-${HOME}/.codex/agents}" "${BOOTSTRAP_SCRIPT}" --target codex
     fi
+    if [[ -d "${HOME}/.opencode" ]]; then
+        echo "Bootstrapping OpenCode..."
+        OPENCODE_SKILLS_DIR="${OPENCODE_SKILLS_DIR:-${HOME}/.opencode/skills}" OPENCODE_AGENTS_DIR="${OPENCODE_AGENTS_DIR:-${HOME}/.opencode/agents}" "${BOOTSTRAP_SCRIPT}" --target opencode
+    fi
 }
 
 # ── parse args ───────────────────────────────────────────────────────────
