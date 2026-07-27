@@ -57,27 +57,67 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 - `Status: resolved` ↔ label `resolved`
 - `Status: needs-info` ↔ label `needs-info`
 
+### AFK Continuation Contract
+
+本 contract 继承 wayfinder 的 HITL/AFK 分类语义：AFK ticket 由 agent 独立驱动，
+不依赖人类实时参与。
+
+破坏 AFK 的行为：在不需要产品/范围决策时暂停等待人类输入。
+
+**Principles**
+
+1. **Autonomous Progress** — Agent 自主推进，仅在合约无法覆盖的产品/范围决策时
+   请求人类输入。工程歧义通过判断解决，不阻塞流程。
+
+2. **Contract Authority** — AGENT-BRIEF（或等价的 issue body AC）是 AFK 执行的
+   唯一权威合约。Agent 不超出合约范围自行扩展，也不在合约未要求时自行降级。
+
+3. **Transparent Completion** — 外部限制（权限、工具链、依赖不可用）必须明确记录。
+   已完成但未验证的实现声明为 UNVERIFIED，绝不伪报 DONE。
+
+4. **Authority Boundaries** — Agent 不升级权限、不覆盖父 agent 配置。
+   子 agent 继承父 agent 的执行边界和模型选择。
+
+5. **Evidence Integrity** — 验证证据可审计、可复现。代码和环境未变化时已收集的
+   证据可复用，变化后失效。
+
+6. **Continuation** — 任务完成或阻塞后，Agent 保留上下文并继续推进范围内下一个
+   可执行目标。
+
+**Execution Specification**
+
+- 优先以 AGENT-BRIEF 为权威合约；issue body 作为上下文补充，不覆盖合约条款。
+- 权限、网络、缺失工具链等外部失败记录 `BLOCKER_TYPE: external-unavailable`，
+  在 `TEST_EVIDENCE` 中写明未执行命令和原因。
+- 仅合约无法覆盖的产品/范围歧义记录 `BLOCKER_TYPE: human-decision` 和
+  `needs-info`。工程可判断的歧义不升级为 human-decision。
+- `TEST_EVIDENCE` 以 `command + WORK_BASE + worktree fingerprint` 缓存；
+  工作树未变化时复用，代码变化后失效。
+- 诊断流程在 AFK 模式下不阻塞等待用户——继续按优先级测试假设。
+- 扫描模式延后当前任务后返回 scanning frontier 中下一个 runnable issue；
+  显式 target 模式结束本轮。
+
 ---
 
-## PRD 检测与跳过
+## Spec 检测与跳过
 
-PRD（Product Requirement Document）描述整体设计方案，不包含可直接实现的 `## Acceptance Criteria` 或 `## What to build`。PRD 不应被 dispatch 给 implementer——具体实现由子 issue 承载。
+Spec 描述整体设计方案，不包含可直接实现的 `## Acceptance Criteria` 或 `## What to build`。Spec 不应被 dispatch 给 implementer——具体实现由子 ticket 承载。
 
 ### 检测信号（双向兼容，零上游依赖）
 
 | 信号 | 本地 markdown | GitHub |
 |------|-------------|--------|
 | **主检测**（内容模式） | body 含 `## Problem Statement` + `## Solution`，但**不含** `## What to build` 和 `## Acceptance Criteria` | 同左 |
-| **加速标记**（可选） | frontmatter `Type: prd` | label `prd` |
+| **加速标记**（可选） | frontmatter `Type: spec` or legacy `Type: prd` | label `spec` or legacy `prd` |
 
 内容模式检测覆盖了 `to-tickets` 生成的标准 implementable issue（它们必有 `## What to build` + `## Acceptance Criteria`，不会被误判）。标记只是让 orchestrator 跳过内容解析的加速路径，非必须。
 
 ### 行为
 
-无论显式指定 target 还是扫描模式，检测到 PRD 后：
+无论显式指定 target 还是扫描模式，检测到 spec 后：
 - **跳过**，不进入 Phase 1 调度循环
-- 回复原因：`"<id> is a PRD, not directly implementable. Process its child issues instead."`
-- 不修改 PRD 的状态（保持原有状态，待 Phase 2 处理）
+- 回复原因：`"<id> is a spec, not directly implementable. Process its child tickets instead."`
+- 不修改 spec 的状态（保持原有状态，待 Phase 2 处理）
 
 ---
 
@@ -89,7 +129,7 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 2. 确认 `<target>/AGENT-BRIEF.md` 存在，不存在则报告错误并停止
 3. 读取 `<target>/issue.md`，检查 `Status:` 是否为 `ready-for-agent` 或 `in-progress`
 4. 非以上状态 → 回复当前状态并停止
-5. **PRD 检测**：检查 frontmatter 中是否有 `Type: prd`，或 body 是否满足 PRD 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。命中 → 回复 `"<target> is a PRD, not directly implementable. Process its child issues instead."` 并停止
+5. **Spec 检测**：检查 frontmatter 中是否有 `Type: spec` 或 legacy `Type: prd`，或 body 是否满足 Spec 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。命中 → 回复 `"<target> is a spec, not directly implementable. Process its child tickets instead."` 并停止
 6. 更新 Status 为 `in-progress`
 7. 设置 `source = "local"`, `id = <target>`
 8. 从 `<target>` 推断 feature 目录（取 issue 目录的父级父级，如 `.scratch/auth/issues/01-login/` → `.scratch/auth/`）
@@ -103,7 +143,7 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 1. `gh issue view <issueNumber> --json number,title,body,labels,state` 获取 issue 信息
 2. 检查 labels 是否含 `ready-for-agent` 或 `in-progress`
 3. 非以上标签 → 回复当前状态并停止
-4. **PRD 检测**：检查 labels 是否含 `prd`，或 issue body 是否满足 PRD 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。命中 → 回复 `"#<issueNumber> is a PRD, not directly implementable. Process its child issues instead."` 并停止
+4. **Spec 检测**：检查 labels 是否含 `spec` 或 legacy `prd`，或 issue body 是否满足 Spec 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。命中 → 回复 `"#<issueNumber> is a spec, not directly implementable. Process its child tickets instead."` 并停止
 5. 将 `ready-for-agent` 标签替换为 `in-progress`：`gh issue edit <issueNumber> --add-label "in-progress" --remove-label "ready-for-agent"`
 6. 追加评论：`gh issue comment <issueNumber> --body "autopilot: 开始处理"`
 7. 从 issue body 提取 Acceptance Criteria 和 What to build 作为合约文本
@@ -121,8 +161,8 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 
 1. `Glob` 扫描 `.scratch/*/issues/*.md`
 2. 对每个文件，读取前 30 行，检查是否有 `Status: ready-for-agent`
-3. 对匹配项，检查是否为 PRD：读取 frontmatter 中 `Type: prd` 字段，或读取 body 检查是否满足 PRD 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。PRD 条目**不纳入调度队列**，单独记录
-4. 收集所有非 PRD 的匹配项
+3. 对匹配项，检查是否为 Spec：读取 frontmatter 中 `Type: spec` 或 legacy `Type: prd` 字段，或读取 body 检查是否满足 Spec 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。Spec 条目**不纳入调度队列**，单独记录
+4. 收集所有非 Spec 的匹配项
 
 #### LOCAL_ISSUE_DEDUP_CONTRACT
 
@@ -131,26 +171,78 @@ PRD（Product Requirement Document）描述整体设计方案，不包含可直�
 ### GitHub 扫描
 
 5. `gh issue list --label "ready-for-agent" --state open --json number,title,labels --limit 50`
-6. 过滤掉 labels 含 `prd` 的条目
-7. 对剩余条目，用 `gh issue view <N> --json body` 检查 body 是否满足 PRD 内容模式。命中的条目**不纳入调度队列**，单独记录
-8. 收集所有非 PRD 的匹配项
+6. 过滤掉 labels 含 `spec` 或 legacy `prd` 的条目
+7. 对剩余条目，用 `gh issue view <N> --json body` 检查 body 是否满足 Spec 内容模式。命中的条目**不纳入调度队列**，单独记录
+8. 收集所有非 Spec 的匹配项
 
 ### 选择并报告
 
-9. 合并两个来源的非 PRD 结果。列出找到的 implementable issue，同时报告跳过的 PRD 数量（如 "skipped 1 PRD: #12"）
+9. 合并两个来源的非 Spec 结果。列出找到的 implementable issue，同时报告跳过的 Spec 数量（如 "skipped 1 spec: #12"）
 10. 选择第一个（按先本地后 GitHub，各自内部按自然序），标注正在处理哪个
 11. 如果零个 implementable issue → 跳到"Phase 2: 全局 meta-review"
 12. 根据选中 issue 的来源，走对应的初始化流程
 
 ---
 
+## Recovery Decision Model
+
+失败时基于两个维度决定行为，而非计数：
+
+### 决策矩阵
+
+|              | 有新信息（evidence improved）    | 无新信息（no new evidence） |
+|--------------|--------------------------------|---------------------------|
+| Agent 可修复  | RETRY                          | 停止（空转）               |
+| Agent 不可修复 | UNVERIFIED                     | needs-info / exhausted     |
+
+- **Recoverability**（Agent 可修复？）：工程 bug、测试失败、命名/结构错误 → 可修复；工具链缺失、权限不足、合约歧义、方向性错误 → 不可修复
+- **Evidence Progress**（有新信息？）：本轮尝试了不同策略/缩小了问题范围 → 有新信息；同一错误、同一推理路径反复出现 → 无新信息
+
+### Failure Classification
+
+| 失败类型 | 决策 | BLOCKER_TYPE |
+|---------|------|-------------|
+| Recoverable + 有新信息 | RETRY，继续迭代 | — |
+| Recoverable + 无新信息 | 停止，空转 | exhausted |
+| Environment（工具链/权限/外部服务不可达） | UNVERIFIED | external-unavailable |
+| Authority（合约歧义、产品/范围决策缺失） | needs-info | human-decision |
+| Terminal（系统性失败、兜底触发） | 停止 | exhausted |
+
+### 防作弊机制
+
+Agent 不自行判断是否停止。兜底前裁量权仅由 orchestrator 在 cap 触发后行使。
+
+#### Rationalization Table
+
+orchestrator 裁量前对照下表，排除偷懒判断：
+
+| Agent 可能的停止理由 | 必须满足的证据条件 |
+|---|---|
+| "无进展" | PREV_REVIEW 与当前 REVIEWER_REPORT 的 Critical 列表完全一致 + implementer CHANGED_FILES 与上一轮无变化 |
+| "无法修复" | 已尝试 2+ 种不同实现策略 + reviewer 确认均不满足 AC |
+| "合约缺失" | reviewer 报告中明确标注 "AC 描述不足以判断正确性" 或 "缺少必要的产品决策" |
+
+#### 空转检测 (Stall Detection)
+
+连续 2 轮满足以下全部条件 → 触发 `BLOCKER_TYPE: exhausted`，记录 reviewer 问题清单并停止：
+
+1. PREV_REVIEW 与当前 REVIEWER_REPORT 的 Critical 列表完全一致（条目内容、文件路径均相同）
+2. implementer CHANGED_FILES 与上一轮无变化（文件增删改计数一致）
+3. implementer 未尝试新的实现策略（SUMMARY 或 SELF_REVIEW 中无明确策略切换描述）
+
+迭代终止规则：
+- 任一 reviewer 报告含 Authority 类（合约缺失）Critical/Important → 转 `needs-info`，不继续迭代
+- 空转检测触发 → `exhausted`，停止
+- 符合决策矩阵 "Recoverable + 有新信息" → 继续迭代
+- 符合决策矩阵 "Recoverable + 无新信息" → `exhausted`
+- 符合决策矩阵 "Agent 不可修复" → `needs-info` 或 `external-unavailable`
+
+---
+
 ## Phase 1: 调度循环
 
-维护 `retry_count = 0`，最多 3 轮（`retry_count` = 0, 1, 2）：
+维护 `retry_count = 0` 用于轮次追踪和 suggestion 匹配。不再有硬性轮次上限——迭代终止由决策矩阵 + 空转检测共同决定：
 - retry_count = 0: 首次实现
-- retry_count = 1: 第 1 次 retry
-- retry_count = 2: 第 2 次 retry
-- retry_count >= 3: 转为 needs-info
 
 ### 更新状态（抽象）
 
@@ -221,9 +313,9 @@ Retry 轮次（retry_count >= 1）不检查 SELF_REVIEW。
 
 ### 收集 SIBLING_CONTEXT
 
-dispatch reviewer 前，自动收集当前 issue 所属 PRD 下所有已 resolved 的兄弟模块信息：
+dispatch reviewer 前，自动收集当前 issue 所属 Spec 下所有已 resolved 的兄弟模块信息：
 
-1. 从当前 issue body 的 `Parent` 链接提取 PRD issue 号
+1. 从当前 issue body 的 `Parent` 链接提取 Spec issue 号
 2. `gh issue list --label "resolved" --json number,title` 获取所有已 resolve 的 issue
 3. 对于每个已 resolve 的 issue（排除当前 issue 自己），提取其 title 和关键约定（入口模式、测试框架、文件布局）
 4. 组装为 `SIBLING_CONTEXT` 字符串，包含："已完成的兄弟模块: #N title — 关键约定: ..."
@@ -312,8 +404,11 @@ VERDICT 分支：
   3. 验证失败或工具链仍不可用 → 更新 Status 为 `needs-info`，追加 reviewer 结论 + "Toolchain unavailable — requires manual verification"
   4. 所有情况下保留 reviewer 报告和 Suggestion 提取
 - **RETRY** → `retry_count += 1`，清空 `pending_resolutions = []`（上一轮 resolutions 在 retry 后失效，新轮次 implementer 需重新声明）
-  - `retry_count < 3`：返回"执行 implementer"（传递 PREV_REVIEW）
-  - `retry_count >= 3`：更新 Status 为 `needs-info`，追加 reviewer 问题清单 + 说明已达最大重试次数，**返回扫描模式处理下一个 issue**
+
+  遵循空转检测规则：
+  - 合约缺失类 Critical/Important → 转 `needs-info`
+  - 空转检测触发或决策矩阵判 "无新信息" → 记录 `BLOCKER_TYPE: exhausted`，追加 reviewer 问题清单，延后并返回扫描模式处理下一个 issue
+  - 决策矩阵判 "有新信息 + 可修复" → 返回"执行 implementer"（传递 PREV_REVIEW）
 - **BLOCKED** → 更新 Status 为 `needs-info`，追加 reviewer 结论，**返回扫描模式处理下一个 issue**
 
 #### Update Suggestion 状态
@@ -359,7 +454,7 @@ VERDICT: MERGE 时，根据 `pending_resolutions` 更新 `suggestions.json` 中�
 
 ## Phase 2: 全局 Meta-Review
 
-当所有 Phase 1 issue 处理完毕（无 ready-for-agent 剩余），执行 `references/meta-review.md` 中的全局审查流程：并行派遣 reviewer 子 agent（Agent 工具，prompt 第一段指示其先 Read `~/.agents/skills/autopilot-reviewer/SKILL.md`）+ orchestrator 自主审查，合并报告，修复 Critical/Important 问题，解析 PRD。
+当所有 Phase 1 issue 处理完毕（无 ready-for-agent 剩余），执行 `references/meta-review.md` 中的全局审查流程：并行派遣 reviewer 子 agent（Agent 工具，prompt 第一段指示其先 Read `~/.agents/skills/autopilot-reviewer/SKILL.md`）+ orchestrator 自主审查，合并报告，修复 Critical/Important 问题，解析 Spec。
 
 ### FINAL_ACCEPTANCE_REPORT
 
