@@ -2,24 +2,15 @@
 //! ```cargo
 //! [dependencies]
 //! validation-runner = { path = "../crates/validation-runner" }
+//! shared = { path = "../crates/shared" }
 //! ```
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process;
 
-fn project_root() -> PathBuf {
-    let script_dir = Path::new(file!())
-        .parent()
-        .expect("validation/run.rs has a parent directory");
-    script_dir
-        .parent()
-        .expect("validation/ directory has a parent (project root)")
-        .to_path_buf()
-}
 
 fn main() {
-    let root = project_root();
+    let root = shared::project_root();
     let report = validation_runner::run_validation(&root).expect("validation should succeed");
 
     // Print report to stdout (println! mirrors bash's `echo "$report"`)

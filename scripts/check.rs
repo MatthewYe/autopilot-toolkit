@@ -2,25 +2,13 @@
 //! ```cargo
 //! [dependencies]
 //! skill-check = { path = "../crates/skill-check" }
+//! shared = { path = "../crates/shared" }
 //! ```
 
-use std::path::{Path, PathBuf};
 use std::process;
 
-fn project_root() -> PathBuf {
-    let script_dir = Path::new(file!())
-        .parent()
-        .expect("scripts/check.rs has a parent directory");
-    script_dir
-        .parent()
-        .expect("scripts/ directory has a parent (project root)")
-        .to_path_buf()
-}
-
 fn main() {
-    let root = std::env::var("PROJECT_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| project_root());
+    let root = shared::project_root();
 
     // Read lock file and check skills
     let report = match skill_check::check_skills(&root) {
