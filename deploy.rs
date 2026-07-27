@@ -2,6 +2,7 @@
 //! ```cargo
 //! [dependencies]
 //! deploy = { path = "crates/deploy" }
+//! shared = { path = "crates/shared" }
 //! anyhow = "1"
 //! ```
 
@@ -28,18 +29,8 @@ fn usage() -> ! {
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    // Derive PROJECT_ROOT from script path
-    let script_path = PathBuf::from(&args[0]);
-    let project_root = env::var("PROJECT_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            script_path
-                .canonicalize()
-                .unwrap_or_else(|_| script_path.clone())
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf()
-        });
+    // Derive PROJECT_ROOT via shared::project_root() (4-step fallback with .skill-lock.json verification)
+    let project_root = shared::project_root();
 
     let home = env::var("HOME").unwrap_or_default();
 
