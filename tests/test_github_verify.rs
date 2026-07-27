@@ -295,11 +295,15 @@ mod tests {
     #[test]
     fn ac5_skill_defines_retry_limit() {
         let skill = read_orchestrator_skill();
-        let has_retry = contains(&skill, "最多 3 轮")
-            || skill
-                .lines()
-                .any(|l| l.contains("retry_count") && l.contains("3"));
-        assert!(has_retry, "SKILL.md must define retry limit (max 3 rounds)");
+        let has_stall = contains(&skill, "空转检测")
+            || contains(&skill, "Stall Detection");
+        let has_retry = skill
+            .lines()
+            .any(|l| l.contains("retry_count"));
+        assert!(
+            has_stall || has_retry,
+            "SKILL.md must define stall detection or retry tracking"
+        );
     }
 
     #[test]
@@ -373,10 +377,10 @@ mod tests {
         let skill = read_codex_orchestrator_skill();
         for required in [
             "Issue 来源识别",
-            "PRD 检测与跳过",
+            "Spec 检测与跳过",
             "扫描模式",
             "Phase 1: 调度循环",
-            "最多 3 轮",
+            "Stall Detection",
             "交叉 Issue Suggestion 匹配",
             "Phase 2: 全局 Meta-Review",
             "FINAL_ACCEPTANCE_REPORT",
