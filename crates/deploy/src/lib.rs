@@ -156,10 +156,11 @@ pub fn copy_instruction_tree(src: &Path, dst: &Path) -> Result<(), anyhow::Error
 /// Extract the YAML frontmatter from a SKILL.md (text between `---` delimiters).
 pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
     let stripped = content.strip_prefix("---\n").unwrap_or(content);
-    stripped
-        .splitn(2, "\n---")
-        .next()
-        .context("SKILL.md has no frontmatter")
+    if stripped.contains("\n---") {
+        Ok(stripped.splitn(2, "\n---").next().unwrap())
+    } else {
+        anyhow::bail!("SKILL.md has no closing frontmatter delimiter")
+    }
 }
 
 /// Stage a coupled skill into a runtime-router layout.

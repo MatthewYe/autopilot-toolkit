@@ -62,10 +62,9 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
-    // No subcommand: release builds artifacts, packs once, then publishes.
+    // No subcommand: show usage.
     if args.len() < 2 {
-        deploy::release::release_command(&project_root)?;
-        return Ok(());
+        usage();
     }
 
     let subcommand = &args[1];

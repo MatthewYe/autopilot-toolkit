@@ -10,8 +10,8 @@ use super::pack::{get_repo_slug, get_version, pack_command};
 /// Pack + push to GitHub Releases.
 pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // Check gh is available
-    if !std::process::Command::new("which")
-        .arg("gh")
+    if !std::process::Command::new("gh")
+        .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -21,7 +21,7 @@ pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
 
     // Use short hash as tag — no manual tagging needed
     let hash = get_version(project_root)?;
-    let short = &hash[..8.min(hash.len())];
+    let short = hash.get(..8).unwrap_or(&hash);
     let tag = format!("v-{}", short);
     let repo_slug = get_repo_slug(project_root)?;
 
