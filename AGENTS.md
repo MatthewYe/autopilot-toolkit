@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-19 skills for Reasonix, Codex, and Kimi Code — 19 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (upstream counted from .skill-lock.json) (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources.
+19 skills for Reasonix, Codex, and Kimi Code — 19 upstream engineering/productivity skills from mattpocock/skills plus 6 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
 
 ## Project
 
@@ -57,7 +57,7 @@ docs/
 ## Install model
 
 - **Runtime-agnostic skills** (upstream 13 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
-- **Runtime-coupled skills** (the 4 workflow skills) ship variant sources per runtime: `reasonix/` → `~/.reasonix/skills/` (`--target reasonix`), `codex/` → `~/.codex/skills/` (`--target codex`, plus `agent.toml` custom agents for implementer/reviewer), `kimi/` → `~/.agents/skills/` (`--shared`; Kimi Code has no agent-exclusive directory).
+- **Runtime-coupled skills** (the 5 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
 - `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
 
 ## Conventions

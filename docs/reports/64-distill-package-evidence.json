@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "release_candidate": {
+    "path": "dist/autopilot-toolkit.tar.gz",
+    "sha256": "c95ea78adb676e34c3924a50c2a5b380c0c07b9a77085fb18a9b39b5093649ae"
+  },
+  "artifacts": [
+    {
+      "platform": "darwin-arm64",
+      "rust_target": "aarch64-apple-darwin",
+      "format": "Mach-O 64-bit executable arm64",
+      "sha256": "21342e0bb0648d325992e2af714b60d51694d8d5ec37ca201a89b721d8409301"
+    },
+    {
+      "platform": "linux-arm64",
+      "rust_target": "aarch64-unknown-linux-musl",
+      "format": "ELF 64-bit LSB executable, ARM aarch64, statically linked",
+      "sha256": "13ec40d5f2a283e919b3b14bdefb254b37a7ef6c473037c7c10358ab4e61eebc"
+    },
+    {
+      "platform": "linux-x64",
+      "rust_target": "x86_64-unknown-linux-musl",
+      "format": "ELF 64-bit LSB pie executable, x86-64, static-pie linked",
+      "sha256": "8a6095c3a6b8658423f3306d23d3dd7ebb8e143450df95d5e3b7820512b30d45"
+    }
+  ],
+  "archive_contains_all_artifacts": true,
+  "install_selection": {
+    "status": "passed",
+    "evidence": [
+      "rust-script --test tests/test_install.rs: 7 passed",
+      "bash tests/test_install.sh: 89 passed",
+      "rust-script --test tests/test_build.rs: passed"
+    ]
+  }
+}

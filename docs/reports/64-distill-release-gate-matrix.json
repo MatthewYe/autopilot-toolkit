@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "title": "Distill: pass the three-runtime release gate",
+  "status": "done",
+  "generated_at": "2026-07-24T22:05:00+08:00",
+  "fail_closed_policy": {
+    "native_session_identity_required": true,
+    "release_complete_requires_all_acceptance_criteria_verified": true,
+    "all_requirements_satisfied": true
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "status": "verified",
+      "evidence": [
+        "docs/reports/64-distill-package-evidence.json",
+        "tests/test_build.rs",
+        "tests/test_install.rs",
+        "tests/test_install.sh"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC2",
+      "status": "verified",
+      "evidence": [
+        "docs/reports/64-codex-distill-smoke-evidence.json",
+        "docs/reports/62-kimi-distill-smoke-evidence.json",
+        "docs/reports/63-reasonix-distill-smoke.md"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC3",
+      "status": "verified",
+      "evidence": [
+        "crates/distill-cli/tests/release_matrix.rs",
+        "docs/reports/62-kimi-distill-smoke-evidence.json",
+        "docs/reports/63-reasonix-distill-smoke.md",
+        "docs/reports/64-codex-distill-smoke-evidence.json",
+        "docs/reports/64-reasonix-lifecycle-evidence.json",
+        "docs/reports/64-kimi-lifecycle-evidence.json"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC4",
+      "status": "verified",
+      "evidence": [
+        "crates/distill-cli/tests/release_matrix.rs",
+        "crates/distill-cli/tests/intake_retention.rs",
+        "crates/distill-cli/tests/publication.rs",
+        "docs/reports/64-codex-distill-smoke-evidence.json",
+        "docs/reports/64-reasonix-lifecycle-evidence.json",
+        "docs/reports/64-kimi-lifecycle-evidence.json"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC5",
+      "status": "verified",
+      "evidence": [
+        "crates/distill-cli/tests/release_matrix.rs"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC6",
+      "status": "verified",
+      "evidence": [
+        "cargo test",
+        "rust-script validation/run.rs",
+        "rust-script --test validation/run.rs",
+        "rust-script --test tests/test_build.rs",
+        "rust-script --test tests/test_install.rs",
+        "rust-script --test tests/test_toolkit_setup.rs",
+        "rust-script --test tests/test_github_verify.rs",
+        "rust-script --test tests/test_check.rs",
+        "rust-script --test tests/test_kimi_distill.rs",
+        "rust-script --test tests/test_distill_release_gate.rs",
+        "bash tests/test_install.sh",
+        "bash tests/test_bootstrap.sh"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC7",
+      "status": "verified",
+      "evidence": [
+        "docs/reports/62-kimi-distill-smoke.md",
+        "docs/reports/63-reasonix-distill-smoke.md",
+        "docs/reports/64-codex-distill-smoke.md",
+        "docs/reports/64-distill-package-evidence.json",
+        "docs/reports/64-distill-release-gate.md",
+        "docs/reports/64-reasonix-lifecycle-evidence.json",
+        "docs/reports/64-kimi-lifecycle-evidence.json"
+      ],
+      "missing_checks": []
+    },
+    {
+      "id": "AC8",
+      "status": "verified",
+      "evidence": [
+        "docs/reports/62-kimi-distill-smoke-evidence.json",
+        "docs/reports/63-reasonix-distill-smoke.md",
+        "docs/reports/64-codex-distill-smoke-evidence.json"
+      ],
+      "missing_checks": []
+    }
+  ],
+  "package_rows": [
+    {
+      "platform": "darwin-arm64",
+      "rust_target": "aarch64-apple-darwin",
+      "artifact_status": "verified",
+      "install_selection_status": "verified"
+    },
+    {
+      "platform": "linux-arm64",
+      "rust_target": "aarch64-unknown-linux-musl",
+      "artifact_status": "verified",
+      "install_selection_status": "verified"
+    },
+    {
+      "platform": "linux-x64",
+      "rust_target": "x86_64-unknown-linux-musl",
+      "artifact_status": "verified",
+      "install_selection_status": "verified"
+    }
+  ],
+  "runtime_rows": [
+    {
+      "runtime": "codex",
+      "native_identity": "verified",
+      "live_smoke": {
+        "status": "verified",
+        "evidence": "docs/reports/64-codex-distill-smoke-evidence.json"
+      },
+      "lifecycle": "verified",
+      "lifecycle_evidence": "docs/reports/64-codex-distill-smoke-evidence.json",
+      "file_or_link_intake": "verified",
+      "waiting_checkpoint": "verified",
+      "recoverable_blocked_condition": "verified",
+      "publication_reconciliation": "verified",
+      "no_automatic_implementation": "verified"
+    },
+    {
+      "runtime": "reasonix",
+      "native_identity": "verified",
+      "live_smoke": {
+        "status": "verified",
+        "evidence": "docs/reports/63-reasonix-distill-smoke.md"
+      },
+      "lifecycle": "verified",
+      "lifecycle_evidence": "docs/reports/64-reasonix-lifecycle-evidence.json",
+      "file_or_link_intake": "verified",
+      "waiting_checkpoint": "verified",
+      "recoverable_blocked_condition": "verified",
+      "publication_reconciliation": "verified",
+      "no_automatic_implementation": "verified"
+    },
+    {
+      "runtime": "kimi",
+      "native_identity": "verified",
+      "live_smoke": {
+        "status": "verified",
+        "evidence": "docs/reports/62-kimi-distill-smoke-evidence.json"
+      },
+      "lifecycle": "verified",
+      "lifecycle_evidence": "docs/reports/64-kimi-lifecycle-evidence.json",
+      "file_or_link_intake": "verified",
+      "waiting_checkpoint": "verified",
+      "recoverable_blocked_condition": "verified",
+      "publication_reconciliation": "verified",
+      "no_automatic_implementation": "verified"
+    }
+  ],
+  "schema_equivalence": {
+    "status": "verified",
+    "evidence": "crates/distill-cli/tests/release_matrix.rs",
+    "surfaces": [
+      "state",
+      "events",
+      "evidence",
+      "publications",
+      "canonical-report"
+    ]
+  },
+  "evidence": {
+    "issue_62_kimi": {
+      "runtime": "kimi",
+      "path": "docs/reports/62-kimi-distill-smoke-evidence.json",
+      "session_dir_sha256_semantics": "SHA-256 of the exact native session directory path string, not a recursive directory-content digest"
+    },
+    "issue_63_reasonix": {
+      "runtime": "reasonix",
+      "path": "docs/reports/63-reasonix-distill-smoke.md"
+    },
+    "issue_64_codex": {
+      "runtime": "codex",
+      "path": "docs/reports/64-codex-distill-smoke-evidence.json"
+    },
+    "issue_64_reasonix_lifecycle": {
+      "runtime": "reasonix",
+      "path": "docs/reports/64-reasonix-lifecycle-evidence.json"
+    },
+    "issue_64_kimi_lifecycle": {
+      "runtime": "kimi",
+      "path": "docs/reports/64-kimi-lifecycle-evidence.json"
+    },
+    "package": {
+      "path": "docs/reports/64-distill-package-evidence.json"
+    }
+  },
+  "blockers": []
+}

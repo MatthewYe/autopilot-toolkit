@@ -7,7 +7,7 @@
 //! all required phases, state transitions, and dispatch chains.
 //! These are CI-safe — they only read local files, never call gh CLI or GitHub API.
 //!
-//! #[test] functions: 26
+//! #[test] functions: 27
 //!
 //! For environment diagnostics (gh installed, authenticated, git remote),
 //! run: ./scripts/env-check.rs
@@ -508,6 +508,50 @@ mod tests {
                 "Codex audit variant must not contain Reasonix-specific term {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn reasonix_distill_variant_drives_shared_runner_with_native_session_identity() {
+        let skill = read_reasonix_skill("autopilot-distill");
+
+        for required in [
+            "name: autopilot-distill",
+            "current Reasonix session identity",
+            "project session trace",
+            "contains the current `/distill` invocation",
+            "more than one candidate",
+            "fail closed",
+            "--runtime reasonix",
+            "--session-id",
+            "run_skill",
+            "grill-with-docs",
+            "to-prd",
+            "to-issues",
+            "clarification-complete",
+            "testing-seam-confirmed",
+            "slice-breakdown-approved",
+            "authorized_action",
+            "next_action",
+            "run_id",
+            "stage",
+            "revision",
+            "takeover",
+            "blocked",
+            "needs-reconciliation",
+            "drift_acknowledgment",
+            "authorized stage executor output",
+            "If `submit-evidence` fails with context drift",
+        ] {
+            assert!(
+                contains(&skill, required),
+                "Reasonix Distill variant must document shared runner contract term: {required}"
+            );
+        }
+
+        assert!(
+            !contains(&skill, "pass through the user's Distill command arguments"),
+            "Reasonix Distill variant must not be a generic CLI pass-through"
+        );
     }
 
     #[test]

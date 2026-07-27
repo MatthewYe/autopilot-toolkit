@@ -9,17 +9,17 @@ usage() {
     cat <<EOF
 Usage: bootstrap.sh --target <runtime>
 
-Create symlinks from ~/.agents/skills/ into agent-exclusive skill directories.
+Clean legacy runtime skill links and deploy runtime-specific support files.
 
 Arguments:
-  --target reasonix   Bootstrap for Reasonix (~/.reasonix/skills/)
-  --target codex      Bootstrap for Codex (~/.codex/skills/ + agents)
+  --target reasonix   Clean legacy Reasonix skill links
+  --target codex      Clean legacy Codex skill links and deploy agents
 
 Behavior:
-  - Scans ~/.agents/skills/ for directories containing <runtime>/SKILL.md
-  - Creates ln -sf from SSOT/<name>/<runtime> to ~/.<runtime>/skills/<name>
-  - For codex: also deploys agent.toml files to ~/.codex/agents/
-  - Removes stale bootstrap symlinks not matching current SSOT state
+  - Shared router SKILL.md files remain the only discoverable skill entries
+  - Removes legacy runtime skill symlinks that point into the shared SSOT
+  - For Codex: deploys runtime/codex/agent.toml to ~/.codex/agents/
+  - Preserves unrelated user directories and symlinks
   - Always idempotent: existing correct symlinks are skipped
 EOF
     exit 1
@@ -71,41 +71,26 @@ fi
 
 mkdir -p "${TARGET_SKILLS_DIR}"
 
-# ── skill symlinks ───────────────────────────────────────────────────────
-
-EXPECTED_LINKS=""  # newline-separated list of expected symlink names
-
 if [[ ! -d "${SSOT}" ]]; then
     echo "SSOT directory ${SSOT} does not exist. Nothing to bootstrap."
     exit 0
 fi
 
-for skill_dir in "${SSOT}"/*/; do
-    skill_name="$(basename "${skill_dir}")"
-    variant_dir="${skill_dir}${TARGET}"
-
-    # Check if this skill has a variant for the target runtime
-    if [[ -f "${variant_dir}/SKILL.md" ]]; then
-        link_path="${TARGET_SKILLS_DIR}/${skill_name}"
-
-        # Remove broken or wrong symlinks
-        if [[ -L "${link_path}" ]]; then
-            existing_target="$(readlink "${link_path}")"
-            if [[ "${existing_target}" != "${variant_dir}" ]]; then
-                rm -f "${link_path}"
+# Runtime-coupled skills now expose one router SKILL.md from the shared
+# directory. Remove old toolkit-owned runtime links so each runtime discovers
+# that shared entry exactly once. Preserve unrelated user symlinks.
+for existing_link in "${TARGET_SKILLS_DIR}"/*; do
+    [[ -L "${existing_link}" ]] || continue
+    link_name="$(basename "${existing_link}")"
+    existing_target="$(readlink "${existing_link}")"
+    case "${existing_target}" in
+        "${SSOT}/${link_name}/"*)
+            if [[ -d "${SSOT}/${link_name}/runtime" ]]; then
+                echo "  Removing legacy runtime skill symlink: ${existing_link}"
+                rm -f "${existing_link}"
             fi
-        elif [[ -e "${link_path}" ]]; then
-            # Real directory — skip (don't overwrite user data)
-            echo "  WARNING: ${link_path} exists as a real directory, skipping"
-            EXPECTED_LINKS="${EXPECTED_LINKS}${skill_name}"$'\n'
-            continue
-        fi
-
-        if [[ ! -e "${link_path}" ]]; then
-            ln -sf "${variant_dir}" "${link_path}"
-        fi
-        EXPECTED_LINKS="${EXPECTED_LINKS}${skill_name}"$'\n'
-    fi
+            ;;
+    esac
 done
 
 # ── codex agent.toml deployment ──────────────────────────────────────────
@@ -116,7 +101,7 @@ if [[ "${TARGET}" == "codex" ]]; then
 
     for skill_dir in "${SSOT}"/*/; do
         skill_name="$(basename "${skill_dir}")"
-        agent_toml="${skill_dir}codex/agent.toml"
+        agent_toml="${skill_dir}runtime/codex/agent.toml"
 
         if [[ -f "${agent_toml}" ]]; then
             agent_link="${TARGET_AGENTS_DIR}/${skill_name}.toml"
@@ -143,25 +128,16 @@ if [[ "${TARGET}" == "codex" ]]; then
         agent_name="$(basename "${agent_file}")"
         if ! echo "${EXPECTED_AGENTS}" | grep -qxF "${agent_name}"; then
             if [[ -L "${agent_file}" ]]; then
-                echo "  Removing stale agent symlink: ${agent_file}"
-                rm -f "${agent_file}"
+                existing_target="$(readlink "${agent_file}")"
+                case "${existing_target}" in
+                    "${SSOT}"/*)
+                        echo "  Removing stale agent symlink: ${agent_file}"
+                        rm -f "${agent_file}"
+                        ;;
+                esac
             fi
         fi
     done
 fi
-
-# ── remove stale symlinks ────────────────────────────────────────────────
-
-for existing_link in "${TARGET_SKILLS_DIR}"/*; do
-    # Match real entries and broken symlinks (broken symlinks fail -e but pass -L)
-    [[ -e "${existing_link}" || -L "${existing_link}" ]] || continue
-    link_name="$(basename "${existing_link}")"
-    if ! echo "${EXPECTED_LINKS}" | grep -qxF "${link_name}"; then
-        if [[ -L "${existing_link}" ]]; then
-            echo "  Removing stale symlink: ${existing_link}"
-            rm -f "${existing_link}"
-        fi
-    fi
-done
 
 echo "Bootstrap complete for target: ${TARGET}"

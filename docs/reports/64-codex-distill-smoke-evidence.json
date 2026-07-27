@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "runtime": "codex",
+  "native_session": {
+    "session_id": "019f933c-7304-7f11-b7d9-002375151196",
+    "source": "Codex request metadata: x-codex-turn-metadata.thread_id and session_id",
+    "match_count": 1,
+    "user_supplied": false
+  },
+  "fixture": {
+    "kind": "local-markdown",
+    "requirement": "Build a release readiness dashboard that publishes a PRD and one ready-for-agent implementation issue to the local markdown tracker.",
+    "retained": false
+  },
+  "runner": {
+    "run_id": "run-019f933c-7304-7f11-b7d9--1784898978198",
+    "runtime": "codex",
+    "status": "completed",
+    "stage": "completed",
+    "revision": 4,
+    "session_released": true,
+    "released_revision": 4,
+    "implementation_started": false,
+    "canonical_report_hash": "0d4e2fd96d1d1195a21b7b1fbd18b2f1c06cbf80603a920e838cfb10b067e3c2",
+    "report_json_sha256": "af610d8efe149d8135f3c0bf7c0ffa9c3802359ed5965c038a332539af6deb34",
+    "report_markdown_sha256": "67b09daa351802f2bed4759359082d8ae6080e46f4b6d09ba98fb4ea22c82f84",
+    "state_json_sha256": "4af3f2731a571bbed10661978f56395bf5502dace688fd041ffb33250ea6bf44",
+    "prd_payload_hash": "69fc97d1762f30b7c22a85f880b9348678af533ad3dc7c1a27a925a771eff803",
+    "issue_payload_hashes": [
+      "a6ce37a4a2235d2a53c70a3184028ba68485b60b64c2a83d29259844dde90e71"
+    ],
+    "stage_checkpoints": [
+      "explicit-text-captured",
+      "clarification-complete",
+      "testing-seam-confirmed",
+      "slice-breakdown-approved"
+    ],
+    "authorized_skills": [
+      "grill-with-docs",
+      "to-prd",
+      "to-issues"
+    ]
+  },
+  "native_lifecycle_run": {
+    "run_id": "run-019f933c-7304-7f11-b7d9--1784900281151",
+    "original_native_session_id": "019f933c-7304-7f11-b7d9-002375151196",
+    "uploaded_file_intake": true,
+    "waiting_boundary": {
+      "stage": "clarification",
+      "revision": 1,
+      "next_action": "invoke-skill"
+    },
+    "same_session_resume": {
+      "same_run_id": true,
+      "revision": 1
+    },
+    "cross_session_rejection": "ERROR: session id does not match active run binding",
+    "one_unfinished_run": "A repeated start in the native session resumed the sole active run instead of creating another.",
+    "takeover": {
+      "user_authorized": true,
+      "to_session": "codex-release-takeover",
+      "revision": 2
+    },
+    "recoverable_block": {
+      "error": "ERROR: context drift detected; submit a reasoned immaterial acknowledgment or supersede the run",
+      "recovered_with_reasoned_immaterial_acknowledgment": true
+    },
+    "publication_reconciliation": {
+      "mode": "timeout-before-response",
+      "state": "needs-reconciliation",
+      "confirmed_on_resume": true,
+      "create_count_before_and_after_reconciliation": 1
+    },
+    "terminal": {
+      "status": "completed",
+      "revision": 6,
+      "session_released": true,
+      "implementation_started": false,
+      "canonical_report_hash": "945006ea254627d8fcd8ac233b601a5ac1037cd37016973a5dbb9071d75ed9cf",
+      "state_json_sha256": "6835b45b9228f3182342d11ed6f0505626970487540d625a8b1321ff59cad72e",
+      "report_json_sha256": "1a638b1f86278872574f824f93f392fc169f2b28363fd915880a6ddc4f69f30d",
+      "report_markdown_sha256": "ad5fde9e9ae284142caddf23443be35293fbf910f9d03721816a8438eaaa2e0e"
+    }
+  }
+}

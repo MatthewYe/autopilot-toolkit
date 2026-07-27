@@ -11,6 +11,7 @@ AUTOPILOT_DIR="${SKILLS_DIR}/.autopilot"
 BOOTSTRAP_SCRIPT="${AUTOPILOT_DIR}/bootstrap.sh"
 MANIFEST_FILE="${AUTOPILOT_DIR}/manifest.json"
 VERSION_FILE="${AUTOPILOT_DIR}/.version"
+DISTILL_ENV_FILE="${AUTOPILOT_DIR}/distill.env"
 
 # ── usage ────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,60 @@ done
 
 RELEASE_URL="__REPO_URL__/releases/latest/download/autopilot-toolkit.tar.gz"
 
+# ── platform selection ──────────────────────────────────────────────────
+
+detect_platform() {
+    if [[ -n "${AUTOPILOT_PLATFORM_OVERRIDE:-}" ]]; then
+        echo "${AUTOPILOT_PLATFORM_OVERRIDE}"
+        return
+    fi
+
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    case "${os}:${arch}" in
+        Darwin:arm64|Darwin:aarch64)
+            echo "darwin-arm64"
+            ;;
+        Linux:arm64|Linux:aarch64)
+            echo "linux-arm64"
+            ;;
+        Linux:x86_64|Linux:amd64)
+            echo "linux-x64"
+            ;;
+        *)
+            echo "unsupported"
+            ;;
+    esac
+}
+
+select_distill_artifact() {
+    local tarball="$1"
+    local platform="$2"
+    local rel="bin/distill-artifacts/${platform}/distill"
+    local member
+    local has_distill_artifacts=0
+
+    while IFS= read -r member; do
+        case "${member}" in
+            ./.autopilot/bin/distill-artifacts/*/distill|.autopilot/bin/distill-artifacts/*/distill)
+                has_distill_artifacts=1
+                ;;
+        esac
+
+        if [[ "${member}" == "./.autopilot/${rel}" || "${member}" == ".autopilot/${rel}" ]]; then
+            echo "${rel}"
+            return 0
+        fi
+    done < <(tar -tzf "${tarball}")
+
+    if [[ "${has_distill_artifacts}" == "1" ]]; then
+        echo "ERROR: selected Distill CLI artifact is unavailable for ${platform}. Supported platforms: darwin-arm64, linux-arm64, linux-x64" >&2
+        return 1
+    fi
+}
+
 # ── check if already installed ───────────────────────────────────────────
 
 if [[ -f "${VERSION_FILE}" ]]; then
@@ -110,6 +165,17 @@ else
     TARBALL_PATH="${TARBALL_TMP}"
 fi
 
+CURRENT_PLATFORM="$(detect_platform)"
+case "${CURRENT_PLATFORM}" in
+    darwin-arm64|linux-arm64|linux-x64)
+        ;;
+    *)
+    echo "ERROR: unsupported platform for Distill CLI: $(uname -s)/$(uname -m). Supported platforms: darwin-arm64, linux-arm64, linux-x64"
+    exit 1
+        ;;
+esac
+DISTILL_ARTIFACT_REL="$(select_distill_artifact "${TARBALL_PATH}" "${CURRENT_PLATFORM}")"
+
 # ── remove old toolkit-owned directories ─────────────────────────────────
 
 if [[ -f "${MANIFEST_FILE}" ]]; then
@@ -142,6 +208,21 @@ if [[ -d "${SKILLS_DIR}/skills" ]]; then
         mv -f "${skill_dir}" "${SKILLS_DIR}/${skill_name}"
     done
     rmdir "${SKILLS_DIR}/skills"
+fi
+
+# ── select Distill executable ────────────────────────────────────────────
+
+if [[ -n "${DISTILL_ARTIFACT_REL}" ]]; then
+    DISTILL_ARTIFACT="${AUTOPILOT_DIR}/${DISTILL_ARTIFACT_REL}"
+    DISTILL_STABLE_BIN="${AUTOPILOT_DIR}/bin/distill"
+    if [[ ! -x "${DISTILL_ARTIFACT}" ]]; then
+        echo "ERROR: selected Distill CLI artifact is missing or not executable: ${DISTILL_ARTIFACT_REL}"
+        exit 1
+    fi
+    ln -sf "distill-artifacts/${CURRENT_PLATFORM}/distill" "${DISTILL_STABLE_BIN}"
+    cat > "${DISTILL_ENV_FILE}" <<EOF
+AUTOPILOT_DISTILL_BIN="${DISTILL_STABLE_BIN}"
+EOF
 fi
 
 # ── deploy principles ────────────────────────────────────────────────────

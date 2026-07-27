@@ -116,6 +116,10 @@ Scan both sources simultaneously:
 3. For matches, check for PRD: read frontmatter `Type: prd` field, or body for PRD content pattern. PRD entries are **excluded from the dispatch queue**, recorded separately.
 4. Collect all non-PRD matches.
 
+#### LOCAL_ISSUE_DEDUP_CONTRACT
+
+Before sorting or dispatching local candidates, group files with identical full Markdown bytes (a SHA-256 comparison is sufficient) and retain one candidate per group. If an identical group contains both `.scratch/distill-tracer/issues/` and another local issue path, prefer the non-tracer path; otherwise keep the first path in natural order. Report every suppressed duplicate path. A sole issue under `.scratch/distill-tracer/issues/` remains implementable and must not be excluded.
+
 ### GitHub scan
 
 5. `gh issue list --label "ready-for-agent" --state open --json number,title,labels --limit 50`.
