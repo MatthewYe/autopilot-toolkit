@@ -6,6 +6,8 @@
 use std::path::Path;
 
 use super::distill::stage_distill_executables;
+use super::stage_coupled_skill;
+use skill_index::{classify_skill, SkillType};
 use anyhow::Context;
 
 /// Build a self-contained tarball into `dist/`.
@@ -39,8 +41,12 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let skill_name = entry.file_name();
             let skill_name_str = skill_name.to_string_lossy().to_string();
             let src_dir = entry.path();
-            // Copy skill directory into staging
-            copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
+            let (skill_type, _variants, _codex_agent) = classify_skill(&src_dir);
+            if skill_type == SkillType::Coupled {
+                stage_coupled_skill(&src_dir, &skills_staging.join(&skill_name_str))?;
+            } else {
+                copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
+            }
         }
     }
 

@@ -122,6 +122,136 @@ pub fn link_principles(src: &Path, principles_dir: &Path) -> Result<(), anyhow::
     sync_path(src, principles_dir, SyncKind::Dir)
 }
 
+// ── Coupled skill staging ─────────────────────────────────────────────────
+
+/// Copy a directory tree, renaming `SKILL.md` → `INSTRUCTIONS.md`.
+pub fn copy_instruction_tree(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            let file_name = entry.file_name();
+            let dest_name = if file_name == "SKILL.md" {
+                "INSTRUCTIONS.md".into()
+            } else {
+                file_name
+            };
+            let dest = dst.join(dest_name);
+            if ty.is_dir() {
+                copy_instruction_tree(&entry.path(), &dest)?;
+            } else {
+                std::fs::copy(entry.path(), &dest)?;
+            }
+        }
+    } else if src.is_file() {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+/// Extract the YAML frontmatter from a SKILL.md (text between `---` delimiters).
+pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
+    let stripped = content.strip_prefix("---\n").unwrap_or(content);
+    stripped
+        .splitn(2, "\n---")
+        .next()
+        .context("SKILL.md has no frontmatter")
+}
+
+/// Stage a coupled skill into a runtime-router layout.
+///
+/// Creates:
+/// ```text
+/// dst/
+/// ├── SKILL.md              ← router (frontmatter + runtime dispatch instructions)
+/// └── runtime/
+///     ├── default/           ← top-level non-variant files (SKILL.md→INSTRUCTIONS.md)
+///     ├── reasonix/          ← reasonix variant subtree
+///     ├── codex/             ← codex variant subtree
+///     └── kimi/              ← kimi variant subtree
+/// ```
+pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    if dst.exists() {
+        std::fs::remove_dir_all(dst)?;
+    }
+    std::fs::create_dir_all(dst)?;
+
+    let top_level_skill = src.join("SKILL.md");
+    let fallback_variant = ["codex", "kimi", "reasonix"]
+        .iter()
+        .map(|variant| src.join(variant))
+        .find(|variant_dir| variant_dir.join("SKILL.md").is_file());
+    let reasonix_skill = src.join("reasonix").join("SKILL.md");
+    let frontmatter_source = if reasonix_skill.is_file() {
+        reasonix_skill
+    } else if top_level_skill.is_file() {
+        top_level_skill.clone()
+    } else {
+        fallback_variant
+            .as_ref()
+            .context("runtime-coupled skill has no SKILL.md source")?
+            .join("SKILL.md")
+    };
+    let default_content = std::fs::read_to_string(frontmatter_source)?;
+    let frontmatter = skill_frontmatter(&default_content)?;
+    let router = format!(
+        "{frontmatter}\n\n# Runtime routing\n\n\
+This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
+1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
+2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
+3. Otherwise read `runtime/default/INSTRUCTIONS.md` completely.\n\
+4. Follow only the selected instruction file and its relative references. Do not load another runtime's instructions.\n"
+    );
+    std::fs::write(dst.join("SKILL.md"), router)?;
+
+    let runtime_root = dst.join("runtime");
+    let default_dst = runtime_root.join("default");
+    std::fs::create_dir_all(&default_dst)?;
+    if top_level_skill.is_file() {
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            if ["codex", "kimi", "reasonix"]
+                .iter()
+                .any(|variant| name == *variant)
+            {
+                continue;
+            }
+            let ty = entry.file_type()?;
+            let dest_name = if name == "SKILL.md" {
+                "INSTRUCTIONS.md".into()
+            } else {
+                name
+            };
+            let dest = default_dst.join(dest_name);
+            if ty.is_dir() {
+                copy_instruction_tree(&entry.path(), &dest)?;
+            } else {
+                std::fs::copy(entry.path(), &dest)?;
+            }
+        }
+    } else {
+        copy_instruction_tree(
+            fallback_variant
+                .as_ref()
+                .context("runtime-coupled skill has no default instruction source")?,
+            &default_dst,
+        )?;
+    }
+
+    for variant in &["codex", "kimi", "reasonix"] {
+        let variant_src = src.join(variant);
+        if variant_src.is_dir() {
+            copy_instruction_tree(&variant_src, &runtime_root.join(variant))?;
+        }
+    }
+    Ok(())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
