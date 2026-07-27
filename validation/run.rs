@@ -8,7 +8,6 @@
 use std::fs;
 use std::process;
 
-
 fn main() {
     let root = shared::project_root();
     let report = validation_runner::run_validation(&root).expect("validation should succeed");
