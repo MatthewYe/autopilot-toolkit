@@ -207,7 +207,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     let default_content = std::fs::read_to_string(frontmatter_source)?;
     let frontmatter = skill_frontmatter(&default_content)?;
     let router = format!(
-        "{frontmatter}\n\n# Runtime routing\n\n\
+        "---\n{frontmatter}\n---\n\n# Runtime routing\n\n\
 This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
 1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
 2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
