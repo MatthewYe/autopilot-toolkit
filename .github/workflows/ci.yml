@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
 
 permissions: {}
@@ -15,6 +17,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install rust-script
         run: cargo install rust-script
+      - name: Verify upstream hashes (.skill-lock.json)
+        run: rust-script scripts/check.rs
       - name: Run SKILL.md frontmatter validation
         run: rust-script validation/run.rs
 
@@ -33,7 +37,12 @@ jobs:
         run: rust-script --test tests/test_build.rs
       - name: Run toolkit-setup tests
         run: rust-script --test tests/test_toolkit_setup.rs
-
+      - name: Run GitHub verify tests
+        run: rust-script --test tests/test_github_verify.rs
+      - name: Run check tests
+        run: rust-script --test tests/test_check.rs
+      - name: Run Kimi distill tests
+        run: rust-script --test tests/test_kimi_distill.rs
 
   test-shell:
     name: test
@@ -55,7 +64,7 @@ jobs:
         with:
           components: rustfmt
       - name: Check rust-script formatting
-        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs scripts/check.rs scripts/env-check.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs
+        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs
 
   clippy:
     name: clippy
@@ -70,6 +79,8 @@ jobs:
         run: cargo clippy --manifest-path crates/validation/Cargo.toml --all-targets -- -D warnings
       - name: Run clippy on skill-index crate
         run: cargo clippy --manifest-path crates/skill-index/Cargo.toml --all-targets -- -D warnings
+      - name: Run clippy on distill-cli crate
+        run: cargo clippy --manifest-path crates/distill-cli/Cargo.toml --all-targets -- -D warnings
 
   clippy-scripts:
     name: clippy-scripts
@@ -85,7 +96,7 @@ jobs:
       - name: Run clippy on rust-script files
         run: |
           set -e
-          for f in deploy.rs validation/run.rs scripts/check.rs scripts/env-check.rs; do
+          for f in deploy.rs validation/run.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)
             rust-script --package --pkg-path "$tmpdir" "$f"
@@ -94,7 +105,7 @@ jobs:
             echo "::endgroup::"
           done
           for f in tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs \
-                   tests/test_check.rs tests/test_github_verify.rs; do
+                   tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)
             rust-script --package --pkg-path "$tmpdir" "$f"

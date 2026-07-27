@@ -74,7 +74,7 @@ docs/
 
 ### Issue tracker
 
-Local tracker: `docs/issues/` (numbered, `Parent` → PRD in `docs/prd/`). GitHub Issues on `neilc6321/autopilot-toolkit` is the configured remote tracker (see `docs/agents/issue-tracker.md`), used when `gh` is available.
+Local tracker: `docs/issues/` (numbered, `Parent` → PRD in `docs/prd/`). GitHub Issues on `MatthewYe/autopilot-toolkit` is the configured remote tracker (see `docs/agents/issue-tracker.md`), used when `gh` is available.
 
 ### Triage labels
 

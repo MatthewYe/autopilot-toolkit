@@ -9,7 +9,7 @@ If `~/.agents/skills/.autopilot/distill.env` exists, read it and use `AUTOPILOT_
 
 ## LOCAL_ISSUE_HANDOFF_CONTRACT
 
-When `docs/agents/issue-tracker.md` configures Local Markdown, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: submit the approved payloads to the runner and let it create each local issue exactly once under `.scratch/distill-tracer/issues/`. Do not create a second issue copy elsewhere under `.scratch/`.
+When `docs/agents/issue-tracker.md` configures Local Markdown, use `to-tickets` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: submit the approved payloads to the runner and let it create each local issue exactly once under `.scratch/distill-tracer/issues/`. Do not create a second issue copy elsewhere under `.scratch/`.
 
 Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
 

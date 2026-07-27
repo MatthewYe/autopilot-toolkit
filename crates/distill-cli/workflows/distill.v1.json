@@ -18,14 +18,14 @@
     {
       "id": "prd",
       "executor": "skill",
-      "skill": "to-prd",
+      "skill": "to-spec",
       "checkpoint": "testing-seam-confirmed",
       "next_action": "invoke-skill"
     },
     {
       "id": "issues",
       "executor": "skill",
-      "skill": "to-issues",
+      "skill": "to-tickets",
       "checkpoint": "slice-breakdown-approved",
       "next_action": "invoke-skill"
     }

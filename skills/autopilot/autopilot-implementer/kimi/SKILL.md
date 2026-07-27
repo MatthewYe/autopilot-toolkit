@@ -13,7 +13,7 @@ Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "
 
 ### TDD 纪律
 
-- 读取 `~/.agents/skills/tdd/SKILL.md` Philosophy 节（测试行为 vs 实现细节）和 Workflow 节（红灯-绿灯-重构循环）。跳过 Planning 节——合约（AGENT-BRIEF）已定义构建目标。
+- 读取 `~/.agents/skills/tdd/SKILL.md` `## What a good test is`（测试质量标准）、`## Anti-patterns`（反模式：implementation-coupled、tautological）、`## Rules of the loop`（循环规则：红先绿后、逐片推进）。上游已明确 Refactoring 属于 review 阶段（不由 implementer 负责）——本实现保持内部轻量重构步骤（步骤 3），但不将重构视为独立阶段。
 - Mock 纪律：读取 `~/.agents/skills/tdd/mocking.md`。
 
 **项目特定强化：铁律——无失败测试不写生产代码。**
@@ -47,7 +47,7 @@ dispatch prompt 还可能传入 AGENT-BRIEF 中各 AC 的 **Seam 标注**。Seam
 首先检查 dispatch prompt 是否包含 `ROUND:` 和 `PREV_REVIEW:` 信息：
 
 - **如果未传入** → 这是首次实现，按"完整流程"执行
-- **如果传入了** → 这是 retry 修复，只修复 `PREV_REVIEW` 中列出的 Critical 问题，不重做已通过的 AC，不添加新功能
+- **如果传入了** → 这是 retry 修复，修复 `PREV_REVIEW` 中全部 Critical and Important 问题，不重做已通过的 AC，不添加新功能
 
 同时检查 dispatch prompt 是否包含 `REFACTORING: true`：
 
@@ -161,7 +161,7 @@ dispatch prompt 中会包含 `TOOLCHAIN: available` 或 `TOOLCHAIN: unavailable`
 
 dispatch prompt 中包含 `ROUND: N (N>=1)` 和 `PREV_REVIEW:` 时：
 
-1. 只修复 PREV_REVIEW 中 Critical 级别的问题
+1. 修复 PREV_REVIEW 中全部 Critical and Important 级别的问题
 2. 不重做已通过的 AC
 3. 不添加新功能
 4. 每条修复附带对应测试
