@@ -8,7 +8,8 @@
 curl -sSL https://github.com/neilc6321/autopilot-toolkit/releases/latest/download/install.sh | bash
 ```
 
-Installs all skills to `~/.agents/skills/`, auto-detects your agent runtimes and configures symlinks.
+Installs all skills to `~/.agents/skills/`, auto-detects your agent runtimes,
+and configures runtime support files.
 
 ## Uninstall
 
@@ -48,7 +49,7 @@ rust-script deploy.rs dev-clean   # remove all dev symlinks
 
 ```
 deploy.rs                        pack + release (no-args shortcut)
-deploy.rs dev                    symlink all skills into agent dirs
+deploy.rs dev                    stage and symlink all skills into the shared dir
 deploy.rs dev-clean              remove all dev symlinks
 deploy.rs pack                   build tarball into dist/
 deploy.rs release                push tarball to GitHub Releases
@@ -57,7 +58,12 @@ deploy.rs link-principles <src>  symlink ~/.agents/principles
 
 ## How it works
 
-Skills are YAML-frontmatter markdown files (`SKILL.md`) consumed directly by agents. The install tarball deploys them to `~/.agents/skills/` as real files — no symlinks to a source repo, so cross-machine sync works. Agents that need skills in their own directory (Reasonix, Codex) get bootstrap symlinks created automatically.
+Skills are YAML-frontmatter markdown files (`SKILL.md`) consumed directly by
+agents. The install tarball deploys them to `~/.agents/skills/` as real files —
+no symlinks to a source repo, so cross-machine sync works. Runtime-coupled
+skills expose one shared `SKILL.md` router and keep full runtime instructions
+under non-discoverable `runtime/*/INSTRUCTIONS.md` files. Codex custom agents
+are still linked into `~/.codex/agents/`.
 
 Release versioning uses git commit hashes. Each `deploy.rs` run builds a tarball, creates a lightweight tag, and pushes to GitHub Releases. The install URL never changes — `/latest/download/` always points to the newest release.
 

@@ -4,6 +4,7 @@
 //! serde = { version = "1", features = ["derive"] }
 //! serde_json = "1"
 //! tempfile = "3"
+//! walkdir = "2"
 //! ```
 //!
 //! Integration tests for deploy.rs pack subcommand.
@@ -14,6 +15,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -74,10 +76,162 @@ fn git_rev_parse(repo: &Path) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
+fn setup_mock_project_for_distill(root: &Path) {
+    fs::copy(install_script(), root.join("deploy.rs")).unwrap();
+
+    let distill_skill = root.join("skills/autopilot/autopilot-distill");
+    for variant in &["codex", "kimi", "reasonix"] {
+        let dir = distill_skill.join(variant);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!(
+                "---\nname: autopilot-distill\ndescription: Distill {}\n---\nRun ~/.agents/skills/.autopilot/bin/distill.\n",
+                variant
+            ),
+        )
+        .unwrap();
+    }
+
+    let cli = root.join("crates/distill-cli/src");
+    fs::create_dir_all(&cli).unwrap();
+    fs::write(
+        root.join("crates/distill-cli/Cargo.toml"),
+        "[package]\nname = \"distill-cli\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"distill\"\npath = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    fs::write(cli.join("main.rs"), "fn main() {}\n").unwrap();
+
+    fs::create_dir_all(root.join("templates")).unwrap();
+    fs::write(
+        root.join("templates/install.sh.in"),
+        "#!/bin/bash\nVERSION=\"__VERSION__\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("templates/uninstall.sh"), "#!/bin/bash\n").unwrap();
+    fs::write(root.join("bootstrap.sh"), "#!/bin/bash\n").unwrap();
+    fs::create_dir_all(root.join("principles")).unwrap();
+    fs::write(root.join("principles/karpathy.md"), "# Principles\n").unwrap();
+    fs::write(
+        root.join(".skill-lock.json"),
+        r#"{"version":4,"skills":{}}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/*\"]\n",
+    )
+    .unwrap();
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+}
+
+fn setup_full_pack_project(root: &Path) {
+    fs::create_dir_all(root).unwrap();
+    let source = project_root();
+    for file in [
+        "deploy.rs",
+        "bootstrap.sh",
+        ".skill-lock.json",
+        "Cargo.toml",
+    ] {
+        fs::copy(source.join(file), root.join(file)).unwrap();
+    }
+    fs::create_dir_all(root.join("crates/distill-cli")).unwrap();
+    fs::copy(
+        source.join("crates/distill-cli/Cargo.toml"),
+        root.join("crates/distill-cli/Cargo.toml"),
+    )
+    .unwrap();
+    for directory in ["templates", "skills", "principles"] {
+        let status = Command::new("cp")
+            .args([
+                "-R",
+                &source.join(directory).to_string_lossy(),
+                &root.join(directory).to_string_lossy(),
+            ])
+            .status()
+            .expect("fixture directory copy should run");
+        assert!(
+            status.success(),
+            "fixture directory {directory} should copy"
+        );
+    }
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+}
+
+fn write_mock_distill_artifacts(root: &Path) {
+    for platform in &["darwin-arm64", "linux-arm64", "linux-x64"] {
+        let artifact = root
+            .join("dist")
+            .join("distill")
+            .join(platform)
+            .join("distill");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(
+            &artifact,
+            format!("#!/usr/bin/env bash\necho distill {}\n", platform),
+        )
+        .unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     version: String,
     skills: HashMap<String, SkillEntry>,
+    #[serde(default)]
+    executables: HashMap<String, ExecutableEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +242,11 @@ struct SkillEntry {
     variants: Vec<String>,
     #[serde(default)]
     codex_agent: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecutableEntry {
+    platforms: HashMap<String, String>,
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -101,6 +260,12 @@ mod tests {
         eprintln!("Running tests sequentially...");
         __build_produces_tarball();
         __build_tarball_structure_and_metadata();
+        __distill_artifacts_command_builds_supported_targets();
+        __distill_artifacts_command_installs_targets_before_build_and_derives_linux_linker();
+        __release_stops_when_target_install_fails();
+        __release_builds_packs_and_publishes_once_in_order();
+        __no_args_release_builds_packs_and_publishes_once_in_order();
+        __pack_fails_when_distill_artifact_set_is_incomplete();
         __build_creates_dist_dir_if_missing();
         __build_exits_nonzero_when_not_in_git_repo();
         __sync_still_works_after_build_changes();
@@ -108,19 +273,17 @@ mod tests {
     }
 
     fn __build_produces_tarball() {
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let dist_dir = root.join("dist");
-
-        // Clean dist if it exists from a previous run
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
 
         let git_hash = git_rev_parse(&root);
         assert!(!git_hash.is_empty(), "git rev-parse should return a hash");
 
         let tarball_name = "autopilot-toolkit.tar.gz";
         let tarball_path = dist_dir.join(tarball_name);
+        write_mock_distill_artifacts(&root);
 
         // Run build
         let (out, err, code) = run_build(&["pack"], Some(&root));
@@ -159,15 +322,14 @@ mod tests {
     }
 
     fn __build_tarball_structure_and_metadata() {
-        let _ = std::fs::remove_dir_all(project_root().join("dist"));
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let git_hash = git_rev_parse(&root);
         assert!(!git_hash.is_empty());
 
         let dist_dir = root.join("dist");
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
+        write_mock_distill_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);
@@ -182,8 +344,8 @@ mod tests {
         assert!(tarball_path.is_file());
 
         // Extract to temp dir
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let extract_dir = tmp.path().join("extracted");
+        let extract_tmp = tempfile::tempdir().expect("tempdir");
+        let extract_dir = extract_tmp.path().join("extracted");
         fs::create_dir_all(&extract_dir).unwrap();
 
         let status = Command::new("tar")
@@ -220,7 +382,7 @@ mod tests {
         );
 
         // ── AC 7: dist/install.sh is executable and embeds correct version ──
-        let install_sh = project_root().join("dist").join("install.sh");
+        let install_sh = root.join("dist").join("install.sh");
         assert!(install_sh.is_file(), "dist/install.sh should exist");
         let metadata = fs::metadata(&install_sh).unwrap();
         // Check executable bit (on Unix)
@@ -293,6 +455,7 @@ mod tests {
 
         // Coupled skills
         for coupled_name in &[
+            "autopilot-distill",
             "autopilot-implementer",
             "autopilot-reviewer",
             "autopilot-orchestrator",
@@ -376,6 +539,7 @@ mod tests {
         for name in &[
             "toolkit-setup",
             "zoom-out",
+            "autopilot-distill",
             "autopilot-implementer",
             "autopilot-reviewer",
             "autopilot-orchestrator",
@@ -387,16 +551,542 @@ mod tests {
                 name
             );
         }
+
+        for coupled_name in &[
+            "autopilot-distill",
+            "autopilot-implementer",
+            "autopilot-reviewer",
+            "autopilot-orchestrator",
+            "audit-autopilot",
+        ] {
+            let discoverable_count = walkdir::WalkDir::new(skills_dir.join(coupled_name))
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_file() && entry.file_name() == "SKILL.md")
+                .count();
+            assert_eq!(
+                discoverable_count, 1,
+                "{} should expose exactly one discoverable SKILL.md",
+                coupled_name
+            );
+        }
+        let implementer_router =
+            fs::read_to_string(skills_dir.join("autopilot-implementer/SKILL.md")).unwrap();
+        assert!(
+            implementer_router.contains("runAs: subagent")
+                && implementer_router.contains("allowed-tools:"),
+            "shared router must preserve Reasonix execution metadata"
+        );
+
+        for variant in &["codex", "kimi", "reasonix"] {
+            let skill = fs::read_to_string(
+                skills_dir
+                    .join("autopilot-distill")
+                    .join("runtime")
+                    .join(variant)
+                    .join("INSTRUCTIONS.md"),
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "autopilot-distill {} INSTRUCTIONS.md should be readable: {}",
+                    variant, err
+                )
+            });
+            assert!(
+                skill.contains("name: autopilot-distill"),
+                "autopilot-distill {} variant should expose the renamed skill identity",
+                variant
+            );
+            assert!(
+                skill.contains(".autopilot/bin/distill"),
+                "autopilot-distill {} variant should tell the runtime how to execute the installed binary",
+                variant
+            );
+        }
+
+        let distill = manifest
+            .executables
+            .get("distill")
+            .expect("manifest should own distill executable");
+        assert!(
+            !distill.platforms.contains_key("darwin-x64"),
+            "manifest should not advertise the unsupported x86_64 macOS artifact"
+        );
+        for platform in &["darwin-arm64", "linux-arm64", "linux-x64"] {
+            let rel = distill
+                .platforms
+                .get(*platform)
+                .unwrap_or_else(|| panic!("distill platform {} should be in manifest", platform));
+            let executable = autopilot_dir.join(rel);
+            assert!(
+                executable.is_file(),
+                "distill executable for {} should exist at {:?}",
+                platform,
+                executable
+            );
+            assert!(
+                fs::metadata(&executable).unwrap().permissions().mode() & 0o111 != 0,
+                "distill executable for {} should be executable",
+                platform
+            );
+        }
+    }
+
+    fn __distill_artifacts_command_builds_supported_targets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        let cargo = fake_bin.join("cargo");
+        fs::write(
+            &cargo,
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "{}"
+echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+target=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--target" ]]; then
+    shift
+    target="$1"
+  fi
+  shift || true
+done
+mkdir -p "target/${{target}}/release"
+printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
+chmod +x "target/${{target}}/release/distill"
+"#,
+                log.display(),
+                log.display(),
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .env("DISTILL_LINUX_ARM64_LINKER", "/toolchains/aarch64-linker")
+            .env("DISTILL_LINUX_X64_LINKER", "/toolchains/x86_64-linker")
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            output.status.success(),
+            "distill-artifacts should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        for triple in &[
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-musl",
+            "x86_64-unknown-linux-musl",
+        ] {
+            assert!(
+                logged.contains(&format!("--target {}", triple)),
+                "cargo should build target {}, log:\n{}",
+                triple,
+                logged
+            );
+        }
+        assert!(
+            !logged.contains("--target x86_64-apple-darwin"),
+            "cargo should not build the unsupported x86_64 macOS target, log:\n{}",
+            logged
+        );
+        assert!(logged.contains("arm64_linker=/toolchains/aarch64-linker"));
+        assert!(logged.contains("x64_linker=/toolchains/x86_64-linker"));
+    }
+
+    fn __distill_artifacts_command_installs_targets_before_build_and_derives_linux_linker() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("toolchain.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+
+        let rustup = fake_bin.join("rustup");
+        fs::write(
+            &rustup,
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "rustup $*" >> "{}"
+"#,
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&rustup, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let rustc = fake_bin.join("rustc");
+        fs::write(
+            &rustc,
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "--print sysroot" ]]; then
+  echo "/mock/rust/sysroot"
+elif [[ "$*" == "-vV" ]]; then
+  echo "host: test-host-triple"
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&rustc, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let cargo = fake_bin.join("cargo");
+        fs::write(
+            &cargo,
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "cargo $*" >> "{}"
+echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+target=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--target" ]]; then
+    shift
+    target="$1"
+  fi
+  shift || true
+done
+mkdir -p "target/${{target}}/release"
+printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
+chmod +x "target/${{target}}/release/distill"
+"#,
+                log.display(),
+                log.display(),
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", &path)
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            output.status.success(),
+            "distill-artifacts should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        for triple in &[
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-musl",
+            "x86_64-unknown-linux-musl",
+        ] {
+            let rustup_pos = logged
+                .find(&format!("rustup target add {}", triple))
+                .unwrap_or_else(|| {
+                    panic!("rustup should install target {}, log:\n{}", triple, logged)
+                });
+            let cargo_pos = logged
+                .find(&format!(
+                    "cargo build --release --bin distill --target {}",
+                    triple
+                ))
+                .unwrap_or_else(|| {
+                    panic!("cargo should build target {}, log:\n{}", triple, logged)
+                });
+            assert!(
+                rustup_pos < cargo_pos,
+                "rustup target add should run before cargo build for {}, log:\n{}",
+                triple,
+                logged
+            );
+        }
+        let derived = "/mock/rust/sysroot/lib/rustlib/test-host-triple/bin/rust-lld";
+        assert!(
+            logged.contains(&format!("arm64_linker={derived}")),
+            "arm64 should use derived rust-lld, log:\n{}",
+            logged
+        );
+        assert!(
+            logged.contains(&format!("x64_linker={derived}")),
+            "x64 should use derived rust-lld, log:\n{}",
+            logged
+        );
+
+        fs::write(&log, "").unwrap();
+        let shared_linker = "/toolchains/shared-linux-linker";
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", &path)
+            .env("DISTILL_LINUX_LINKER", shared_linker)
+            .output()
+            .expect("failed to run deploy.rs with shared Linux linker");
+        assert!(
+            output.status.success(),
+            "distill-artifacts should accept DISTILL_LINUX_LINKER, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let logged = fs::read_to_string(&log).unwrap();
+        assert!(
+            logged.contains(&format!("arm64_linker={shared_linker}")),
+            "arm64 should use DISTILL_LINUX_LINKER, log:\n{}",
+            logged
+        );
+        assert!(
+            logged.contains(&format!("x64_linker={shared_linker}")),
+            "x64 should use DISTILL_LINUX_LINKER, log:\n{}",
+            logged
+        );
+    }
+
+    fn __release_builds_packs_and_publishes_once_in_order() {
+        assert_release_builds_packs_and_publishes_once_in_order(&["release"], false);
+    }
+
+    fn __no_args_release_builds_packs_and_publishes_once_in_order() {
+        assert_release_builds_packs_and_publishes_once_in_order(&[], false);
+    }
+
+    fn __release_stops_when_target_install_fails() {
+        assert_release_builds_packs_and_publishes_once_in_order(&["release"], true);
+    }
+
+    fn assert_release_builds_packs_and_publishes_once_in_order(
+        deploy_args: &[&str],
+        fail_linux_arm64_target_install: bool,
+    ) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("release.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+
+        fs::write(
+            fake_bin.join("rustup"),
+            format!(
+                "#!/usr/bin/env bash\nset -euo pipefail\necho \"rustup $*\" >> \"{}\"\n{}\n",
+                log.display(),
+                if fail_linux_arm64_target_install {
+                    "if [[ \"$*\" == *aarch64-unknown-linux-musl* ]]; then exit 42; fi"
+                } else {
+                    ""
+                }
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(fake_bin.join("rustup"), fs::Permissions::from_mode(0o755)).unwrap();
+
+        fs::write(
+            fake_bin.join("rustc"),
+            "#!/usr/bin/env bash\nif [[ \"$*\" == \"--print sysroot\" ]]; then echo \"/mock/rust/sysroot\"; elif [[ \"$*\" == \"-vV\" ]]; then echo \"host: test-host-triple\"; fi\n",
+        )
+        .unwrap();
+        fs::set_permissions(fake_bin.join("rustc"), fs::Permissions::from_mode(0o755)).unwrap();
+
+        fs::write(
+            fake_bin.join("cargo"),
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "cargo $*" >> "{}"
+target=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--target" ]]; then shift; target="$1"; fi
+  shift || true
+done
+mkdir -p "target/${{target}}/release"
+printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
+chmod +x "target/${{target}}/release/distill"
+"#,
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(fake_bin.join("cargo"), fs::Permissions::from_mode(0o755)).unwrap();
+
+        fs::write(
+            fake_bin.join("git"),
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "git $*" >> "{}"
+case "$*" in
+  "rev-parse HEAD") echo "1234567890abcdef1234567890abcdef12345678" ;;
+  "remote get-url origin") echo "git@github.com:test/repo.git" ;;
+  tag*|push*) exit 0 ;;
+  *) exit 0 ;;
+esac
+"#,
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(fake_bin.join("git"), fs::Permissions::from_mode(0o755)).unwrap();
+
+        fs::write(
+            fake_bin.join("gh"),
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "gh $*" >> "{}"
+if [[ "$*" == release\ view* ]]; then
+  exit 1
+fi
+exit 0
+"#,
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(fake_bin.join("gh"), fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let mut command = Command::new("rust-script");
+        command.arg(install_script());
+        for arg in deploy_args {
+            command.arg(arg);
+        }
+        let output = command
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs release path");
+        if fail_linux_arm64_target_install {
+            assert!(
+                !output.status.success(),
+                "release should fail when rustup target add fails"
+            );
+            let logged = fs::read_to_string(&log).unwrap();
+            assert!(
+                logged.contains("rustup target add aarch64-unknown-linux-musl"),
+                "release should attempt the failing target install, log:\n{}",
+                logged
+            );
+            assert!(
+                !logged.contains(
+                    "cargo build --release --bin distill --target aarch64-unknown-linux-musl"
+                ),
+                "release must stop before the corresponding Cargo build, log:\n{}",
+                logged
+            );
+            assert!(
+                !logged.contains("gh release create"),
+                "release must not publish after target installation fails, log:\n{}",
+                logged
+            );
+            return;
+        }
+        assert!(
+            output.status.success(),
+            "release should succeed, stdout: {}, stderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        assert_eq!(
+            logged
+                .matches("cargo build --release --bin distill --target")
+                .count(),
+            3,
+            "release should build each supported binary once, log:\n{}",
+            logged
+        );
+        assert_eq!(
+            logged.matches("gh release create").count(),
+            1,
+            "release should publish once, log:\n{}",
+            logged
+        );
+        let first_cargo = logged
+            .find("cargo build --release --bin distill --target")
+            .expect("release should build artifacts");
+        let tag = logged
+            .find("git tag -f")
+            .expect("release should create tag after pack");
+        let publish = logged
+            .find("gh release create")
+            .expect("release should publish");
+        assert!(
+            first_cargo < tag,
+            "artifact build should precede publication prep, log:\n{}",
+            logged
+        );
+        assert!(
+            tag < publish,
+            "tag push should precede GitHub publication, log:\n{}",
+            logged
+        );
+
+        let manifest_bytes = {
+            let extract_tmp = tempfile::tempdir().expect("tempdir");
+            let extract_dir = extract_tmp.path().join("extracted");
+            fs::create_dir_all(&extract_dir).unwrap();
+            let status = Command::new("tar")
+                .args([
+                    "-xzf",
+                    &root.join("dist/autopilot-toolkit.tar.gz").to_string_lossy(),
+                    "-C",
+                    &extract_dir.to_string_lossy(),
+                ])
+                .status()
+                .expect("tar extract failed");
+            assert!(status.success(), "release tarball should extract");
+            fs::read_to_string(extract_dir.join(".autopilot/manifest.json")).unwrap()
+        };
+        let manifest: Manifest = serde_json::from_str(&manifest_bytes).unwrap();
+        assert!(manifest.skills.contains_key("autopilot-distill"));
+        assert!(!manifest.skills.contains_key("distill"));
+        assert!(manifest.executables.contains_key("distill"));
+    }
+
+    fn __pack_fails_when_distill_artifact_set_is_incomplete() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+
+        let artifact = project.join("dist/distill/darwin-arm64/distill");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, "#!/usr/bin/env bash\necho darwin-arm64\n").unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_ne!(
+            code, 0,
+            "pack should fail when only one Distill platform artifact exists, stdout: {}, stderr: {}",
+            out, err
+        );
+        assert!(
+            err.contains("missing Distill CLI artifact"),
+            "pack should report missing Distill artifact, stderr: {}",
+            err
+        );
     }
 
     fn __build_creates_dist_dir_if_missing() {
-        let _ = std::fs::remove_dir_all(project_root().join("dist"));
-        let root = project_root();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        setup_full_pack_project(&root);
         let dist_dir = root.join("dist");
-
-        if dist_dir.exists() {
-            fs::remove_dir_all(&dist_dir).unwrap();
-        }
+        write_mock_distill_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);
@@ -538,6 +1228,14 @@ mod tests {
             count > 0,
             "dev should create at least one symlink, got {}",
             count
+        );
+        assert!(
+            skills.join("autopilot-distill").is_symlink(),
+            "dev should symlink the renamed autopilot-distill skill"
+        );
+        assert!(
+            !skills.join("distill").exists(),
+            "dev should not create the old distill skill symlink"
         );
     }
 }

@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues on `matthewye/autopilot-toolkit`. Use the `gh` CLI for all operations.
+Issues and PRDs for this repo live as GitHub issues on `neilc6321/autopilot-toolkit`. Use the `gh` CLI for all operations.
 
 ## Conventions
 

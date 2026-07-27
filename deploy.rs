@@ -8,6 +8,7 @@
 
 use anyhow::Context;
 use skill_index::{classify_skill, discover_skills, generate_manifest, SkillType};
+use std::collections::BTreeMap;
 use std::env;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ fn usage() -> ! {
     println!("Subcommands:");
     println!("  dev                     Symlink all skills from source tree into agent dirs");
     println!("  pack                    Build a self-contained tarball into dist/");
+    println!("  distill-artifacts       Build Distill CLI executables for release platforms");
     println!("  release                 Pack + push to GitHub Releases");
     println!("  dev-clean               Remove all dev symlinks from agent dirs");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
@@ -185,6 +187,35 @@ fn sync_agent(name: &str, src: &Path, codex_agents_dir: &Path) -> Result<(), any
 
 // ── Build ────────────────────────────────────────────────────────────────
 
+#[derive(Clone, Copy)]
+struct DistillTarget {
+    platform: &'static str,
+    rust_target: &'static str,
+    cargo_linker_env: Option<&'static str>,
+    linker_override_env: Option<&'static str>,
+}
+
+const DISTILL_TARGETS: &[DistillTarget] = &[
+    DistillTarget {
+        platform: "darwin-arm64",
+        rust_target: "aarch64-apple-darwin",
+        cargo_linker_env: None,
+        linker_override_env: None,
+    },
+    DistillTarget {
+        platform: "linux-arm64",
+        rust_target: "aarch64-unknown-linux-musl",
+        cargo_linker_env: Some("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"),
+        linker_override_env: Some("DISTILL_LINUX_ARM64_LINKER"),
+    },
+    DistillTarget {
+        platform: "linux-x64",
+        rust_target: "x86_64-unknown-linux-musl",
+        cargo_linker_env: Some("CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER"),
+        linker_override_env: Some("DISTILL_LINUX_X64_LINKER"),
+    },
+];
+
 fn get_version(project_root: &Path) -> Result<String, anyhow::Error> {
     let output = Command::new("git")
         .args(["-C", &project_root.to_string_lossy(), "rev-parse", "HEAD"])
@@ -259,8 +290,13 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let skill_name = entry.file_name();
             let skill_name_str = skill_name.to_string_lossy().to_string();
             let src_dir = entry.path();
-            // Copy skill directory into staging
-            copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
+            let (skill_type, _, _) = classify_skill(&src_dir);
+            let staged_skill = skills_staging.join(&skill_name_str);
+            if skill_type == SkillType::Coupled {
+                stage_coupled_skill(&src_dir, &staged_skill)?;
+            } else {
+                copy_dir_all(&src_dir, &staged_skill)?;
+            }
         }
     }
 
@@ -296,7 +332,22 @@ fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── generate manifest.json (via skill-index lib) ──
     let skills = discover_skills(project_root)?;
     let manifest = generate_manifest(&skills, &version);
-    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    let mut manifest_value = serde_json::to_value(manifest)?;
+    let distill_platforms = stage_distill_executables(project_root, &autopilot_staging)?;
+    if !distill_platforms.is_empty() {
+        manifest_value
+            .as_object_mut()
+            .context("manifest must be an object")?
+            .insert(
+                "executables".to_string(),
+                serde_json::json!({
+                    "distill": {
+                        "platforms": distill_platforms,
+                    }
+                }),
+            );
+    }
+    let manifest_json = serde_json::to_string_pretty(&manifest_value)?;
     std::fs::write(autopilot_staging.join("manifest.json"), &manifest_json)?;
 
     // ── write .version ──
@@ -404,6 +455,311 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
+    let body = content
+        .strip_prefix("---\n")
+        .context("SKILL.md must start with YAML frontmatter")?;
+    let closing = body
+        .find("\n---")
+        .context("SKILL.md frontmatter is missing its closing delimiter")?;
+    Ok(&content[..closing + 8])
+}
+
+fn copy_instruction_tree(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let file_name = entry.file_name();
+        let dest_name = if file_name == "SKILL.md" {
+            "INSTRUCTIONS.md".into()
+        } else {
+            file_name
+        };
+        let dest = dst.join(dest_name);
+        if ty.is_dir() {
+            copy_instruction_tree(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    if dst.exists() {
+        std::fs::remove_dir_all(dst)?;
+    }
+    std::fs::create_dir_all(dst)?;
+
+    let top_level_skill = src.join("SKILL.md");
+    let fallback_variant = ["codex", "kimi", "reasonix"]
+        .iter()
+        .map(|variant| src.join(variant))
+        .find(|variant_dir| variant_dir.join("SKILL.md").is_file());
+    let reasonix_skill = src.join("reasonix").join("SKILL.md");
+    let frontmatter_source = if reasonix_skill.is_file() {
+        // Reasonix consumes execution metadata such as runAs/allowed-tools
+        // from discovery frontmatter. Other runtimes ignore those extra keys.
+        reasonix_skill
+    } else if top_level_skill.is_file() {
+        top_level_skill.clone()
+    } else {
+        fallback_variant
+            .as_ref()
+            .context("runtime-coupled skill has no SKILL.md source")?
+            .join("SKILL.md")
+    };
+    let default_content = std::fs::read_to_string(frontmatter_source)?;
+    let frontmatter = skill_frontmatter(&default_content)?;
+    let router = format!(
+        "{frontmatter}\n\n# Runtime routing\n\n\
+This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
+1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
+2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
+3. Otherwise read `runtime/default/INSTRUCTIONS.md` completely.\n\
+4. Follow only the selected instruction file and its relative references. Do not load another runtime's instructions.\n"
+    );
+    std::fs::write(dst.join("SKILL.md"), router)?;
+
+    let runtime_root = dst.join("runtime");
+    let default_dst = runtime_root.join("default");
+    std::fs::create_dir_all(&default_dst)?;
+    if top_level_skill.is_file() {
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            if ["codex", "kimi", "reasonix"]
+                .iter()
+                .any(|variant| name == *variant)
+            {
+                continue;
+            }
+            let ty = entry.file_type()?;
+            let dest_name = if name == "SKILL.md" {
+                "INSTRUCTIONS.md".into()
+            } else {
+                name
+            };
+            let dest = default_dst.join(dest_name);
+            if ty.is_dir() {
+                copy_instruction_tree(&entry.path(), &dest)?;
+            } else {
+                std::fs::copy(entry.path(), &dest)?;
+            }
+        }
+    } else {
+        copy_instruction_tree(
+            fallback_variant
+                .as_ref()
+                .context("runtime-coupled skill has no default instruction source")?,
+            &default_dst,
+        )?;
+    }
+
+    for variant in &["codex", "kimi", "reasonix"] {
+        let variant_src = src.join(variant);
+        if variant_src.is_dir() {
+            copy_instruction_tree(&variant_src, &runtime_root.join(variant))?;
+        }
+    }
+    Ok(())
+}
+
+fn stage_distill_executables(
+    project_root: &Path,
+    autopilot_staging: &Path,
+) -> Result<BTreeMap<String, String>, anyhow::Error> {
+    if !project_root
+        .join("crates")
+        .join("distill-cli")
+        .join("Cargo.toml")
+        .is_file()
+    {
+        return Ok(BTreeMap::new());
+    }
+
+    let artifacts_root = project_root.join("dist").join("distill");
+    if !all_distill_artifacts_present(&artifacts_root) {
+        for target in DISTILL_TARGETS {
+            let artifact = artifacts_root.join(target.platform).join("distill");
+            if !artifact.is_file() {
+                anyhow::bail!(
+                    "missing Distill CLI artifact for {} at {}; run `deploy.rs distill-artifacts` before `deploy.rs pack`",
+                    target.platform,
+                    artifact.display()
+                );
+            }
+        }
+    }
+
+    let mut platforms = BTreeMap::new();
+    for target in DISTILL_TARGETS {
+        let src = artifacts_root.join(target.platform).join("distill");
+        if !src.is_file() {
+            anyhow::bail!(
+                "missing Distill CLI artifact for {} at {}",
+                target.platform,
+                src.display()
+            );
+        }
+        let rel = format!("bin/distill-artifacts/{}/distill", target.platform);
+        let dest = autopilot_staging.join(&rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(&src, &dest)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&dest)?.permissions();
+            perms.set_mode(perms.mode() | 0o755);
+            std::fs::set_permissions(&dest, perms)?;
+        }
+        platforms.insert(target.platform.to_string(), rel);
+    }
+
+    Ok(platforms)
+}
+
+fn all_distill_artifacts_present(artifacts_root: &Path) -> bool {
+    DISTILL_TARGETS.iter().all(|target| {
+        artifacts_root
+            .join(target.platform)
+            .join("distill")
+            .is_file()
+    })
+}
+
+fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Error> {
+    let artifacts_root = project_root.join("dist").join("distill");
+    let cargo = env::var("DISTILL_CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let rustc = env::var("DISTILL_RUSTC").ok();
+    let linux_linker = env::var("DISTILL_LINUX_LINKER").ok();
+    let derived_linux_linker = if linux_linker.is_none() {
+        derive_rust_lld(&rustc)?
+    } else {
+        None
+    };
+    for target in DISTILL_TARGETS {
+        println!(
+            "==> Building distill for {} ({})",
+            target.platform, target.rust_target
+        );
+        let status = Command::new("rustup")
+            .args(["target", "add", target.rust_target])
+            .current_dir(project_root)
+            .status()
+            .with_context(|| {
+                format!(
+                    "rustup target add failed to start for {}",
+                    target.rust_target
+                )
+            })?;
+        if !status.success() {
+            anyhow::bail!("rustup target add failed for {}", target.rust_target);
+        }
+
+        let mut command = Command::new(&cargo);
+        command
+            .args([
+                "build",
+                "--release",
+                "--bin",
+                "distill",
+                "--target",
+                target.rust_target,
+            ])
+            .current_dir(project_root);
+        if let Some(rustc) = &rustc {
+            command.env("RUSTC", rustc);
+        }
+        if let Some(linker_env) = target.cargo_linker_env {
+            let target_linker = target
+                .linker_override_env
+                .and_then(|name| env::var(name).ok())
+                .or_else(|| linux_linker.clone())
+                .or_else(|| derived_linux_linker.clone());
+            if let Some(linker) = target_linker {
+                command.env(linker_env, linker);
+            }
+        }
+        let status = command
+            .status()
+            .with_context(|| format!("cargo build failed to start for {}", target.rust_target))?;
+        if !status.success() {
+            anyhow::bail!("cargo build failed for {}", target.rust_target);
+        }
+
+        let built = project_root
+            .join("target")
+            .join(target.rust_target)
+            .join("release")
+            .join("distill");
+        let dest = artifacts_root.join(target.platform).join("distill");
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(&built, &dest).with_context(|| {
+            format!(
+                "cannot copy Distill artifact {} -> {}",
+                built.display(),
+                dest.display()
+            )
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&dest)?.permissions();
+            perms.set_mode(perms.mode() | 0o755);
+            std::fs::set_permissions(&dest, perms)?;
+        }
+    }
+    Ok(())
+}
+
+fn derive_rust_lld(rustc: &Option<String>) -> Result<Option<String>, anyhow::Error> {
+    let rustc_bin = rustc.as_deref().unwrap_or("rustc");
+    let sysroot = Command::new(rustc_bin)
+        .args(["--print", "sysroot"])
+        .output()
+        .with_context(|| format!("{} --print sysroot failed to start", rustc_bin))?;
+    if !sysroot.status.success() {
+        return Ok(None);
+    }
+    let sysroot = String::from_utf8(sysroot.stdout)
+        .context("rustc sysroot output not valid UTF-8")?
+        .trim()
+        .to_string();
+    if sysroot.is_empty() {
+        return Ok(None);
+    }
+
+    let version = Command::new(rustc_bin)
+        .arg("-vV")
+        .output()
+        .with_context(|| format!("{} -vV failed to start", rustc_bin))?;
+    if !version.status.success() {
+        return Ok(None);
+    }
+    let version = String::from_utf8(version.stdout).context("rustc -vV output not valid UTF-8")?;
+    let host = version
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::trim)
+        .filter(|host| !host.is_empty());
+    Ok(host.map(|host| {
+        Path::new(&sysroot)
+            .join("lib")
+            .join("rustlib")
+            .join(host)
+            .join("bin")
+            .join("rust-lld")
+            .to_string_lossy()
+            .to_string()
+    }))
+}
+
 fn dev_all(
     project_root: &Path,
     shared_skills_dir: &Path,
@@ -425,39 +781,16 @@ fn dev_all(
             let name = entry.file_name().to_string_lossy().to_string();
             let src_dir = entry.path();
 
-            let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
+            let (skill_type, _, codex_agent) = classify_skill(&src_dir);
 
             if skill_type == SkillType::Coupled {
-                // Coupled skill: symlink variant for each detected runtime
-                for variant in &variants {
-                    let target_dir = match variant.as_str() {
-                        "reasonix" => reasonix_skills_dir,
-                        "codex" => codex_skills_dir,
-                        "kimi" => shared_skills_dir,
-                        _ => continue,
-                    };
-                    // Only symlink if the runtime directory exists on this machine
-                    let runtime_home = match variant.as_str() {
-                        "reasonix" => std::env::var("HOME")
-                            .ok()
-                            .map(|h| PathBuf::from(h).join(".reasonix")),
-                        "codex" => std::env::var("HOME")
-                            .ok()
-                            .map(|h| PathBuf::from(h).join(".codex")),
-                        "kimi" => Some(PathBuf::from("/")), // always assume kimi
-                        _ => None,
-                    };
-                    if let Some(ref home) = runtime_home {
-                        if !home.exists() && variant.as_str() != "kimi" {
-                            continue;
-                        }
-                    }
-                    let variant_src = src_dir.join(variant);
-                    if variant_src.is_dir() {
-                        sync_skill(&name, &variant_src, target_dir)?;
-                        count += 1;
-                    }
-                }
+                let dev_staging = project_root.join("dist").join("dev-skills").join(&name);
+                stage_coupled_skill(&src_dir, &dev_staging)?;
+                sync_skill(&name, &dev_staging, shared_skills_dir)?;
+                remove_project_symlink(&reasonix_skills_dir.join(&name), project_root)?;
+                remove_project_symlink(&codex_skills_dir.join(&name), project_root)?;
+                count += 1;
+
                 // Codex agent.toml
                 if codex_agent {
                     let agent_src = src_dir.join("codex").join("agent.toml");
@@ -501,6 +834,17 @@ fn dev_all(
     }
 
     println!("==> Done: {} symlinks created/verified.", count);
+    Ok(())
+}
+
+fn remove_project_symlink(path: &Path, project_root: &Path) -> Result<(), anyhow::Error> {
+    if !path.is_symlink() {
+        return Ok(());
+    }
+    let target = std::fs::read_link(path)?;
+    if target.starts_with(project_root) {
+        std::fs::remove_file(path)?;
+    }
     Ok(())
 }
 
@@ -592,6 +936,7 @@ fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
     }
 
     println!("==> Releasing {} to {}", tag, repo_slug);
+    distill_artifacts_command(project_root)?;
     pack_command(project_root)?;
 
     let tarball = project_root.join("dist").join("autopilot-toolkit.tar.gz");
@@ -670,9 +1015,8 @@ fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".codex/agents"));
 
-    // No subcommand: auto pack + release
+    // No subcommand: release builds artifacts, packs once, then publishes.
     if args.len() < 2 {
-        pack_command(&project_root)?;
         release_command(&project_root)?;
         return Ok(());
     }
@@ -689,6 +1033,12 @@ fn main() -> anyhow::Result<()> {
                 warn(&format!("ignoring extra arguments: {:?}", positional));
             }
             pack_command(&project_root)?;
+        }
+        "distill-artifacts" => {
+            if !positional.is_empty() {
+                warn(&format!("ignoring extra arguments: {:?}", positional));
+            }
+            distill_artifacts_command(&project_root)?;
         }
         "release" => {
             if !positional.is_empty() {
@@ -733,7 +1083,7 @@ fn main() -> anyhow::Result<()> {
         }
         _ => {
             eprintln!(
-                "ERROR: unknown subcommand '{}'. Available: dev, dev-clean, pack, release, link-principles",
+                "ERROR: unknown subcommand '{}'. Available: dev, dev-clean, pack, distill-artifacts, release, link-principles",
                 subcommand
             );
             usage();

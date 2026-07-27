@@ -8,21 +8,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOOTSTRAP_SCRIPT="${SCRIPT_DIR}/../bootstrap.sh"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# We need a built install.sh — use the build pipeline output
-TARBALL_DIR="${SCRIPT_DIR}/../dist"
-TARBALL_NAME="autopilot-toolkit.tar.gz"
-FULL_TARBALL="${TARBALL_DIR}/${TARBALL_NAME}"
-
 PASS=0
 FAIL=0
 TMP_BASE=""
+TEST_ARTIFACT_ROOT=""
+TEST_INSTALL_SH=""
 
 cleanup() {
     if [[ -n "${TMP_BASE}" && -d "${TMP_BASE}" ]]; then
         rm -rf "${TMP_BASE}"
     fi
+    if [[ -n "${TEST_ARTIFACT_ROOT}" && -d "${TEST_ARTIFACT_ROOT}" ]]; then
+        rm -rf "${TEST_ARTIFACT_ROOT}"
+    fi
 }
 trap cleanup EXIT
+
+prepare_test_install_script() {
+    TEST_ARTIFACT_ROOT="$(mktemp -d)"
+    TEST_INSTALL_SH="${TEST_ARTIFACT_ROOT}/install.sh"
+    sed \
+        -e 's/__VERSION__/test-embedded-version/g' \
+        -e 's|__REPO_URL__|https://github.com/test/autopilot-toolkit|g' \
+        "${PROJECT_ROOT}/templates/install.sh.in" > "${TEST_INSTALL_SH}"
+    chmod +x "${TEST_INSTALL_SH}"
+}
 
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
@@ -44,6 +54,17 @@ assert_file() {
         PASS=$((PASS + 1))
     else
         echo "  FAIL: ${label} — ${path} does not exist"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+assert_executable() {
+    local label="$1" path="$2"
+    if [[ -x "${path}" && -f "${path}" ]]; then
+        echo "  PASS: ${label}"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: ${label} — ${path} is not an executable file"
         FAIL=$((FAIL + 1))
     fi
 }
@@ -90,11 +111,19 @@ assert_not_exists() {
     fi
 }
 
-# Use the full tarball (built from the pipeline).
-# Extract install.sh from it for testing.
+make_path_without_python() {
+    local bin_dir="$1"
+    mkdir -p "${bin_dir}"
+    for tool in bash basename cat cp gzip ln mkdir mv rm rmdir tar uname; do
+        local tool_path
+        tool_path="$(command -v "${tool}")"
+        ln -sf "${tool_path}" "${bin_dir}/${tool}"
+    done
+}
+
 extract_install_sh() {
     local dest="$1"
-    mkdir -p "$(dirname "${dest}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${dest}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${dest}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${dest}/.autopilot/install.sh"
 }
 
 # ── helper: build a minimal mock tarball for fast tests ──────────────────
@@ -113,6 +142,15 @@ build_mock_tarball() {
     cat > "${staging}/.autopilot/manifest.json" << JSONEOF
 {
   "version": "${version}",
+  "executables": {
+    "distill": {
+      "platforms": {
+        "darwin-arm64": "bin/distill-artifacts/darwin-arm64/distill",
+        "linux-arm64": "bin/distill-artifacts/linux-arm64/distill",
+        "linux-x64": "bin/distill-artifacts/linux-x64/distill"
+      }
+    }
+  },
   "skills": {
     "toolkit-setup": {"type": "agnostic"},
     "autopilot-implementer": {"type": "coupled", "variants": ["reasonix", "codex", "kimi"], "codex_agent": true},
@@ -124,20 +162,31 @@ JSONEOF
     # Copy bootstrap.sh into staging
     cp "${BOOTSTRAP_SCRIPT}" "${staging}/.autopilot/bootstrap.sh"
 
-    # Copy install.sh from the full tarball
-    mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${staging}/.autopilot/install.sh"
+    # Copy the independently rendered test installer into the mock tarball.
+    mkdir -p "$(dirname "${staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${staging}/.autopilot/install.sh"
+    cp "${PROJECT_ROOT}/templates/uninstall.sh" "${staging}/.autopilot/uninstall.sh"
+
+    for platform in darwin-arm64 linux-arm64 linux-x64; do
+        mkdir -p "${staging}/.autopilot/bin/distill-artifacts/${platform}"
+        cat > "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill" << SHEOF
+#!/usr/bin/env bash
+echo "distill ${platform} ${version}"
+SHEOF
+        chmod +x "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill"
+    done
 
     # Add some mock skill directories
     mkdir -p "${staging}/skills/toolkit-setup"
     echo "# toolkit-setup" > "${staging}/skills/toolkit-setup/SKILL.md"
 
-    mkdir -p "${staging}/skills/autopilot-implementer/reasonix"
-    mkdir -p "${staging}/skills/autopilot-implementer/codex"
-    mkdir -p "${staging}/skills/autopilot-implementer/kimi"
-    echo "# impl reasonix" > "${staging}/skills/autopilot-implementer/reasonix/SKILL.md"
-    echo "# impl codex" > "${staging}/skills/autopilot-implementer/codex/SKILL.md"
-    echo "# impl kimi" > "${staging}/skills/autopilot-implementer/kimi/SKILL.md"
-    echo '[agent]' > "${staging}/skills/autopilot-implementer/codex/agent.toml"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/reasonix"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/codex"
+    mkdir -p "${staging}/skills/autopilot-implementer/runtime/kimi"
+    echo "# impl router" > "${staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl reasonix" > "${staging}/skills/autopilot-implementer/runtime/reasonix/INSTRUCTIONS.md"
+    echo "# impl codex" > "${staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
+    echo "# impl kimi" > "${staging}/skills/autopilot-implementer/runtime/kimi/INSTRUCTIONS.md"
+    echo '[agent]' > "${staging}/skills/autopilot-implementer/runtime/codex/agent.toml"
 
     mkdir -p "${staging}/skills/zoom-out"
     echo "# zoom" > "${staging}/skills/zoom-out/SKILL.md"
@@ -147,6 +196,41 @@ JSONEOF
 
     # Create tarball
     tar -czf "${tarball_path}" -C "${staging}" .
+}
+
+# ── Test: uninstall removes owned executable artifacts only ──────────────
+
+test_uninstall_removes_distill_artifacts_and_preserves_user_skills() {
+    echo ""
+    echo "=== test: uninstall removes Distill artifacts and preserves user skills ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-uninstall-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-uninstall-001" > /dev/null 2>&1
+
+    mkdir -p "${skills_dir}/user-owned"
+    echo "# user" > "${skills_dir}/user-owned/SKILL.md"
+    assert_executable "distill installed before uninstall" "${skills_dir}/.autopilot/bin/distill"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+        bash "${skills_dir}/.autopilot/uninstall.sh" > /dev/null 2>&1
+
+    assert_not_exists ".autopilot removed by uninstall" "${skills_dir}/.autopilot"
+    assert_not_exists "toolkit skill removed by uninstall" "${skills_dir}/toolkit-setup"
+    assert_dir "user skill survives uninstall" "${skills_dir}/user-owned"
+    assert_file "user skill file survives uninstall" "${skills_dir}/user-owned/SKILL.md"
 }
 
 # ── Test: fresh install extracts skills and deploys principles ───────────
@@ -166,7 +250,7 @@ test_fresh_install_extraction() {
     # Extract install.sh
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -176,6 +260,11 @@ test_fresh_install_extraction() {
     # Skills extracted
     assert_dir "skills/toolkit-setup extracted" "${skills_dir}/toolkit-setup"
     assert_dir "skills/autopilot-implementer extracted" "${skills_dir}/autopilot-implementer"
+    local discoverable_count
+    discoverable_count="$(find "${skills_dir}/autopilot-implementer" -name SKILL.md -type f | wc -l | tr -d ' ')"
+    assert_eq "coupled skill has one discoverable router" "1" "${discoverable_count}"
+    assert_file "codex runtime instructions retained" \
+        "${skills_dir}/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
     assert_dir "skills/zoom-out extracted" "${skills_dir}/zoom-out"
 
     # .autopilot/ metadata
@@ -183,6 +272,7 @@ test_fresh_install_extraction() {
     assert_file ".autopilot/.version exists" "${skills_dir}/.autopilot/.version"
     assert_file ".autopilot/manifest.json exists" "${skills_dir}/.autopilot/manifest.json"
     assert_file ".autopilot/bootstrap.sh exists" "${skills_dir}/.autopilot/bootstrap.sh"
+    assert_executable "selected distill executable installed" "${skills_dir}/.autopilot/bin/distill"
 
     local installed_version
     installed_version="$(cat "${skills_dir}/.autopilot/.version")"
@@ -190,6 +280,98 @@ test_fresh_install_extraction() {
 
     # Principles deployed
     assert_file "principles/karpathy.md deployed" "${principles_dir}/karpathy.md"
+}
+
+# ── Test: platform-selected Distill executable ──────────────────────────
+
+test_distill_platform_selection() {
+    echo ""
+    echo "=== test: platform-selected Distill executable ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-platform-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="linux-x64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-platform-001" > /dev/null 2>&1
+
+    assert_executable "distill shim exists at stable path" "${skills_dir}/.autopilot/bin/distill"
+    assert_eq "distill selects linux-x64 artifact" "distill linux-x64 distill-platform-001" "$("${skills_dir}/.autopilot/bin/distill")"
+    assert_file "distill target path exported" "${skills_dir}/.autopilot/distill.env"
+    grep -q "AUTOPILOT_DISTILL_BIN=" "${skills_dir}/.autopilot/distill.env" \
+        && echo "  PASS: distill.env exports AUTOPILOT_DISTILL_BIN" && PASS=$((PASS + 1)) \
+        || { echo "  FAIL: distill.env should export AUTOPILOT_DISTILL_BIN"; FAIL=$((FAIL + 1)); }
+}
+
+# ── Test: Distill selection does not require Python ─────────────────────
+
+test_distill_platform_selection_without_python() {
+    echo ""
+    echo "=== test: platform-selected Distill executable without python ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+    local no_python_bin="${TMP_BASE}/no-python-bin"
+
+    build_mock_tarball "${mock_tarball}" "distill-no-python-001"
+    make_path_without_python "${no_python_bin}"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    PATH="${no_python_bin}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="linux-arm64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-no-python-001" > /dev/null 2>&1
+
+    assert_executable "distill shim exists without python" "${skills_dir}/.autopilot/bin/distill"
+    assert_eq "distill selects linux-arm64 without python" "distill linux-arm64 distill-no-python-001" "$("${skills_dir}/.autopilot/bin/distill")"
+}
+
+# ── Test: unsupported platform fails before installing wrong executable ─
+
+test_distill_unsupported_platform() {
+    echo ""
+    echo "=== test: unsupported platform fails before installing wrong executable ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-unsupported-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    local output
+    if output="$(HOME="${home}" \
+        AGENTS_SKILLS_DIR="${skills_dir}" \
+        AUTOPILOT_PLATFORM_OVERRIDE="darwin-x64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-unsupported-001" 2>&1)"; then
+        echo "  FAIL: unsupported platform should fail"
+        FAIL=$((FAIL + 1))
+    else
+        echo "${output}" | grep -q "unsupported platform" \
+            && echo "  PASS: unsupported platform error is clear" && PASS=$((PASS + 1)) \
+            || { echo "  FAIL: should mention unsupported platform, got: ${output}"; FAIL=$((FAIL + 1)); }
+    fi
+
+    assert_not_exists "no wrong-platform distill shim installed" "${skills_dir}/.autopilot/bin/distill"
 }
 
 # ── Test: install.sh --version overrides embedded version ────────────────
@@ -207,7 +389,7 @@ test_version_override() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -233,7 +415,7 @@ test_already_installed_same_version() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # First install
     HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -274,22 +456,33 @@ test_upgrade() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # Install old version
     HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
         bash "${install_sh}" --tarball "${old_tarball}" --version "old-version" > /dev/null 2>&1
 
     assert_eq "old version installed" "old-version" "$(cat "${skills_dir}/.autopilot/.version")"
+    assert_eq "old distill executable selected" "distill darwin-arm64 old-version" "$("${skills_dir}/.autopilot/bin/distill")"
+
+    mkdir -p "${skills_dir}/user-owned"
+    echo "# user skill" > "${skills_dir}/user-owned/SKILL.md"
 
     # Install new version
     local output
     output="$(HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
+        AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
         bash "${install_sh}" --tarball "${new_tarball}" --version "new-version" 2>&1)"
 
     echo "${output}" | grep -q "Upgrading" && echo "  PASS: reports upgrading" && PASS=$((PASS + 1)) || { echo "  FAIL: should report upgrading"; FAIL=$((FAIL + 1)); }
 
     assert_eq "new version installed" "new-version" "$(cat "${skills_dir}/.autopilot/.version")"
+    assert_eq "new distill executable replaces old one" "distill darwin-arm64 new-version" "$("${skills_dir}/.autopilot/bin/distill")"
+    assert_file "distill.env survives upgrade" "${skills_dir}/.autopilot/distill.env"
+    assert_dir "owned distill artifact directory exists after upgrade" "${skills_dir}/.autopilot/bin/distill-artifacts"
+    assert_dir "user skill preserved during executable upgrade" "${skills_dir}/user-owned"
+    assert_file "user skill file preserved during executable upgrade" "${skills_dir}/user-owned/SKILL.md"
 }
 
 # ── Test: auto-detects Codex runtime and bootstraps ──────────────────────
@@ -313,7 +506,7 @@ test_autodetect_codex() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -321,15 +514,13 @@ test_autodetect_codex() {
     CODEX_AGENTS_DIR="${codex_agents}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-codex-001"
 
-    # Codex skill symlink created
-    assert_symlink "codex: implementer skill symlinked" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: no duplicate implementer skill symlink" \
+        "${codex_skills}/autopilot-implementer"
 
     # Codex agent.toml symlink created
     assert_symlink "codex: implementer agent.toml symlinked" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 
     # Agnostic skill should NOT be symlinked (no codex variant)
     assert_not_exists "codex: zoom-out not symlinked (agnostic)" \
@@ -356,17 +547,15 @@ test_autodetect_reasonix() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
     REASONIX_SKILLS_DIR="${reasonix_skills}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-reasonix-001"
 
-    # Reasonix skill symlink created
-    assert_symlink "reasonix: implementer skill symlinked" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix: no duplicate implementer skill symlink" \
+        "${reasonix_skills}/autopilot-implementer"
 
     # Agnostic skill should NOT be symlinked (no reasonix variant)
     assert_not_exists "reasonix: zoom-out not symlinked (agnostic)" \
@@ -389,12 +578,17 @@ test_autodetect_both() {
 
     mkdir -p "${home}/.reasonix"
     mkdir -p "${home}/.codex"
+    mkdir -p "${reasonix_skills}" "${codex_skills}"
+    ln -s "${skills_dir}/autopilot-implementer/reasonix" \
+        "${reasonix_skills}/autopilot-implementer"
+    ln -s "${skills_dir}/autopilot-implementer/codex" \
+        "${codex_skills}/autopilot-implementer"
 
     build_mock_tarball "${mock_tarball}" "test-both-001"
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -403,17 +597,15 @@ test_autodetect_both() {
     CODEX_AGENTS_DIR="${codex_agents}" \
         bash "${install_sh}" --tarball "${mock_tarball}" --version "test-both-001"
 
-    assert_symlink "reasonix symlink exists" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix duplicate symlink absent" \
+        "${reasonix_skills}/autopilot-implementer"
 
-    assert_symlink "codex symlink exists" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex duplicate symlink absent" \
+        "${codex_skills}/autopilot-implementer"
 
     assert_symlink "codex agent.toml exists" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 }
 
 # ── Test: no runtimes → no bootstrap errors ──────────────────────────────
@@ -431,7 +623,7 @@ test_no_runtimes() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     # No ~/.reasonix/ or ~/.codex/ directories
     if HOME="${home}" AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -468,7 +660,7 @@ test_upgrade_cleans_old_skills() {
 {"version":"old-version","skills":{"old-skill":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${old_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${old_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${old_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${old_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${old_staging}/.autopilot/install.sh"
     mkdir -p "${old_staging}/skills/old-skill"
     echo "# old" > "${old_staging}/skills/old-skill/SKILL.md"
     echo "# old principles" > "${old_staging}/principles/karpathy.md"
@@ -482,14 +674,14 @@ JSONEOF
 {"version":"new-version","skills":{"new-skill":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${new_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${new_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${new_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${new_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${new_staging}/.autopilot/install.sh"
     mkdir -p "${new_staging}/skills/new-skill"
     echo "# new" > "${new_staging}/skills/new-skill/SKILL.md"
     echo "# new principles" > "${new_staging}/principles/karpathy.md"
     tar -czf "${new_tarball}" -C "${new_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # Install old version
@@ -534,7 +726,7 @@ test_full_tree_verification() {
 
     local install_sh="${TMP_BASE}/install.sh"
     extract_install_sh "${TMP_BASE}"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
 
     HOME="${home}" \
     AGENTS_SKILLS_DIR="${skills_dir}" \
@@ -575,18 +767,14 @@ test_full_tree_verification() {
     # Verify principles
     assert_file "principles/karpathy.md" "${principles_dir}/karpathy.md"
 
-    # Verify Reasonix symlinks
-    assert_symlink "reasonix: autopilot-implementer" \
-        "${reasonix_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/reasonix"
+    assert_not_exists "reasonix: no duplicate autopilot-implementer" \
+        "${reasonix_skills}/autopilot-implementer"
 
-    # Verify Codex symlinks
-    assert_symlink "codex: autopilot-implementer" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: no duplicate autopilot-implementer" \
+        "${codex_skills}/autopilot-implementer"
     assert_symlink "codex: agent.toml" \
         "${codex_agents}/autopilot-implementer.toml" \
-        "${skills_dir}/autopilot-implementer/codex/agent.toml"
+        "${skills_dir}/autopilot-implementer/runtime/codex/agent.toml"
 
     # Verify version
     local installed_version
@@ -619,7 +807,7 @@ test_user_skill_preservation() {
 {"version":"v1.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v1_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v1_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v1_staging}/.autopilot/install.sh"
     mkdir -p "${v1_staging}/skills/toolkit-setup"
     echo "# toolkit-setup" > "${v1_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v1_staging}/skills/zoom-out"
@@ -635,18 +823,19 @@ JSONEOF
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"autopilot-implementer":{"type":"coupled","variants":["reasonix","codex","kimi"],"codex_agent":true}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v2_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v2_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v2_staging}/.autopilot/install.sh"
     mkdir -p "${v2_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
     echo "# zoom-out v2" > "${v2_staging}/skills/zoom-out/SKILL.md"
-    mkdir -p "${v2_staging}/skills/autopilot-implementer/codex"
-    echo "# impl codex v2" > "${v2_staging}/skills/autopilot-implementer/codex/SKILL.md"
+    mkdir -p "${v2_staging}/skills/autopilot-implementer/runtime/codex"
+    echo "# impl router v2" > "${v2_staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl codex v2" > "${v2_staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
     echo "# principles v2" > "${v2_staging}/principles/karpathy.md"
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # Install v1
@@ -709,7 +898,7 @@ test_full_upgrade_cycle() {
 {"version":"v1.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"old-skill-only":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v1_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v1_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v1_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v1_staging}/.autopilot/install.sh"
     mkdir -p "${v1_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v1" > "${v1_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v1_staging}/skills/zoom-out"
@@ -727,19 +916,20 @@ JSONEOF
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"},"autopilot-implementer":{"type":"coupled","variants":["codex"],"codex_agent":true}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${v2_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${v2_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${v2_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${v2_staging}/.autopilot/install.sh"
     mkdir -p "${v2_staging}/skills/toolkit-setup"
     echo "# toolkit-setup v2" > "${v2_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${v2_staging}/skills/zoom-out"
     echo "# zoom-out v2" > "${v2_staging}/skills/zoom-out/SKILL.md"
-    mkdir -p "${v2_staging}/skills/autopilot-implementer/codex"
-    echo "# impl v2" > "${v2_staging}/skills/autopilot-implementer/codex/SKILL.md"
-    echo '[agent]' > "${v2_staging}/skills/autopilot-implementer/codex/agent.toml"
+    mkdir -p "${v2_staging}/skills/autopilot-implementer/runtime/codex"
+    echo "# impl router v2" > "${v2_staging}/skills/autopilot-implementer/SKILL.md"
+    echo "# impl v2" > "${v2_staging}/skills/autopilot-implementer/runtime/codex/INSTRUCTIONS.md"
+    echo '[agent]' > "${v2_staging}/skills/autopilot-implementer/runtime/codex/agent.toml"
     echo "# principles v2" > "${v2_staging}/principles/karpathy.md"
     tar -czf "${v2_tarball}" -C "${v2_staging}" .
 
     local install_sh="${TMP_BASE}/install.sh"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # === Phase 1: Install v1 ===
@@ -781,10 +971,8 @@ JSONEOF
     # AC: .version updated
     assert_eq "version updated to v2" "v2.0.0" "$(cat "${skills_dir}/.autopilot/.version")"
 
-    # Verify codex bootstrap ran
-    assert_symlink "codex: implementer symlinked" \
-        "${codex_skills}/autopilot-implementer" \
-        "${skills_dir}/autopilot-implementer/codex"
+    assert_not_exists "codex: duplicate implementer symlink absent" \
+        "${codex_skills}/autopilot-implementer"
 }
 
 # ── Test: manifest edge cases ────────────────────────────────────────────
@@ -795,7 +983,7 @@ test_manifest_edge_cases() {
 
     local install_sh
     install_sh="$(mktemp)"
-    cp "${PROJECT_ROOT}/dist/install.sh" "${install_sh}"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
     chmod +x "${install_sh}"
 
     # ── subtest: missing manifest (install on top of previous without manifest) ──
@@ -812,7 +1000,7 @@ test_manifest_edge_cases() {
     mkdir -p "${nm_staging}"/{.autopilot,skills/toolkit-setup,principles}
     echo "v1.0.0" > "${nm_staging}/.autopilot/.version"
     cp "${BOOTSTRAP_SCRIPT}" "${nm_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${nm_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${nm_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${nm_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${nm_staging}/.autopilot/install.sh"
     echo "# toolkit" > "${nm_staging}/skills/toolkit-setup/SKILL.md"
     echo "# p" > "${nm_staging}/principles/karpathy.md"
     tar -czf "${no_manifest_tarball}" -C "${nm_staging}" .
@@ -830,7 +1018,7 @@ test_manifest_edge_cases() {
 {"version":"v2.0.0","skills":{"toolkit-setup":{"type":"agnostic"},"zoom-out":{"type":"agnostic"}}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${wm_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${wm_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${wm_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${wm_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${wm_staging}/.autopilot/install.sh"
     echo "# toolkit v2" > "${wm_staging}/skills/toolkit-setup/SKILL.md"
     mkdir -p "${wm_staging}/skills/zoom-out"
     echo "# zoom" > "${wm_staging}/skills/zoom-out/SKILL.md"
@@ -865,7 +1053,7 @@ JSONEOF
 {"version":"v3.0.0","skills":{}}
 JSONEOF
     cp "${BOOTSTRAP_SCRIPT}" "${em_staging}/.autopilot/bootstrap.sh"
-    mkdir -p "$(dirname "${em_staging}/.autopilot/install.sh")" && cp "${PROJECT_ROOT}/dist/install.sh" "${em_staging}/.autopilot/install.sh"
+    mkdir -p "$(dirname "${em_staging}/.autopilot/install.sh")" && cp "${TEST_INSTALL_SH}" "${em_staging}/.autopilot/install.sh"
     echo "# toolkit v3" > "${em_staging}/skills/toolkit-setup/SKILL.md"
     echo "# p v3" > "${em_staging}/principles/karpathy.md"
     tar -czf "${empty_manifest_tarball}" -C "${em_staging}" .
@@ -883,16 +1071,16 @@ JSONEOF
 
 # ── Run all tests ────────────────────────────────────────────────────────
 
-if [[ ! -f "${FULL_TARBALL}" ]]; then
-    echo "ERROR: Build tarball not found: ${FULL_TARBALL}"
-    echo "Run 'rust-script deploy.rs pack' first."
-    exit 1
-fi
-
 echo "install.sh integration tests"
 echo "=============================="
 
+prepare_test_install_script
+
 test_fresh_install_extraction
+test_distill_platform_selection
+test_distill_platform_selection_without_python
+test_distill_unsupported_platform
+test_uninstall_removes_distill_artifacts_and_preserves_user_skills
 test_version_override
 test_already_installed_same_version
 test_upgrade

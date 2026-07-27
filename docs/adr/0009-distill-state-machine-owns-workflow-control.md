@@ -1,0 +1,3 @@
+# Distill state machine owns workflow control
+
+Distill will use a resumable state-machine runner to own stage ordering and validate completion before advancing. Skills such as `grill-with-docs`, `to-prd`, and `to-issues` are replaceable stage executors rather than the workflow controller; a skill-only chain was rejected because prose instructions cannot reliably prevent skipped or reordered stages. The stage executor, not the user, determines when it has enough information and submits structured completion evidence; the runner validates that evidence before advancing. The first version will not directly start or control Codex, Reasonix, or Kimi agent sessions: runtime agents invoke the runner and execute the stage it authorizes.

@@ -1,5 +1,9 @@
 # ADR 0008: Self-Contained Tarball Install with Bootstrap Symlinks
 
+> Superseded for runtime-coupled skill layout and bootstrap behavior by
+> [ADR 0036](0036-single-discoverable-runtime-router.md). The self-contained
+> tarball decision remains in force.
+
 ## Context
 
 The current install model creates symlinks from agent skills directories (`~/.agents/skills/`, `~/.codex/skills/`, `~/.reasonix/skills/`) to the source repo (`/Users/xlchen/Dev/autopilot-toolkit/skills/`). This has two problems:

@@ -29,6 +29,8 @@ jobs:
         run: cargo install rust-script
       - name: Run deployment contract tests
         run: rust-script --test tests/test_install.rs
+      - name: Run packaging contract tests
+        run: rust-script --test tests/test_build.rs
       - name: Run toolkit-setup tests
         run: rust-script --test tests/test_toolkit_setup.rs
 
@@ -38,12 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install rust-script
-        run: cargo install rust-script
-      - name: Build tarball
-        run: rust-script deploy.rs pack
       - name: Run bootstrap tests
         run: bash tests/test_bootstrap.sh
       - name: Run install tests

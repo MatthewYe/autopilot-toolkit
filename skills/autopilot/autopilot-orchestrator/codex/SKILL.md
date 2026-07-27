@@ -102,6 +102,10 @@ Scan both sources.
 3. Run PRD detection on each candidate. Exclude PRDs from the dispatch queue and record them as skipped.
 4. Sort implementable local matches by natural path order.
 
+#### LOCAL_ISSUE_DEDUP_CONTRACT
+
+Before sorting or dispatching local candidates, group files with identical full Markdown bytes (a SHA-256 comparison is sufficient) and retain one candidate per group. If an identical group contains both `.scratch/distill-tracer/issues/` and another local issue path, prefer the non-tracer path; otherwise keep the first path in natural order. Report every suppressed duplicate path. A sole issue under `.scratch/distill-tracer/issues/` remains implementable and must not be excluded.
+
 ### GitHub Scan
 
 1. List open issues with label `ready-for-agent`, up to 50.
