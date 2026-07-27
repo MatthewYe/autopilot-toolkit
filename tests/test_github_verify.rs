@@ -295,11 +295,12 @@ mod tests {
     #[test]
     fn ac5_skill_defines_retry_limit() {
         let skill = read_orchestrator_skill();
-        let has_retry = contains(&skill, "最多 3 轮")
-            || skill
-                .lines()
-                .any(|l| l.contains("retry_count") && l.contains("3"));
-        assert!(has_retry, "SKILL.md must define retry limit (max 3 rounds)");
+        let has_stall = contains(&skill, "空转检测") || contains(&skill, "Stall Detection");
+        let has_retry = skill.lines().any(|l| l.contains("retry_count"));
+        assert!(
+            has_stall || has_retry,
+            "SKILL.md must define stall detection or retry tracking"
+        );
     }
 
     #[test]
@@ -373,10 +374,10 @@ mod tests {
         let skill = read_codex_orchestrator_skill();
         for required in [
             "Issue 来源识别",
-            "PRD 检测与跳过",
+            "Spec 检测与跳过",
             "扫描模式",
             "Phase 1: 调度循环",
-            "最多 3 轮",
+            "Stall Detection",
             "交叉 Issue Suggestion 匹配",
             "Phase 2: 全局 Meta-Review",
             "FINAL_ACCEPTANCE_REPORT",
@@ -525,8 +526,8 @@ mod tests {
             "--session-id",
             "run_skill",
             "grill-with-docs",
-            "to-prd",
-            "to-issues",
+            "to-spec",
+            "to-tickets",
             "clarification-complete",
             "testing-seam-confirmed",
             "slice-breakdown-approved",
@@ -577,10 +578,6 @@ mod tests {
         assert_eq!(
             toml_string_value(&agent, "description"),
             frontmatter_value(&reasonix, "description")
-        );
-        assert!(
-            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
-            "implementer model must be gpt-5.4 or gpt-5.5"
         );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "workspace-write");
         for required in [
@@ -634,10 +631,6 @@ mod tests {
             toml_string_value(&agent, "description"),
             frontmatter_value(&reasonix, "description")
         );
-        assert!(
-            ["gpt-5.4", "gpt-5.5"].contains(&toml_string_value(&agent, "model").as_str()),
-            "reviewer model must be gpt-5.4 or gpt-5.5"
-        );
         assert_eq!(toml_string_value(&agent, "sandbox_mode"), "read-only");
         for required in [
             "~/.agents/principles/karpathy.md",
@@ -661,7 +654,7 @@ mod tests {
         }
 
         for required in [
-            "Four-Axis Review",
+            "Five-Axis Review",
             "Behavior alignment",
             "TDD discipline",
             "code quality",

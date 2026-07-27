@@ -56,13 +56,13 @@ If `authorized_action.skill` is `grill-with-docs`, invoke the unmodified `grill-
 "${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage clarification --evidence '{"checkpoint":"clarification-complete","summary":"<clarification summary>","clarified_requirement":"<complete clarified requirement>","decisions":[],"accepted_assumptions":[],"material_unknowns":[],"domain_document_artifacts":[]}'
 ```
 
-If `authorized_action.skill` is `to-prd`, invoke the unmodified `to-prd` skill. Submit the exact accepted PRD markdown and the testing-seam checkpoint:
+If `authorized_action.skill` is `to-spec`, invoke the unmodified `to-spec` skill. Submit the exact accepted PRD markdown and the testing-seam checkpoint:
 
 ```bash
 "${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage prd --evidence '{"checkpoint":"testing-seam-confirmed","summary":"<PRD summary>","feature_slug":"<stable-lowercase-feature-slug>","prd_markdown":"<exact PRD markdown>"}'
 ```
 
-If `authorized_action.skill` is `to-issues`, invoke the unmodified `to-issues` skill. Submit the exact accepted implementation issue payloads and approval checkpoint:
+If `authorized_action.skill` is `to-tickets`, invoke the unmodified `to-tickets` skill. Submit the exact accepted implementation issue payloads and approval checkpoint:
 
 ```bash
 "${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage issues --evidence '{"checkpoint":"slice-breakdown-approved","summary":"<issue slicing summary>","issues":[{"title":"<issue title>","body":"<exact issue markdown>"}]}'
@@ -70,7 +70,7 @@ If `authorized_action.skill` is `to-issues`, invoke the unmodified `to-issues` s
 
 ## LOCAL_ISSUE_HANDOFF_CONTRACT
 
-When `docs/agents/issue-tracker.md` configures Local Markdown, choose a stable lowercase `feature_slug` for the PRD evidence, use `to-issues` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: it creates the PRD at `.scratch/<feature_slug>/PRD.md` and each local issue exactly once under `.scratch/<feature_slug>/issues/`. Do not create a second issue copy elsewhere under `.scratch/`. The runner rejects a target path that already contains different content; never acknowledge that collision as immaterial drift.
+When `docs/agents/issue-tracker.md` configures Local Markdown, choose a stable lowercase `feature_slug` for the PRD evidence, use `to-tickets` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: it creates the PRD at `.scratch/<feature_slug>/PRD.md` and each local issue exactly once under `.scratch/<feature_slug>/issues/`. Do not create a second issue copy elsewhere under `.scratch/`. The runner rejects a target path that already contains different content; never acknowledge that collision as immaterial drift.
 
 Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
 
@@ -86,7 +86,7 @@ After every `submit-evidence` response, use the returned `revision` as the next 
 
 Clarification completion is the agent's declaration, not a user checkpoint. Populate every structured field explicitly. Each material unknown must include `description`, `material`, `resolved`, and, when resolved, `resolution`; do not complete while a material unknown remains unresolved. For every glossary, domain document, or ADR changed by clarification, include its worktree-relative `path` and SHA-256 in `domain_document_artifacts`.
 
-When the configured tracker is GitHub, `to-prd` and `to-issues` perform the external creation. Include the confirmed receipt as `external_publication` on the PRD evidence or each issue object. The receipt must contain `tracker: "github"`, the configured `repository`, the stable `operation_id` (`<run_id>-r<revision>-prd` or `<run_id>-r<revision>-issue-<two-digit-index>`), the SHA-256 of the exact frozen Markdown payload, `status: "confirmed"`, the positive issue number as `artifact_id`, and its canonical `artifact_url`. The runner remains offline, validates this receipt, and never falls back to another tracker. If the response is `needs-reconciliation`, stop and follow `required_next_action`; do not invoke another skill or create a duplicate issue.
+When the configured tracker is GitHub, `to-spec` and `to-tickets` perform the external creation. Include the confirmed receipt as `external_publication` on the PRD evidence or each issue object. The receipt must contain `tracker: "github"`, the configured `repository`, the stable `operation_id` (`<run_id>-r<revision>-prd` or `<run_id>-r<revision>-issue-<two-digit-index>`), the SHA-256 of the exact frozen Markdown payload, `status: "confirmed"`, the positive issue number as `artifact_id`, and its canonical `artifact_url`. The runner remains offline, validates this receipt, and never falls back to another tracker. If the response is `needs-reconciliation`, stop and follow `required_next_action`; do not invoke another skill or create a duplicate issue.
 
 ## Takeover And Recovery
 

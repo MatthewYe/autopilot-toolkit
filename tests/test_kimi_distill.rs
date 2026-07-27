@@ -98,7 +98,7 @@ fn kimi_variant_preserves_shared_runner_and_stage_contract() {
             "Kimi skill should preserve checkpoint {checkpoint}"
         );
     }
-    for skill_name in ["grill-with-docs", "to-prd", "to-issues"] {
+    for skill_name in ["grill-with-docs", "to-spec", "to-tickets"] {
         assert!(
             skill.contains(skill_name),
             "Kimi skill should invoke authorized executor {skill_name}"

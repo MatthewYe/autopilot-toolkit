@@ -46,22 +46,69 @@ MCP first: if GitHub MCP tools are registered, prefer them for listing issues, r
 - `Status: resolved` <-> GitHub label `resolved`
 - `Status: needs-info` <-> GitHub label `needs-info`
 
-## PRD 检测与跳过
+### AFK Continuation Contract
 
-A PRD describes the whole design and should not be dispatched to an implementer. Concrete child issues carry implementation contracts.
+This contract inherits HITL/AFK taxonomy from wayfinder: AFK tickets are independently
+driven by the agent without real-time human involvement.
 
-Detect PRDs by either:
+AFK-breaking behavior: pausing for human input when no product/scope decision is needed.
 
-- Optional marker: local frontmatter `Type: prd` or GitHub label `prd`.
+**Principles**
+
+1. **Autonomous Progress** — Agent drives itself, requesting human input only when the
+   contract cannot cover product/scope decisions. Engineering ambiguity is resolved by
+   judgment and does not block progress.
+
+2. **Contract Authority** — AGENT-BRIEF (or equivalent issue body AC) is the sole
+   authoritative contract for AFK execution. Agent does not extend beyond the contract
+   scope or downgrade implementations not required by the contract.
+
+3. **Transparent Completion** — External limitations (permissions, toolchain, unavailable
+   dependencies) must be explicitly recorded. Completed but unverified implementations
+   are declared UNVERIFIED, never falsely claimed as DONE.
+
+4. **Authority Boundaries** — Agent does not escalate permissions or override parent
+   agent configurations. Child agents inherit the parent agent's execution boundaries
+   and model selections.
+
+5. **Evidence Integrity** — Verification evidence is auditable and reproducible. Collected
+   evidence is reusable when code and environment are unchanged, invalidated upon change.
+
+6. **Continuation** — After task completion or blocking, the agent retains context and
+   continues to the next runnable objective within scope.
+
+**Execution Specification**
+
+- Prioritize AGENT-BRIEF as the authoritative contract; issue body supplements context
+  but does not override contract terms.
+- External failures (permissions, network, missing toolchain) record `BLOCKER_TYPE:
+  external-unavailable`, with the unexecuted command and reason in `TEST_EVIDENCE`.
+- Only product/scope ambiguity the contract cannot cover records `BLOCKER_TYPE:
+  human-decision` and `needs-info`. Engineering-judgment ambiguity does not escalate
+  to human-decision.
+- `TEST_EVIDENCE` is cached by `command + WORK_BASE + worktree fingerprint`; reused
+  when the worktree is unchanged, invalidated after code changes.
+- Diagnostic workflows in AFK mode do not block waiting for the user — continue testing
+  hypotheses by priority.
+- After deferral in scan mode, return to the next runnable issue on the scanning frontier;
+  explicit target mode ends the current round.
+
+## Spec 检测与跳过
+
+A spec describes the whole design and should not be dispatched to an implementer. Concrete child tickets carry implementation contracts.
+
+Detect specs by either:
+
+- Optional marker: local frontmatter `Type: spec` or legacy `Type: prd`, or GitHub label `spec` or legacy `prd`.
 - Content pattern: body contains `## Problem Statement` and `## Solution`, and does not contain `## What to build` or `## Acceptance Criteria`.
 
-When a PRD is detected, skip it and report:
+When a spec is detected, skip it and report:
 
 ```text
-<id> is a PRD, not directly implementable. Process its child issues instead.
+<id> is a spec, not directly implementable. Process its child tickets instead.
 ```
 
-Do not change the PRD status during Phase 1.
+Do not change the spec status during Phase 1.
 
 ## 如果指定了 target
 
@@ -71,7 +118,7 @@ Do not change the PRD status during Phase 1.
 2. Confirm `<target>/AGENT-BRIEF.md` exists; if absent, report the error and stop.
 3. Read `<target>/issue.md`; continue only when `Status:` is `ready-for-agent` or `in-progress`.
 4. If the status is different, report the current status and stop.
-5. Run PRD detection. If matched, report the PRD skip message and stop.
+5. Run spec detection. If matched, report the spec skip message and stop.
 6. Update `Status:` to `in-progress`.
 7. Set `source = local`, `id = <target>`, and `contract = <target>/AGENT-BRIEF.md` contents.
 8. Infer the feature directory from the issue directory, for example `.scratch/auth/issues/01-login/` -> `.scratch/auth/`.
@@ -83,7 +130,7 @@ Do not change the PRD status during Phase 1.
 2. Read issue number, title, body, labels, and state.
 3. Continue only when labels include `ready-for-agent` or `in-progress`.
 4. If neither label is present, report the current labels and stop.
-5. Run PRD detection. If matched, report `#<N> is a PRD, not directly implementable. Process its child issues instead.` and stop.
+5. Run spec detection. If matched, report `#<N> is a spec, not directly implementable. Process its child tickets instead.` and stop.
 6. Replace `ready-for-agent` with `in-progress`.
 7. Add comment `autopilot: 开始处理`.
 8. Extract `## What to build` and `## Acceptance Criteria` as the contract.
@@ -99,7 +146,7 @@ Scan both sources.
 
 1. Glob `.scratch/*/issues/*.md`.
 2. For each file, read the frontmatter and select entries with `Status: ready-for-agent`.
-3. Run PRD detection on each candidate. Exclude PRDs from the dispatch queue and record them as skipped.
+3. Run spec detection on each candidate. Exclude specs from the dispatch queue and record them as skipped.
 4. Sort implementable local matches by natural path order.
 
 #### LOCAL_ISSUE_DEDUP_CONTRACT
@@ -109,25 +156,77 @@ Before sorting or dispatching local candidates, group files with identical full 
 ### GitHub Scan
 
 1. List open issues with label `ready-for-agent`, up to 50.
-2. Filter out entries with label `prd`.
-3. For remaining entries, read the body and apply content-based PRD detection. Exclude PRDs and record them as skipped.
+2. Filter out entries with label `spec` or legacy `prd`.
+3. For remaining entries, read the body and apply content-based spec detection. Exclude specs and record them as skipped.
 4. Sort implementable GitHub matches by issue number.
 
 ### Select
 
 1. Merge local and GitHub implementable candidates, preferring local candidates first.
-2. Report all found implementable issues and any skipped PRDs.
+2. Report all found implementable issues and any skipped specs.
 3. If no implementable issue remains, enter "Phase 2: 全局 Meta-Review".
 4. Choose the first candidate and run the matching target initialization flow above.
 
+## Recovery Decision Model
+
+Decide behavior based on two dimensions, not a count:
+
+### Decision Matrix
+
+|              | New evidence (improved)    | No new evidence          |
+|--------------|----------------------------|--------------------------|
+| Agent-recoverable | RETRY                   | Stop (stall)             |
+| Agent-unrecoverable | UNVERIFIED            | needs-info / exhausted   |
+
+- **Recoverability**: engineering bugs, test failures, naming/structure errors → recoverable; missing toolchain, insufficient permissions, contract ambiguity, directional errors → unrecoverable
+- **Evidence Progress**: this round tried a different strategy / narrowed problem scope → new evidence; same error, same reasoning path repeats → no new evidence
+
+### Failure Classification
+
+| Failure type | Decision | BLOCKER_TYPE |
+|---|---|---|
+| Recoverable + new evidence | RETRY, continue | — |
+| Recoverable + no new evidence | Stop, stall | exhausted |
+| Environment (toolchain/permissions/external unreachable) | UNVERIFIED | external-unavailable |
+| Authority (contract ambiguity, missing product/scope decision) | needs-info | human-decision |
+| Terminal (systematic failure, cap triggered) | Stop | exhausted |
+
+### Anti-Cheat Mechanism
+
+Agent does not self-judge whether to stop. Pre-cap adjudication authority is exercised only by the orchestrator after cap is triggered.
+
+#### Rationalization Table
+
+Orchestrator checks this table before adjudicating:
+
+| Agent's possible stop reason | Required evidence |
+|---|---|
+| "No progress" | PREV_REVIEW Critical list identical to current REVIEWER_REPORT + implementer CHANGED_FILES unchanged from previous round |
+| "Unfixable" | 2+ different implementation strategies attempted + reviewer confirms none satisfy AC |
+| "Contract gap" | Reviewer report explicitly states "AC insufficient to judge correctness" or "missing product decision" |
+
+#### Stall Detection
+
+Consecutive 2 rounds meeting ALL of the following → trigger `BLOCKER_TYPE: exhausted`, record reviewer issue list, and stop:
+
+1. PREV_REVIEW and current REVIEWER_REPORT Critical lists are identical (same items, same file paths)
+2. implementer CHANGED_FILES unchanged from previous round (same file count delta)
+3. implementer made no new strategy attempt (no explicit strategy switch in SUMMARY or SELF_REVIEW)
+
+Iteration termination rules:
+- Any reviewer report with Authority-type (contract gap) Critical/Important → transition to `needs-info`, do not continue iterating
+- Stall detection triggered → `exhausted`, stop
+- Decision matrix "Recoverable + new evidence" → continue iteration
+- Decision matrix "Recoverable + no new evidence" → `exhausted`
+- Decision matrix "Agent-unrecoverable" → `needs-info` or `external-unavailable`
+
+---
+
 ## Phase 1: 调度循环
 
-Maintain `retry_count = 0`. 最多 3 轮:
+Maintain `retry_count = 0` for round tracking and suggestion matching. No hard round cap — iteration termination is decided by the decision matrix + stall detection:
 
 - `retry_count = 0`: first implementation
-- `retry_count = 1`: first retry
-- `retry_count = 2`: second retry
-- `retry_count >= 3`: mark `needs-info`
 
 ### 更新状态（抽象）
 
@@ -213,9 +312,9 @@ Do not require this check on retry rounds.
 
 ### Collect SIBLING_CONTEXT
 
-Before reviewer dispatch, collect already resolved sibling issue context for the same PRD:
+Before reviewer dispatch, collect already resolved sibling ticket context for the same spec:
 
-1. Extract the PRD parent link from the current issue body if present.
+1. Extract the spec parent link from the current issue body if present.
 2. List resolved sibling issues.
 3. Summarize each sibling as `#N title - key conventions: ...`.
 4. Pass this as `SIBLING_CONTEXT`.
@@ -295,8 +394,10 @@ Parse `VERDICT:` from `REVIEWER_REPORT`.
   3. If tests fail or the toolchain remains unavailable, mark `needs-info` and comment that manual verification is required.
   4. Preserve reviewer suggestions either way.
 - `RETRY`: increment `retry_count`, clear `pending_resolutions`, and repeat implementer dispatch with `PREV_REVIEW`.
-  - If `retry_count < 3`, continue.
-  - If `retry_count >= 3`, mark `needs-info`, comment with the reviewer problem list and max-retry note, then return to scanning.
+  - Follow stall detection rules:
+    - Contract-gap Critical/Important → mark `needs-info`
+    - Stall detection triggered or decision matrix "no new evidence" → record `BLOCKER_TYPE: exhausted`, comment with the reviewer problem list, defer, then return to scanning.
+    - Decision matrix "Recoverable + new evidence" → repeat implementer dispatch with `PREV_REVIEW`.
 - `BLOCKED`: mark `needs-info`, comment with reviewer conclusion, then return to scanning.
 
 Missing or unknown verdict: mark `needs-info`, comment with the raw reviewer result, and stop this issue.
@@ -342,7 +443,7 @@ Audit the whole codebase against:
 
 Review dimensions:
 
-1. ADR/PRD global constraints and plan fidelity.
+1. ADR/spec global constraints and plan fidelity.
 2. Cross-module consistency: entry patterns, import style, error handling, logging, algorithms, and file layout.
 3. Unplanned changes: orphan files, undeclared dependencies, stale references, undeleted files, and hidden side effects.
 4. AC coverage for every resolved issue.
@@ -355,7 +456,7 @@ Start two independent reviews:
 2. Spawn reviewer for an independent read-only global review:
 
 ```text
-spawn agent autopilot-reviewer with task: "Perform global meta-review over the whole codebase against ADRs, PRDs, and resolved issue contracts. Report Critical, Important, Suggestion, and VERDICT."
+spawn agent autopilot-reviewer with task: "Perform global meta-review over the whole codebase against ADRs, specs, and resolved issue contracts. Report Critical, Important, Suggestion, and VERDICT."
 ```
 
 Wait for the reviewer result while completing the self-review.
@@ -386,14 +487,14 @@ After each repair cycle:
 2. Re-run meta-review.
 3. Stop after 2 repair cycles. If Critical or Important findings remain, report residual issues and mark `needs-info`.
 
-### PRD Resolution
+### Spec Resolution
 
 After meta-review repairs:
 
-1. Collect PRDs skipped during scanning plus explicitly targeted PRDs.
-2. Find child issues by `Parent` links in GitHub issue bodies and local issue files.
-3. If every child is `resolved`, mark the PRD `resolved` and comment `All child issues resolved + meta-review passed.`
-4. If unresolved children remain, keep the PRD current state and report the unresolved list.
+1. Collect specs skipped during scanning plus explicitly targeted specs.
+2. Find child tickets by `Parent` links in GitHub issue bodies and local issue files.
+3. If every child is `resolved`, mark the spec `resolved` and comment `All child tickets resolved + meta-review passed.`
+4. If unresolved children remain, keep the spec current state and report the unresolved list.
 
 ## FINAL_ACCEPTANCE_REPORT
 

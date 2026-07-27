@@ -41,7 +41,7 @@ autopilot supports two issue sources. Determine which based on the `target` para
 - Infer the repo from `git remote -v`.
 - State is expressed via labels: `in-progress`, `resolved`, `needs-info`.
 - Append comments: `gh issue comment <N> --body "..."`.
-- Contract comes from the issue body (contains Acceptance Criteria and What to build, created by `to-issues`).
+- Contract comes from the issue body (contains Acceptance Criteria and What to build, created by `to-tickets`).
 - Read issue: `gh issue view <N> --json number,title,body,labels,state`.
 
 ### Shared concepts
@@ -51,25 +51,72 @@ autopilot supports two issue sources. Determine which based on the `target` para
 - `Status: resolved` ↔ label `resolved`
 - `Status: needs-info` ↔ label `needs-info`
 
+### AFK Continuation Contract
+
+This contract inherits HITL/AFK taxonomy from wayfinder: AFK tickets are independently
+driven by the agent without real-time human involvement.
+
+AFK-breaking behavior: pausing for human input when no product/scope decision is needed.
+
+**Principles**
+
+1. **Autonomous Progress** — Agent drives itself, requesting human input only when the
+   contract cannot cover product/scope decisions. Engineering ambiguity is resolved by
+   judgment and does not block progress.
+
+2. **Contract Authority** — AGENT-BRIEF (or equivalent issue body AC) is the sole
+   authoritative contract for AFK execution. Agent does not extend beyond the contract
+   scope or downgrade implementations not required by the contract.
+
+3. **Transparent Completion** — External limitations (permissions, toolchain, unavailable
+   dependencies) must be explicitly recorded. Completed but unverified implementations
+   are declared UNVERIFIED, never falsely claimed as DONE.
+
+4. **Authority Boundaries** — Agent does not escalate permissions or override parent
+   agent configurations. Child agents inherit the parent agent's execution boundaries
+   and model selections.
+
+5. **Evidence Integrity** — Verification evidence is auditable and reproducible. Collected
+   evidence is reusable when code and environment are unchanged, invalidated upon change.
+
+6. **Continuation** — After task completion or blocking, the agent retains context and
+   continues to the next runnable objective within scope.
+
+**Execution Specification**
+
+- Prioritize AGENT-BRIEF as the authoritative contract; issue body supplements context
+  but does not override contract terms.
+- External failures (permissions, network, missing toolchain) record `BLOCKER_TYPE:
+  external-unavailable`, with the unexecuted command and reason in `TEST_EVIDENCE`.
+- Only product/scope ambiguity the contract cannot cover records `BLOCKER_TYPE:
+  human-decision` and `needs-info`. Engineering-judgment ambiguity does not escalate
+  to human-decision.
+- `TEST_EVIDENCE` is cached by `command + WORK_BASE + worktree fingerprint`; reused
+  when the worktree is unchanged, invalidated after code changes.
+- Diagnostic workflows in AFK mode do not block waiting for the user — continue testing
+  hypotheses by priority.
+- After deferral in scan mode, return to the next runnable issue on the scanning frontier;
+  explicit target mode ends the current round.
+
 ---
 
-## PRD detection and skip
+## Spec detection and skip
 
-A PRD (Product Requirement Document) describes overall design and does not contain directly-implementable `## Acceptance Criteria` or `## What to build`. PRDs should not be dispatched to the implementer — child issues carry the concrete work.
+A spec describes overall design and does not contain directly-implementable `## Acceptance Criteria` or `## What to build`. Specs should not be dispatched to the implementer — child tickets carry the concrete work.
 
 ### Detection signals (bidirectional compatible, zero upstream dependency)
 
 | signal | local markdown | GitHub |
 |---|---|---|
 | **Primary** (content pattern) | body contains `## Problem Statement` + `## Solution` but **not** `## What to build` or `## Acceptance Criteria` | same |
-| **Accelerator** (optional) | frontmatter `Type: prd` | label `prd` |
+| **Accelerator** (optional) | frontmatter `Type: spec` or legacy `Type: prd` | label `spec` or legacy `prd` |
 
 ### Behavior
 
-Whether an explicit target is given or during scan mode, when a PRD is detected:
+Whether an explicit target is given or during scan mode, when a spec is detected:
 - **Skip** — do not enter the Phase 1 dispatch loop.
-- Respond with the reason: `"<id> is a PRD, not directly implementable. Process its child issues instead."`
-- Do not modify the PRD's status (keep original, processed in Phase 2).
+- Respond with the reason: `"<id> is a spec, not directly implementable. Process its child tickets instead."`
+- Do not modify the spec's status (keep original, processed in Phase 2).
 
 ---
 
@@ -81,7 +128,7 @@ Whether an explicit target is given or during scan mode, when a PRD is detected:
 2. Confirm `<target>/AGENT-BRIEF.md` exists; report error and stop if not.
 3. Read `<target>/issue.md`, check `Status:` is `ready-for-agent` or `in-progress`.
 4. Otherwise — report current status and stop.
-5. **PRD detection**: check frontmatter for `Type: prd`, or body for PRD content pattern. If hit — respond and stop.
+5. **Spec detection**: check frontmatter for `Type: spec` or legacy `Type: prd`, or body for spec content pattern. If hit — respond and stop.
 6. Update Status to `in-progress`.
 7. Set `source = "local"`, `id = <target>`.
 8. Derive feature directory from `<target>` (parent of issue dir's parent, e.g. `.scratch/auth/issues/01-login/` → `.scratch/auth/`).
@@ -95,7 +142,7 @@ Extract the numeric part as `issueNumber`:
 1. `gh issue view <issueNumber> --json number,title,body,labels,state` to get issue info.
 2. Check labels contain `ready-for-agent` or `in-progress`.
 3. Otherwise — report current state and stop.
-4. **PRD detection**: check labels for `prd`, or body for PRD content pattern. If hit — respond and stop.
+4. **Spec detection**: check labels for `spec` or legacy `prd`, or body for spec content pattern. If hit — respond and stop.
 5. Replace `ready-for-agent` label with `in-progress`: `gh issue edit <issueNumber> --add-label "in-progress" --remove-label "ready-for-agent"`.
 6. Append comment: `gh issue comment <issueNumber> --body "autopilot: starting work"`.
 7. Extract Acceptance Criteria and What to build from issue body as contract text.
@@ -113,8 +160,8 @@ Scan both sources simultaneously:
 
 1. Scan `.scratch/*/issues/*.md` recursively.
 2. For each file, read the first 30 lines, check for `Status: ready-for-agent`.
-3. For matches, check for PRD: read frontmatter `Type: prd` field, or body for PRD content pattern. PRD entries are **excluded from the dispatch queue**, recorded separately.
-4. Collect all non-PRD matches.
+3. For matches, check for spec: read frontmatter `Type: spec` or legacy `Type: prd` field, or body for spec content pattern. Spec entries are **excluded from the dispatch queue**, recorded separately.
+4. Collect all non-spec matches.
 
 #### LOCAL_ISSUE_DEDUP_CONTRACT
 
@@ -123,26 +170,78 @@ Before sorting or dispatching local candidates, group files with identical full 
 ### GitHub scan
 
 5. `gh issue list --label "ready-for-agent" --state open --json number,title,labels --limit 50`.
-6. Filter out entries with label `prd`.
-7. For remaining entries, use `gh issue view <N> --json body` to check body for PRD content pattern. Matching entries excluded from dispatch queue, recorded separately.
-8. Collect all non-PRD matches.
+6. Filter out entries with label `spec` or legacy `prd`.
+7. For remaining entries, use `gh issue view <N> --json body` to check body for spec content pattern. Matching entries excluded from dispatch queue, recorded separately.
+8. Collect all non-spec matches.
 
 ### Select and report
 
-9. Merge non-PRD results from both sources. List found implementable issues, also report skipped PRD count (e.g. "skipped 1 PRD: #12").
+9. Merge non-spec results from both sources. List found implementable issues, also report skipped spec count (e.g. "skipped 1 spec: #12").
 10. Pick the first (local-first, then GitHub, each in natural order), announce which is being processed.
 11. If zero implementable issues — jump to "Phase 2: Global meta-review".
 12. Based on the selected issue's source, follow the corresponding initialization flow.
 
 ---
 
+## Recovery Decision Model
+
+Decide behavior based on two dimensions, not a count:
+
+### Decision Matrix
+
+|              | New evidence (improved)    | No new evidence          |
+|--------------|----------------------------|--------------------------|
+| Agent-recoverable | RETRY                   | Stop (stall)             |
+| Agent-unrecoverable | UNVERIFIED            | needs-info / exhausted   |
+
+- **Recoverability**: engineering bugs, test failures, naming/structure errors → recoverable; missing toolchain, insufficient permissions, contract ambiguity, directional errors → unrecoverable
+- **Evidence Progress**: this round tried a different strategy / narrowed problem scope → new evidence; same error, same reasoning path repeats → no new evidence
+
+### Failure Classification
+
+| Failure type | Decision | BLOCKER_TYPE |
+|---|---|---|
+| Recoverable + new evidence | RETRY, continue | — |
+| Recoverable + no new evidence | Stop, stall | exhausted |
+| Environment (toolchain/permissions/external unreachable) | UNVERIFIED | external-unavailable |
+| Authority (contract ambiguity, missing product/scope decision) | needs-info | human-decision |
+| Terminal (systematic failure, cap triggered) | Stop | exhausted |
+
+### Anti-Cheat Mechanism
+
+Agent does not self-judge whether to stop. Pre-cap adjudication authority is exercised only by the orchestrator after cap is triggered.
+
+#### Rationalization Table
+
+Orchestrator checks this table before adjudicating:
+
+| Agent's possible stop reason | Required evidence |
+|---|---|
+| "No progress" | PREV_REVIEW Critical list identical to current REVIEWER_REPORT + implementer CHANGED_FILES unchanged from previous round |
+| "Unfixable" | 2+ different implementation strategies attempted + reviewer confirms none satisfy AC |
+| "Contract gap" | Reviewer report explicitly states "AC insufficient to judge correctness" or "missing product decision" |
+
+#### Stall Detection
+
+Consecutive 2 rounds meeting ALL of the following → trigger `BLOCKER_TYPE: exhausted`, record reviewer issue list, and stop:
+
+1. PREV_REVIEW and current REVIEWER_REPORT Critical lists are identical (same items, same file paths)
+2. implementer CHANGED_FILES unchanged from previous round (same file count delta)
+3. implementer made no new strategy attempt (no explicit strategy switch in SUMMARY or SELF_REVIEW)
+
+Iteration termination rules:
+- Any reviewer report with Authority-type (contract gap) Critical/Important → transition to `needs-info`, do not continue iterating
+- Stall detection triggered → `exhausted`, stop
+- Decision matrix "Recoverable + new evidence" → continue iteration
+- Decision matrix "Recoverable + no new evidence" → `exhausted`
+- Decision matrix "Agent-unrecoverable" → `needs-info` or `external-unavailable`
+
+---
+
 ## Phase 1: Dispatch loop
 
-Maintain `retry_count = 0`, maximum 3 rounds (retry_count = 0, 1, 2):
+Maintain `retry_count = 0` for round tracking and suggestion matching. No hard round cap — iteration termination is decided by the decision matrix + stall detection:
 - retry_count = 0: first implementation
-- retry_count = 1: first retry
-- retry_count = 2: second retry
-- retry_count >= 3: escalate to needs-info
 
 ### Update status (abstract)
 
@@ -215,9 +314,9 @@ Retry rounds (retry_count >= 1) do not check SELF_REVIEW.
 
 ### Collect SIBLING_CONTEXT
 
-Before dispatching reviewer, automatically collect info about all resolved sibling modules under the current issue's PRD:
+Before dispatching reviewer, automatically collect info about all resolved sibling modules under the current issue's spec:
 
-1. Extract the PRD issue number from the current issue body's `Parent` link.
+1. Extract the spec issue number from the current issue body's `Parent` link.
 2. `gh issue list --label "resolved" --json number,title` to get all resolved issues.
 3. For each resolved issue (excluding current), extract its title and key conventions (entry pattern, test framework, file layout).
 4. Assemble as `SIBLING_CONTEXT` string: "Completed sibling modules: #N title — key conventions: ..."
@@ -271,7 +370,10 @@ VERDICT branches:
 
 - **MERGE** — update Status to `resolved`, append reviewer conclusion. Run "Update Suggestion status" step, then **return to scan mode for next issue**.
 - **VERIFY_NEEDED** — review passed (structure correct) but implementer toolchain unavailable. Attempt to run project test command in orchestrator environment. Pass → resolved; fail → needs-info with "Toolchain unavailable — requires manual verification".
-- **RETRY** — `retry_count += 1`, clear `pending_resolutions`. If retry_count < 3: return to "Execute implementer" (pass PREV_REVIEW). If retry_count >= 3: update Status to `needs-info`, append reviewer issue list + max retries note, **return to scan mode**.
+- **RETRY** — `retry_count += 1`, clear `pending_resolutions`. Follow stall detection rules:
+    - Contract-gap Critical/Important → mark `needs-info`
+    - Stall detection triggered or decision matrix "no new evidence" → record `BLOCKER_TYPE: exhausted`, comment with the reviewer problem list, defer, then return to scan mode.
+    - Decision matrix "Recoverable + new evidence" → repeat implementer dispatch with `PREV_REVIEW`.
 - **BLOCKED** — update Status to `needs-info`, append reviewer conclusion, **return to scan mode**.
 
 #### Update Suggestion status
@@ -286,7 +388,7 @@ When scan mode returns zero ready-for-agent issues, Phase 1 is complete. Enter P
 
 ## Phase 2: Global Meta-Review
 
-When all Phase 1 issues are processed (no ready-for-agent remaining), execute the global review process in `references/meta-review.md`: dispatch reviewer sub-agents in parallel + orchestrator self-review, merge reports, fix Critical/Important issues, parse PRDs.
+When all Phase 1 issues are processed (no ready-for-agent remaining), execute the global review process in `references/meta-review.md`: dispatch reviewer sub-agents in parallel + orchestrator self-review, merge reports, fix Critical/Important issues, parse specs.
 
 ### FINAL_ACCEPTANCE_REPORT
 
