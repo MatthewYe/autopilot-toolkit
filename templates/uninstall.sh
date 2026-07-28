@@ -99,7 +99,7 @@ if [[ -d "${OPENCODE_SKILLS}" ]]; then
         fi
     done
 fi
-local OPC_CMDS="${HOME}/.opencode/commands"
+OPC_CMDS="${HOME}/.opencode/commands"
 if [[ -d "${OPC_CMDS}" ]]; then
     for entry in "${OPC_CMDS}"/*.md; do
         [[ -f "${entry}" ]] || continue
