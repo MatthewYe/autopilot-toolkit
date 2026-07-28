@@ -203,6 +203,18 @@ if [[ "${TARGET}" == "opencode" ]]; then
             # instruct the model to read the full skill body from SSOT.
             write_command_wrapper "${cmd_link}" "${skill_name}" "${cmd_src}"
         fi
+
+        # ── flat .md symlink → ~/.opencode/skills/<name>.md ──
+        skills_src=""
+        if [[ -f "${instr_src}" ]]; then
+            skills_src="${instr_src}"
+        elif [[ -f "${skill_src}" ]]; then
+            skills_src="${skill_src}"
+        fi
+        if [[ -n "${skills_src}" ]]; then
+            skills_link="${TARGET_SKILLS_DIR}/${skill_name}.md"
+            deploy_flat_link "${skills_link}" "${skills_src}" "${SSOT}"
+        fi
     done
 
     # Clean up stale agent files
