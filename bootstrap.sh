@@ -47,10 +47,13 @@ write_command_wrapper() {
     [[ -z "${fm_desc}" ]] && fm_desc="See ${SSOT}/${name}/SKILL.md for details"
 
     local ssot_path="${SSOT}/${name}"
-    # Determine the canonical source to read
+    # Determine the canonical source — prefer opencode-specific instructions
     local read_path="${ssot_path}"
-    [[ -f "${ssot_path}/runtime/opencode/INSTRUCTIONS.md" ]] && read_path="${ssot_path}/runtime/opencode/INSTRUCTIONS.md"
-    [[ -f "${ssot_path}/SKILL.md" ]] && read_path="${ssot_path}/SKILL.md"
+    if [[ -f "${ssot_path}/runtime/opencode/INSTRUCTIONS.md" ]]; then
+        read_path="${ssot_path}/runtime/opencode/INSTRUCTIONS.md"
+    elif [[ -f "${ssot_path}/SKILL.md" ]]; then
+        read_path="${ssot_path}/SKILL.md"
+    fi
 
     cat > "${out}" <<WRAPPER
 ---
