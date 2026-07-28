@@ -601,7 +601,11 @@ fn purge_removes_replayable_content_but_keeps_tombstone_and_publication_refs() {
     let issues = json!({
         "checkpoint": "slice-breakdown-approved",
         "summary": "Issue.",
-        "issues": [{"title": "First slice", "body": "Status: ready-for-agent\n"}]
+        "issues": [{
+            "title": "First slice",
+            "body": "---\nkey: 01-first-slice\ntitle: First slice\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nBuild the first slice.\n\n## Acceptance Criteria\n\n- [ ] The slice works.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+            "depends_on": []
+        }]
     })
     .to_string();
     assert_success(distill(&[

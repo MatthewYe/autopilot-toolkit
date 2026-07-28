@@ -90,4 +90,44 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn orchestrator_consumes_canonical_flat_issue_files() {
+        for path in ORCHESTRATOR_SKILLS {
+            let skill = read_skill(path);
+            assert!(
+                skill.contains("issue_file"),
+                "{path} must carry the canonical flat issue file as issue_file"
+            );
+            assert!(
+                skill.contains("Legacy issue directories")
+                    || skill.contains("legacy issue directories")
+                    || skill.contains("旧目录"),
+                "{path} must treat directory-shaped issues as legacy compatibility input"
+            );
+            assert!(
+                skill.contains("## Acceptance Criteria"),
+                "{path} must extract the exact canonical Acceptance Criteria heading"
+            );
+        }
+    }
+
+    #[test]
+    fn distill_variants_recover_authorized_context_drift_consistently() {
+        for path in DISTILL_SKILLS {
+            let skill = read_skill(path);
+            assert!(
+                skill.contains("drift_acknowledgment"),
+                "{path} must document the structured context-drift recovery field"
+            );
+            assert!(
+                skill.contains("authorized stage executor output"),
+                "{path} must limit immaterial acknowledgment to authorized stage output"
+            );
+            assert!(
+                skill.contains("anything other than authorized stage executor output"),
+                "{path} must fail closed for unrelated drift"
+            );
+        }
+    }
 }

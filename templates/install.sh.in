@@ -124,12 +124,43 @@ select_distill_artifact() {
     fi
 }
 
+configure_installed_distill() {
+    local platform="${1:-$(detect_platform)}"
+    local artifacts_dir="${AUTOPILOT_DIR}/bin/distill-artifacts"
+    if [[ ! -d "${artifacts_dir}" ]]; then
+        return
+    fi
+
+    case "${platform}" in
+        darwin-arm64|linux-arm64|linux-x64)
+            ;;
+        *)
+            echo "ERROR: unsupported platform for Distill CLI: $(uname -s)/$(uname -m). Supported platforms: darwin-arm64, linux-arm64, linux-x64"
+            return 1
+            ;;
+    esac
+
+    local artifact="${artifacts_dir}/${platform}/distill"
+    local stable_bin="${AUTOPILOT_DIR}/bin/distill"
+    if [[ ! -x "${artifact}" ]]; then
+        echo "ERROR: selected Distill CLI artifact is missing or not executable: bin/distill-artifacts/${platform}/distill"
+        return 1
+    fi
+
+    ln -sf "distill-artifacts/${platform}/distill" "${stable_bin}"
+    cat > "${DISTILL_ENV_FILE}" <<EOF
+AUTOPILOT_DISTILL_BIN="${stable_bin}"
+EOF
+}
+
 # ── check if already installed ───────────────────────────────────────────
 
 if [[ -f "${VERSION_FILE}" ]]; then
     INSTALLED_VERSION="$(cat "${VERSION_FILE}")"
     if [[ "${INSTALLED_VERSION}" == "${REQUESTED_VERSION}" ]]; then
         echo "autopilot-toolkit ${VERSION:0:8} is already installed."
+        echo "Re-verifying Distill executable selection..."
+        configure_installed_distill
         echo "Re-verifying bootstrap symlinks..."
         if [[ -x "${BOOTSTRAP_SCRIPT}" ]]; then
             detect_and_bootstrap
@@ -216,16 +247,7 @@ fi
 # ── select Distill executable ────────────────────────────────────────────
 
 if [[ -n "${DISTILL_ARTIFACT_REL}" ]]; then
-    DISTILL_ARTIFACT="${AUTOPILOT_DIR}/${DISTILL_ARTIFACT_REL}"
-    DISTILL_STABLE_BIN="${AUTOPILOT_DIR}/bin/distill"
-    if [[ ! -x "${DISTILL_ARTIFACT}" ]]; then
-        echo "ERROR: selected Distill CLI artifact is missing or not executable: ${DISTILL_ARTIFACT_REL}"
-        exit 1
-    fi
-    ln -sf "distill-artifacts/${CURRENT_PLATFORM}/distill" "${DISTILL_STABLE_BIN}"
-    cat > "${DISTILL_ENV_FILE}" <<EOF
-AUTOPILOT_DISTILL_BIN="${DISTILL_STABLE_BIN}"
-EOF
+    configure_installed_distill "${CURRENT_PLATFORM}"
 fi
 
 # ── deploy principles ────────────────────────────────────────────────────

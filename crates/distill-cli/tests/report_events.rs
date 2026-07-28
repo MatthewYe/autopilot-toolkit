@@ -128,7 +128,8 @@ fn complete_run(worktree: &Path, session: &str) -> (String, Value) {
             "summary": "One independently implementable slice is ready.",
             "issues": [{
                 "title": "Build readiness summary",
-                "body": "Status: ready-for-agent\n\n## Acceptance criteria\n\n- [ ] Summary is queryable.\n"
+                "body": "---\nkey: 01-build-readiness-summary\ntitle: Build readiness summary\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nBuild the readiness summary.\n\n## Acceptance Criteria\n\n- [ ] Summary is queryable.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+                "depends_on": []
             }]
         }),
     );
@@ -319,7 +320,8 @@ fn renderer_failure_is_retryable_without_reopening_or_mutating_canonical_report(
         "summary": "Complete with renderer failure injected.",
         "issues": [{
             "title": "Build renderer retry",
-            "body": "Status: ready-for-agent\n\n## Acceptance criteria\n\n- [ ] Retry works.\n"
+            "body": "---\nkey: 01-build-renderer-retry\ntitle: Build renderer retry\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nBuild renderer retry.\n\n## Acceptance Criteria\n\n- [ ] Retry works.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+            "depends_on": []
         }]
     })
     .to_string();

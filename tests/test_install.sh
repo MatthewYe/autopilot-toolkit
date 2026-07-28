@@ -312,6 +312,45 @@ test_distill_platform_selection() {
         || { echo "  FAIL: distill.env should export AUTOPILOT_DISTILL_BIN"; FAIL=$((FAIL + 1)); }
 }
 
+# ── Test: same-version install repairs Distill executable selection ─────
+
+test_same_version_repairs_distill_selection() {
+    echo ""
+    echo "=== test: same-version install repairs Distill executable selection ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "distill-repair-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-repair-001" > /dev/null 2>&1
+
+    mv "${skills_dir}/.autopilot/bin/distill" "${TMP_BASE}/removed-distill-link"
+    mv "${skills_dir}/.autopilot/distill.env" "${TMP_BASE}/removed-distill-env"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="darwin-arm64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "distill-repair-001" > /dev/null 2>&1
+
+    assert_symlink \
+        "same-version install recreates distill stable link" \
+        "${skills_dir}/.autopilot/bin/distill" \
+        "distill-artifacts/darwin-arm64/distill"
+    assert_file \
+        "same-version install recreates distill.env" \
+        "${skills_dir}/.autopilot/distill.env"
+}
+
 # ── Test: Distill selection does not require Python ─────────────────────
 
 test_distill_platform_selection_without_python() {
@@ -1078,6 +1117,7 @@ prepare_test_install_script
 
 test_fresh_install_extraction
 test_distill_platform_selection
+test_same_version_repairs_distill_selection
 test_distill_platform_selection_without_python
 test_distill_unsupported_platform
 test_uninstall_removes_distill_artifacts_and_preserves_user_skills

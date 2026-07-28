@@ -25,20 +25,19 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 
 | target 特征 | 来源 | 状态机 | 合约文件 |
 |---|---|---|---|
-| 包含 `/` 的路径 | 本地 `.scratch/` | frontmatter `Status:` | `AGENT-BRIEF.md` |
+| 包含 `/` 的路径 | 本地 `.scratch/` | frontmatter `status:` | flat `issue_file` body |
 | `#N` 或纯数字 `N` | GitHub Issue | labels | issue body（含 AC） |
-| 无参数扫描到本地 | 本地 `.scratch/` | frontmatter `Status:` | `AGENT-BRIEF.md` |
+| 无参数扫描到本地 | 本地 `.scratch/` | frontmatter `status:` | flat `issue_file` body |
 | 无参数扫描到 GitHub | GitHub Issue | labels | issue body |
 
 ## 前置约定
 
 ### 本地 issue 模式
 
-- `target` 使用绝对路径。如传入相对路径，拼接当前工作目录。
-- `issue.md` 以 YAML frontmatter 开头，`Status` 字段在 frontmatter 中。
-- 更新 Status：用 `Edit` 工具修改 frontmatter 中的 `Status:` 行。
-- 追加注释：在 `## Comments` 节末尾加 `- <时间戳> autopilot: <内容>`。无该节则在文件末尾创建。
-- 合约文件：同目录下 `AGENT-BRIEF.md`。
+- canonical issue 是 `.scratch/<feature>/issues/<NN-slug>.md` flat file；将选中路径保存为 `issue_file`。
+- 要求 lower-case `key`、`title`、`type`、`status`、`parent` frontmatter，以及精确的 `## What to build`、`## Acceptance Criteria`、`## Blocked by`、`## Comments` 标题。
+- 只修改 `issue_file` 中 lower-case `status:` 行；从同一文件提取 What to build 与 Acceptance Criteria 作为合约，并把评论追加到既有 Comments 节。
+- Legacy issue directories（`issue.md` + `AGENT-BRIEF.md`）仅作为只读兼容输入；canonical flat file 不得被要求具有旧目录结构。
 
 ### GitHub Issue 模式
 
@@ -52,10 +51,10 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 
 ### 共用概念
 
-- `Status: ready-for-agent`（本地 frontmatter）↔ label `ready-for-agent`（GitHub）
-- `Status: in-progress` ↔ label `in-progress`
-- `Status: resolved` ↔ label `resolved`
-- `Status: needs-info` ↔ label `needs-info`
+- `status: ready-for-agent`（canonical 本地 frontmatter）↔ label `ready-for-agent`（GitHub）
+- `status: in-progress` ↔ label `in-progress`
+- `status: resolved` ↔ label `resolved`
+- `status: needs-info` ↔ label `needs-info`
 
 ### AFK Continuation Contract
 
@@ -125,16 +124,11 @@ Spec 描述整体设计方案，不包含可直接实现的 `## Acceptance Crite
 
 ### target 是路径（含 `/`）
 
-1. 确认 `<target>/issue.md` 存在，不存在则报告错误并停止
-2. 确认 `<target>/AGENT-BRIEF.md` 存在，不存在则报告错误并停止
-3. 读取 `<target>/issue.md`，检查 `Status:` 是否为 `ready-for-agent` 或 `in-progress`
-4. 非以上状态 → 回复当前状态并停止
-5. **Spec 检测**：检查 frontmatter 中是否有 `Type: spec` 或 legacy `Type: prd`，或 body 是否满足 Spec 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。命中 → 回复 `"<target> is a spec, not directly implementable. Process its child tickets instead."` 并停止
-6. 更新 Status 为 `in-progress`
-7. 设置 `source = "local"`, `id = <target>`
-8. 从 `<target>` 推断 feature 目录（取 issue 目录的父级父级，如 `.scratch/auth/issues/01-login/` → `.scratch/auth/`）
-9. 设置 `contract = <target>/AGENT-BRIEF.md` 的内容作为合约文本
-10. 跳到"交叉 Issue Suggestion 匹配"
+1. 将 `<target>` 解析为当前 worktree 中的路径。
+2. 如果它是 `.md` 文件，则作为 canonical `issue_file`：校验必需 frontmatter 与 headings，仅接受 `status: ready-for-agent` 或 `status: in-progress`，执行 Spec 检测，只把 `status:` 改为 `in-progress`，从同一文件提取 contract，并从 `.scratch/<feature>/issues/<file>.md` 推断 feature 目录。
+3. 否则，如果它是 legacy issue directory，则要求 `issue.md` 与 `AGENT-BRIEF.md`，不改变目录形状并使用 brief 作为 contract。
+4. 其他路径报告为既非 canonical issue_file、也非受支持的旧目录。
+5. canonical 输入设置 `source = "local"`, `id = issue_file`；legacy 输入使用目录 id，然后进入 suggestion matching。
 
 ### target 是 GitHub issue 号（`#N` 或纯数字 `N`）
 
@@ -160,7 +154,7 @@ Spec 描述整体设计方案，不包含可直接实现的 `## Acceptance Crite
 ### 本地扫描
 
 1. `Glob` 扫描 `.scratch/*/issues/*.md`
-2. 对每个文件，读取前 30 行，检查是否有 `Status: ready-for-agent`
+2. 对每个文件校验 canonical frontmatter，选择 `status: ready-for-agent`，并将路径保存为 `issue_file`
 3. 对匹配项，检查是否为 Spec：读取 frontmatter 中 `Type: spec` 或 legacy `Type: prd` 字段，或读取 body 检查是否满足 Spec 内容模式（含 `## Problem Statement` + `## Solution`，不含 `## What to build` 和 `## Acceptance Criteria`）。Spec 条目**不纳入调度队列**，单独记录
 4. 收集所有非 Spec 的匹配项
 
@@ -246,12 +240,12 @@ orchestrator 裁量前对照下表，排除偷懒判断：
 
 ### 更新状态（抽象）
 
-- **local**: `Edit` 工具修改 `issue.md` 的 `Status:` 行
+- **local**: `Edit` 工具修改 canonical `issue_file` 的 `status:` 行
 - **github**: `gh issue edit <N> --add-label "<新>" --remove-label "<旧>"`
 
 ### 追加注释（抽象）
 
-- **local**: 在 `issue.md` 的 `## Comments` 节末尾添加条目
+- **local**: 在 canonical `issue_file` 的 `## Comments` 节末尾添加条目
 - **github**: `gh issue comment <N> --body "<时间戳> autopilot: <内容>"`
 
 ### 交叉 Issue Suggestion 匹配

@@ -13,20 +13,20 @@ autopilot supports two issue sources. Determine the source from the explicit `ta
 
 | target feature | Source | State machine | Contract |
 | --- | --- | --- | --- |
-| Path containing `/` | Local `.scratch/` | frontmatter `Status:` | `AGENT-BRIEF.md` |
+| Path containing `/` | Local `.scratch/` | frontmatter `status:` | flat `issue_file` body |
 | `#N` or plain number `N` | GitHub Issue | labels | issue body containing AC |
-| No target, local match found | Local `.scratch/` | frontmatter `Status:` | `AGENT-BRIEF.md` |
+| No target, local match found | Local `.scratch/` | frontmatter `status:` | flat `issue_file` body |
 | No target, GitHub match found | GitHub Issue | labels | issue body |
 
 ## 前置约定
 
 ### Local Issue Mode
 
-- Treat a path target as an issue directory. If relative, resolve it against the current working directory.
-- Expect `<target>/issue.md` to start with YAML frontmatter containing `Status:`.
-- Update status by editing only the frontmatter `Status:` line.
-- Append comments to the end of the `## Comments` section as `- <timestamp> autopilot: <content>`. If the section is absent, create it at the end of the file.
-- Use `<target>/AGENT-BRIEF.md` as the contract.
+- Canonical issues are flat `.scratch/<feature>/issues/<NN-slug>.md` files. Carry the selected path as `issue_file`.
+- Require lower-case `key`, `title`, `type`, `status`, and `parent` frontmatter plus exact `## What to build`, `## Acceptance Criteria`, `## Blocked by`, and `## Comments` headings.
+- Update state by editing only the lower-case `status:` line in `issue_file`.
+- Extract the contract from `## What to build` and `## Acceptance Criteria` in the same file, and append comments to its existing `## Comments` section.
+- Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` are read-only compatibility inputs. Detect them explicitly; never require that directory shape for canonical flat files.
 
 ### GitHub Issue Mode
 
@@ -41,10 +41,10 @@ MCP first: if GitHub MCP tools are registered, prefer them for listing issues, r
 
 ### Shared State Mapping
 
-- `Status: ready-for-agent` (local) <-> GitHub label `ready-for-agent`
-- `Status: in-progress` <-> GitHub label `in-progress`
-- `Status: resolved` <-> GitHub label `resolved`
-- `Status: needs-info` <-> GitHub label `needs-info`
+- `status: ready-for-agent` (canonical local) <-> GitHub label `ready-for-agent`
+- `status: in-progress` <-> GitHub label `in-progress`
+- `status: resolved` <-> GitHub label `resolved`
+- `status: needs-info` <-> GitHub label `needs-info`
 
 ### AFK Continuation Contract
 
@@ -114,15 +114,11 @@ Do not change the spec status during Phase 1.
 
 ### target 是路径（含 `/`）
 
-1. Confirm `<target>/issue.md` exists; if absent, report the error and stop.
-2. Confirm `<target>/AGENT-BRIEF.md` exists; if absent, report the error and stop.
-3. Read `<target>/issue.md`; continue only when `Status:` is `ready-for-agent` or `in-progress`.
-4. If the status is different, report the current status and stop.
-5. Run spec detection. If matched, report the spec skip message and stop.
-6. Update `Status:` to `in-progress`.
-7. Set `source = local`, `id = <target>`, and `contract = <target>/AGENT-BRIEF.md` contents.
-8. Infer the feature directory from the issue directory, for example `.scratch/auth/issues/01-login/` -> `.scratch/auth/`.
-9. Continue to "交叉 Issue Suggestion 匹配".
+1. Resolve `<target>` against the current worktree.
+2. If it is a `.md` file, treat it as canonical `issue_file`: validate the required frontmatter and headings, continue only for `status: ready-for-agent` or `status: in-progress`, run spec detection, edit only `status:` to `in-progress`, extract the contract from the same file, and derive the feature directory from `.scratch/<feature>/issues/<file>.md`.
+3. Otherwise, if it is a legacy issue directory, require `issue.md` plus `AGENT-BRIEF.md`, use the brief as the contract without changing the directory shape, and continue through the legacy compatibility path.
+4. Otherwise report that the target is neither a canonical issue_file nor a supported legacy issue directory.
+5. Set `source = local`, `id = issue_file` for canonical input (or the directory for legacy input), then continue to suggestion matching.
 
 ### target 是 GitHub issue 号（`#N` 或纯数字 `N`）
 
@@ -145,7 +141,7 @@ Scan both sources.
 ### Local Scan
 
 1. Glob `.scratch/*/issues/*.md`.
-2. For each file, read the frontmatter and select entries with `Status: ready-for-agent`.
+2. For each file, validate canonical frontmatter, select entries with `status: ready-for-agent`, and carry the path as `issue_file`.
 3. Run spec detection on each candidate. Exclude specs from the dispatch queue and record them as skipped.
 4. Sort implementable local matches by natural path order.
 
@@ -230,7 +226,7 @@ Maintain `retry_count = 0` for round tracking and suggestion matching. No hard r
 
 ### 更新状态（抽象）
 
-- Local: edit `issue.md` frontmatter `Status:`.
+- Local: edit the canonical `status:` line in `issue_file`.
 - GitHub: update labels through MCP or `gh issue edit`.
 
 ### 追加注释（抽象）
@@ -439,7 +435,7 @@ Audit the whole codebase against:
 
 - All ADRs under `docs/adr/`
 - All PRDs under `docs/prd/`
-- All resolved issue contracts, from local `AGENT-BRIEF.md` files or GitHub issue bodies
+- All resolved issue contracts, from canonical local `issue_file` bodies, legacy `AGENT-BRIEF.md` files, or GitHub issue bodies
 
 Review dimensions:
 

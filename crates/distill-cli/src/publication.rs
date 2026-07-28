@@ -2,6 +2,7 @@ use crate::storage::{self, PlannedFile};
 use crate::util::{sha256_hex, slugify};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,7 +18,6 @@ enum TrackerKind {
 struct IssuePayload {
     title: String,
     body: String,
-    #[serde(default)]
     depends_on: Vec<usize>,
     external_publication: Option<Value>,
 }
@@ -115,14 +115,10 @@ pub(crate) fn publish_issues(
         None
     };
     if tracker == TrackerKind::LocalMarkdown {
-        for issue in &issues {
-            if !local_issue_is_agent_ready(&issue.body) {
-                return Err(format!(
-                    "local issue {:?} must declare Status: ready-for-agent before publication",
-                    issue.title
-                ));
-            }
-        }
+        let prd_path = state["publications"]["prd"]["path"]
+            .as_str()
+            .ok_or("canonical local ticket validation requires a published PRD path")?;
+        validate_canonical_local_tickets(&issues, prd_path)?;
     }
 
     let mut files = Vec::new();
@@ -205,21 +201,130 @@ fn local_feature_root_from_prd_state(state: &Value) -> Result<String, String> {
     Ok(feature_root.to_string())
 }
 
-fn local_issue_is_agent_ready(body: &str) -> bool {
-    let normalized = body.replace("\r\n", "\n");
-    if normalized.lines().next() == Some("Status: ready-for-agent") {
-        return true;
+fn validate_canonical_local_tickets(issues: &[IssuePayload], prd_path: &str) -> Result<(), String> {
+    for (index, issue) in issues.iter().enumerate() {
+        let key = format!("{:02}-{}", index + 1, slugify(&issue.title));
+        validate_canonical_local_ticket(issue, &key, prd_path, issues, index)?;
     }
-    let Some(frontmatter) = normalized
+    Ok(())
+}
+
+fn validate_canonical_local_ticket(
+    issue: &IssuePayload,
+    expected_key: &str,
+    expected_parent: &str,
+    issues: &[IssuePayload],
+    issue_index: usize,
+) -> Result<(), String> {
+    let normalized = issue.body.replace("\r\n", "\n");
+    let Some((frontmatter, body)) = normalized
         .strip_prefix("---\n")
-        .and_then(|rest| rest.split_once("\n---"))
-        .map(|(frontmatter, _)| frontmatter)
+        .and_then(|rest| rest.split_once("\n---\n"))
     else {
-        return false;
+        return Err(format!(
+            "canonical local ticket {:?} must begin with YAML frontmatter",
+            issue.title
+        ));
     };
-    frontmatter
+    let mut fields = BTreeMap::new();
+    for line in frontmatter.lines() {
+        let Some((key, value)) = line.split_once(": ") else {
+            return Err(format!(
+                "canonical local ticket {:?} has invalid frontmatter line {line:?}",
+                issue.title
+            ));
+        };
+        if fields.insert(key, value).is_some() {
+            return Err(format!(
+                "canonical local ticket {:?} repeats frontmatter field {key:?}",
+                issue.title
+            ));
+        }
+    }
+    for (field, expected) in [
+        ("key", expected_key),
+        ("title", issue.title.as_str()),
+        ("type", "issue"),
+        ("status", "ready-for-agent"),
+        ("parent", expected_parent),
+    ] {
+        if fields.get(field).copied() != Some(expected) {
+            return Err(format!(
+                "canonical local ticket {:?} requires frontmatter {field}: {expected}",
+                issue.title
+            ));
+        }
+    }
+
+    let expected_headings = [
+        "## What to build",
+        "## Acceptance Criteria",
+        "## Blocked by",
+        "## Comments",
+    ];
+    let actual_headings = body
         .lines()
-        .any(|line| line.trim() == "Status: ready-for-agent")
+        .filter(|line| line.starts_with("## "))
+        .collect::<Vec<_>>();
+    if actual_headings != expected_headings {
+        return Err(format!(
+            "canonical local ticket {:?} requires exact ordered headings: {}",
+            issue.title,
+            expected_headings.join(", ")
+        ));
+    }
+
+    let blocked_by = body
+        .split_once("## Blocked by")
+        .and_then(|(_, rest)| rest.split_once("## Comments"))
+        .map(|(section, _)| {
+            section
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix("- "))
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .ok_or_else(|| {
+            format!(
+                "canonical local ticket {:?} has an invalid Blocked by section",
+                issue.title
+            )
+        })?;
+    let mut seen = BTreeSet::new();
+    for dependency in &issue.depends_on {
+        if *dependency >= issue_index {
+            return Err(format!(
+                "canonical local ticket {:?} dependencies must reference earlier issues",
+                issue.title
+            ));
+        }
+        if !seen.insert(*dependency) {
+            return Err(format!(
+                "canonical local ticket {:?} repeats dependency index {dependency}",
+                issue.title
+            ));
+        }
+    }
+    let expected_dependencies = issue
+        .depends_on
+        .iter()
+        .map(|index| issues[*index].title.as_str())
+        .collect::<Vec<_>>();
+    if expected_dependencies.is_empty() {
+        if blocked_by != ["None — can start immediately."] {
+            return Err(format!(
+                "canonical local ticket {:?} must declare exactly '- None — can start immediately.'",
+                issue.title
+            ));
+        }
+    } else if blocked_by != expected_dependencies {
+        return Err(format!(
+            "canonical local ticket {:?} Blocked by entries must exactly match depends_on titles",
+            issue.title
+        ));
+    }
+    Ok(())
 }
 
 struct PublishedItem {

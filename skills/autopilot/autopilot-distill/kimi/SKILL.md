@@ -65,28 +65,63 @@ If `authorized_action.skill` is `to-spec`, invoke the unmodified `to-spec` skill
 If `authorized_action.skill` is `to-tickets`, invoke the unmodified `to-tickets` skill. Submit the exact accepted implementation issue payloads and approval checkpoint:
 
 ```bash
-"${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage issues --evidence '{"checkpoint":"slice-breakdown-approved","summary":"<issue slicing summary>","issues":[{"title":"<issue title>","body":"<exact issue markdown>"}]}'
+"${AUTOPILOT_DISTILL_BIN:-$HOME/.agents/skills/.autopilot/bin/distill}" submit-evidence --json --worktree "$PWD" --run-id "<run_id>" --session-id "<kimi-session-id>" --expected-revision "<revision>" --stage issues --evidence '{"checkpoint":"slice-breakdown-approved","summary":"<issue slicing summary>","issues":[{"title":"<issue title>","body":"<exact issue markdown>","depends_on":[]}]}'
 ```
 
 ## LOCAL_ISSUE_HANDOFF_CONTRACT
 
 When `docs/agents/issue-tracker.md` configures Local Markdown, choose a stable lowercase `feature_slug` for the PRD evidence, use `to-tickets` to draft and approve the vertical slices, but stop before its tracker-publication step. The Distill runner is the sole local publisher: it creates the PRD at `.scratch/<feature_slug>/PRD.md` and each local issue exactly once under `.scratch/<feature_slug>/issues/`. Do not create a second issue copy elsewhere under `.scratch/`. The runner rejects a target path that already contains different content; never acknowledge that collision as immaterial drift.
 
-Before `submit-evidence`, ensure every local issue `body` begins with agent-ready triage frontmatter:
+Before `submit-evidence`, ensure every local issue `body` is one canonical runnable ticket:
 
 ```markdown
 ---
-Status: ready-for-agent
+key: 01-stable-ticket-slug
+title: Exact issue title
+type: issue
+status: ready-for-agent
+parent: .scratch/<feature_slug>/PRD.md
 ---
+
+## What to build
+
+...
+
+## Acceptance Criteria
+
+...
+
+## Blocked by
+
+- None — can start immediately.
+
+## Comments
 ```
 
-The exact Markdown including this frontmatter is the frozen issue payload. When the configured tracker is GitHub, keep the external publication and receipt flow below.
+Use the exact headings and lower-case frontmatter keys shown above. The `key` must equal the runner's `<two-digit-index>-<title-slug>` filename stem. For blocked tickets, list each blocking issue's exact title as one bullet. The exact Markdown is the frozen issue payload. When the configured tracker is GitHub, keep the external publication and receipt flow below.
+
+Every issue object must include `depends_on`, an explicit array of zero-based indices of earlier issues in the same evidence payload. Use `[]` for an unblocked issue. The structured edges must match the issue body's `Blocked by` section; never rely on the runner to infer dependencies from prose.
 
 After every `submit-evidence` response, use the returned `revision` as the next `--expected-revision`.
 
 Clarification completion is the agent's declaration, not a user checkpoint. Populate every structured field explicitly. Each material unknown must include `description`, `material`, `resolved`, and, when resolved, `resolution`; do not complete while a material unknown remains unresolved. For every glossary, domain document, or ADR changed by clarification, include its worktree-relative `path` and SHA-256 in `domain_document_artifacts`.
 
 When the configured tracker is GitHub, `to-spec` and `to-tickets` perform the external creation. Include the confirmed receipt as `external_publication` on the PRD evidence or each issue object. The receipt must contain `tracker: "github"`, the configured `repository`, the stable `operation_id` (`<run_id>-r<revision>-prd` or `<run_id>-r<revision>-issue-<two-digit-index>`), the SHA-256 of the exact frozen Markdown payload, `status: "confirmed"`, the positive issue number as `artifact_id`, and its canonical `artifact_url`. The runner remains offline, validates this receipt, and never falls back to another tracker. If the response is `needs-reconciliation`, stop and follow `required_next_action`; do not invoke another skill or create a duplicate issue.
+
+If `submit-evidence` fails with context drift after an authorized stage executor output changed the worktree, inspect the drift before retrying. When the drift is only the expected output from the authorized stage executor for the current stage, retry the same `submit-evidence` with a reasoned immaterial `drift_acknowledgment` inside the evidence JSON:
+
+```json
+{
+  "checkpoint": "<stage checkpoint>",
+  "summary": "<stage summary>",
+  "drift_acknowledgment": {
+    "material": false,
+    "reason": "The detected worktree drift is authorized stage executor output for <stage> and does not change the approved requirement."
+  }
+}
+```
+
+For the `prd` stage, include the exact `prd_markdown`; for `issues`, include the exact `issues` array. If the drift contains anything other than authorized stage executor output, do not retry as immaterial; report the blocked state or supersede only when the user explicitly authorizes it.
 
 ## Takeover And Recovery
 

@@ -339,7 +339,8 @@ fn exercise_runtime(runtime: &str) -> RuntimeArtifacts {
         "summary": "One implementation slice is ready for a later agent.",
         "issues": [{
             "title": "Implement the release fixture",
-            "body": "Status: ready-for-agent\n\n## Acceptance criteria\n\n- [ ] The fixture passes.\n"
+            "body": "---\nkey: 01-implement-the-release-fixture\ntitle: Implement the release fixture\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nImplement the release fixture.\n\n## Acceptance Criteria\n\n- [ ] The fixture passes.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+            "depends_on": []
         }]
     });
     let completed = json_success(submit(

@@ -93,7 +93,8 @@ fn submit(worktree: &Path, run_id: &str, session: &str, revision: u64, stage: &s
             "summary": "One slice is ready.",
             "issues": [{
                 "title": "Build audit dashboard",
-                "body": "Status: ready-for-agent\n\n## Acceptance criteria\n\n- [ ] The dashboard is visible.\n"
+                "body": "---\nkey: 01-build-audit-dashboard\ntitle: Build audit dashboard\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nBuild the audit dashboard.\n\n## Acceptance Criteria\n\n- [ ] The dashboard is visible.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+                "depends_on": []
             }]
         }),
         other => panic!("unknown stage fixture: {other}"),

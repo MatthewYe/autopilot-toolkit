@@ -176,7 +176,8 @@ fn codex_text_requirement_advances_only_by_authorized_stage_evidence() {
         "summary": "One ready vertical slice is sufficient for the fixture.",
         "issues": [{
             "title": "Build audit dashboard slice",
-            "body": "Status: ready-for-agent\n\n## Parent\n\n.scratch/distill-tracer/PRD.md\n\n## What to build\n\nCreate the first vertical slice for the audit dashboard.\n\n## Acceptance criteria\n\n- [ ] The dashboard status is externally verifiable end to end.\n\n## Blocked by\n\nNone - can start immediately\n"
+            "body": "---\nkey: 01-build-audit-dashboard-slice\ntitle: Build audit dashboard slice\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nCreate the first vertical slice for the audit dashboard.\n\n## Acceptance Criteria\n\n- [ ] The dashboard status is externally verifiable end to end.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+            "depends_on": []
         }]
     })
     .to_string();
@@ -216,8 +217,8 @@ fn codex_text_requirement_advances_only_by_authorized_stage_evidence() {
     );
     assert!(issue_path.is_file(), "issue should be published");
     let issue = fs::read_to_string(&issue_path).unwrap();
-    assert!(issue.contains("Status: ready-for-agent"));
-    assert!(issue.contains("## Acceptance criteria"));
+    assert!(issue.contains("status: ready-for-agent"));
+    assert!(issue.contains("## Acceptance Criteria"));
     assert!(!issue.contains("implement orchestrator"));
 
     let report_json_path = worktree.join(completed["report"]["json_path"].as_str().unwrap());

@@ -326,7 +326,8 @@ fn clarification_rejects_unresolved_material_unknowns_and_persists_report_fields
             "summary": "One slice is ready.",
             "issues": [{
                 "title": "Build dashboard",
-                "body": "Status: ready-for-agent\n"
+                "body": "---\nkey: 01-build-dashboard\ntitle: Build dashboard\ntype: issue\nstatus: ready-for-agent\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nBuild the dashboard.\n\n## Acceptance Criteria\n\n- [ ] The dashboard works.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+                "depends_on": []
             }]
         }),
     ));

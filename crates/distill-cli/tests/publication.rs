@@ -214,22 +214,33 @@ fn github_prd_evidence(operation_id: &str, issue_number: u64, status: &str) -> V
     evidence
 }
 
-fn issue_evidence() -> Value {
+fn issue_evidence_for(parent: &str) -> Value {
+    let api_body = format!(
+        "---\nkey: 01-build-api-slice\ntitle: Build API slice\ntype: issue\nstatus: ready-for-agent\nparent: {parent}\n---\n\n## What to build\n\nBuild the API slice.\n\n## Acceptance Criteria\n\n- [ ] API works.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n"
+    );
+    let ui_body = format!(
+        "---\nkey: 02-build-ui-slice\ntitle: Build UI slice\ntype: issue\nstatus: ready-for-agent\nparent: {parent}\n---\n\n## What to build\n\nBuild the UI slice.\n\n## Acceptance Criteria\n\n- [ ] UI works.\n\n## Blocked by\n\n- Build API slice\n\n## Comments\n"
+    );
     json!({
         "checkpoint": "slice-breakdown-approved",
         "summary": "Two slices exercise dependencies.",
         "issues": [
             {
                 "title": "Build API slice",
-                "body": "Status: ready-for-agent\n\n## Acceptance criteria\n\n- [ ] API works.\n"
+                "body": api_body,
+                "depends_on": []
             },
             {
                 "title": "Build UI slice",
-                "body": "Status: ready-for-agent\n\n## Blocked by\n\nAPI slice\n",
+                "body": ui_body,
                 "depends_on": [0]
             }
         ]
     })
+}
+
+fn issue_evidence() -> Value {
+    issue_evidence_for(".scratch/distill-tracer/PRD.md")
 }
 
 fn github_issue_evidence(run_id: &str, revision: u64) -> Value {
@@ -354,6 +365,79 @@ fn fake_adapter_success_freezes_payloads_and_records_revision() {
 }
 
 #[test]
+fn issue_evidence_requires_explicit_dependency_edges() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-explicit-dependencies");
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        "session-explicit-dependencies",
+        prd_revision,
+        "prd",
+        &prd_evidence(),
+    ));
+    let issues = json!({
+        "checkpoint": "slice-breakdown-approved",
+        "summary": "Dependency edges must never be inferred from prose.",
+        "issues": [{
+            "title": "Build API slice",
+            "body": "Status: ready-for-agent\n\n## Blocked by\n\nNone\n"
+        }]
+    });
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            "session-explicit-dependencies",
+            after_prd["revision"].as_u64().unwrap(),
+            "issues",
+            &issues,
+        ),
+        "missing field `depends_on`",
+    );
+}
+
+#[test]
+fn local_markdown_rejects_noncanonical_ticket_contract() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_local_tracker_config(worktree);
+    let (run_id, prd_revision) = reach_prd_stage(worktree, "session-canonical-ticket");
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        "session-canonical-ticket",
+        prd_revision,
+        "prd",
+        &prd_evidence(),
+    ));
+    let issues = json!({
+        "checkpoint": "slice-breakdown-approved",
+        "summary": "Legacy status-only Markdown is not a runnable ticket.",
+        "issues": [{
+            "title": "Build API slice",
+            "body": "---\nStatus: ready-for-agent\n---\n\n## What to build\n\nBuild the API.\n\n## Acceptance criteria\n\n- [ ] API works.\n\n## Blocked by\n\n- None\n",
+            "depends_on": []
+        }]
+    });
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            "session-canonical-ticket",
+            after_prd["revision"].as_u64().unwrap(),
+            "issues",
+            &issues,
+        ),
+        "canonical local ticket",
+    );
+}
+
+#[test]
 fn local_markdown_rejects_preexisting_prd_from_another_run_without_overwrite() {
     let tmp = tempfile::tempdir().unwrap();
     let worktree = tmp.path();
@@ -410,7 +494,7 @@ fn local_markdown_publishes_prd_and_issues_under_the_supplied_feature_slug() {
         "session-local-feature-slug",
         after_prd["revision"].as_u64().unwrap(),
         "issues",
-        &issue_evidence(),
+        &issue_evidence_for(".scratch/search-performance/PRD.md"),
     ));
     assert_eq!(completed["status"], "completed");
     assert_eq!(
@@ -507,7 +591,8 @@ fn local_markdown_rejects_issue_without_agent_ready_triage_before_writing() {
         "summary": "One local issue.",
         "issues": [{
             "title": "Missing triage",
-            "body": "## What to build\n\nA local issue without status metadata.\n"
+            "body": "---\nkey: 01-missing-triage\ntitle: Missing triage\ntype: issue\nparent: .scratch/distill-tracer/PRD.md\n---\n\n## What to build\n\nA local issue without status metadata.\n\n## Acceptance Criteria\n\n- [ ] The issue is ready.\n\n## Blocked by\n\n- None — can start immediately.\n\n## Comments\n",
+            "depends_on": []
         }]
     });
 
@@ -520,7 +605,7 @@ fn local_markdown_rejects_issue_without_agent_ready_triage_before_writing() {
             "issues",
             &evidence,
         ),
-        "Status: ready-for-agent",
+        "frontmatter status: ready-for-agent",
     );
     assert!(!worktree.join(".scratch/distill-tracer/issues").exists());
 }
