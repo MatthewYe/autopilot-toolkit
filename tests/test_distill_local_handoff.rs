@@ -125,6 +125,16 @@ mod tests {
                     || skill.contains("legacy issue.md"),
                 "{path} must preserve lifecycle writes for legacy directory inputs"
             );
+            assert!(
+                skill.contains("LEGACY_ISSUE_LIFECYCLE_CONTRACT"),
+                "{path} must define legacy eligibility and initialization behavior"
+            );
+            assert!(
+                skill.contains("legacy `issue.md` `Status:`")
+                    && skill.contains("`ready-for-agent` or `in-progress`")
+                    && skill.contains("change `ready-for-agent` to `in-progress`"),
+                "{path} must validate and transition legacy status before dispatch"
+            );
         }
     }
 

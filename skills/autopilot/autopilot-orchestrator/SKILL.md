@@ -36,6 +36,11 @@ autopilot supports two issue sources. Determine which based on the `target` para
 - Extract the contract from `## What to build` and `## Acceptance Criteria` in the same file, and append comments to its existing `## Comments` section.
 - Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` remain compatibility inputs. Detect them explicitly, use `AGENT-BRIEF.md` as their contract, and preserve lifecycle writes in legacy `issue.md`; never require that directory shape for canonical flat files.
 
+`LEGACY_ISSUE_LIFECYCLE_CONTRACT`:
+
+- Before dispatch, legacy `issue.md` `Status:` must be `ready-for-agent` or `in-progress`; otherwise report the current status and stop.
+- When eligible, change `ready-for-agent` to `in-progress` before reading `AGENT-BRIEF.md` and entering suggestion matching.
+
 ### GitHub Issue mode
 
 - Infer the repo from `git remote -v`.
@@ -126,7 +131,7 @@ Whether an explicit target is given or during scan mode, when a spec is detected
 
 1. Resolve `<target>` against the worktree.
 2. If it is a `.md` file, treat it as canonical `issue_file`: validate the required frontmatter and headings, require `status` to be `ready-for-agent` or `in-progress`, run spec detection, edit only `status:` to `in-progress`, extract the contract from the same file, and derive the feature directory from `.scratch/<feature>/issues/<file>.md`.
-3. Otherwise, if it is a legacy issue directory, require `<target>/issue.md` and `<target>/AGENT-BRIEF.md`, read them without changing their shape, and use the brief as the contract.
+3. Otherwise, if it is a legacy issue directory, require `<target>/issue.md` and `<target>/AGENT-BRIEF.md`, apply `LEGACY_ISSUE_LIFECYCLE_CONTRACT`, and use the brief as the contract without changing the directory shape.
 4. Otherwise report that the target is neither a canonical issue_file nor a supported legacy issue directory.
 5. Set `source = "local"`, `id = issue_file` for canonical input (or the directory for legacy input), then jump to suggestion matching.
 

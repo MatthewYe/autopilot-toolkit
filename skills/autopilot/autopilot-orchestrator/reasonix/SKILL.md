@@ -27,6 +27,11 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 - 只修改 `issue_file` 中 lower-case `status:` 行；从同一文件提取 What to build 与 Acceptance Criteria 作为合约，并把评论追加到既有 Comments 节。
 - Legacy issue directories（`issue.md` + `AGENT-BRIEF.md`）继续作为兼容输入：使用 `AGENT-BRIEF.md` 作为 contract，并在 legacy `issue.md` 中执行生命周期写入；canonical flat file 不得被要求具有旧目录结构。
 
+`LEGACY_ISSUE_LIFECYCLE_CONTRACT`:
+
+- Before dispatch, legacy `issue.md` `Status:` must be `ready-for-agent` or `in-progress`; otherwise report the current status and stop.
+- When eligible, change `ready-for-agent` to `in-progress` before reading `AGENT-BRIEF.md` and entering suggestion matching.
+
 ### GitHub Issue 模式
 
 > **MCP 优先**：启动时检测 `mcp__github__*` 工具是否可用（检查工具注册表）。如 MCP 可用，优先使用 MCP 工具（`mcp__github__list_issues`、`mcp__github__update_issue`、`mcp__github__add_comment` 等）；如不可用，回退到 `bash gh issue ...`（需 gh CLI 已安装且已认证）。下文 `gh` CLI 调用均为回退路径，MCP 可用时应优先使用对应 MCP 工具。
@@ -114,7 +119,7 @@ Spec 描述整体设计方案，不包含可直接实现的 `## Acceptance Crite
 
 1. 将 `<target>` 解析为当前 worktree 中的路径。
 2. 如果它是 `.md` 文件，则作为 canonical `issue_file`：校验必需 frontmatter 与 headings，仅接受 `status: ready-for-agent` 或 `status: in-progress`，执行 Spec 检测，只把 `status:` 改为 `in-progress`，从同一文件提取 contract，并从 `.scratch/<feature>/issues/<file>.md` 推断 feature 目录。
-3. 否则，如果它是 legacy issue directory，则要求 `issue.md` 与 `AGENT-BRIEF.md`，不改变目录形状并使用 brief 作为 contract。
+3. 否则，如果它是 legacy issue directory，则要求 `issue.md` 与 `AGENT-BRIEF.md`，应用 `LEGACY_ISSUE_LIFECYCLE_CONTRACT`，不改变目录形状并使用 brief 作为 contract。
 4. 其他路径报告为既非 canonical issue_file、也非受支持的旧目录。
 5. canonical 输入设置 `source = "local"`, `id = issue_file`；legacy 输入使用目录 id，然后进入 suggestion matching。
 

@@ -1091,3 +1091,42 @@ fn github_rejects_dependency_edges_that_contradict_blocked_by_body() {
         "must declare exactly '- None — can start immediately.'",
     );
 }
+
+#[test]
+fn github_accepts_blocked_by_references_to_confirmed_issue_numbers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_github_tracker_config(worktree);
+    let session = "session-github-dependency-reference";
+    let (run_id, prd_revision) = reach_prd_stage(worktree, session);
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        session,
+        prd_revision,
+        "prd",
+        &github_prd_evidence(&format!("{run_id}-r{prd_revision}-prd"), 59, "confirmed"),
+    ));
+    let issues_revision = after_prd["revision"].as_u64().unwrap();
+    let mut evidence = github_issue_evidence(&run_id, issues_revision);
+    let body = evidence["issues"][1]["body"]
+        .as_str()
+        .unwrap()
+        .replace("- Build API slice", "- #60");
+    let payload_hash = format!("{:x}", Sha256::digest(body.as_bytes()));
+    evidence["issues"][1]["body"] = json!(body);
+    evidence["issues"][1]["external_publication"]["payload_hash"] = json!(payload_hash);
+
+    let completed = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        session,
+        issues_revision,
+        "issues",
+        &evidence,
+    ));
+    assert_eq!(
+        completed["publications"]["issues"][1]["dependency_artifact_ids"][0],
+        "github:matthewye/autopilot-toolkit#60"
+    );
+}

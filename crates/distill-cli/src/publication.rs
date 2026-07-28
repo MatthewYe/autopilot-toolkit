@@ -120,7 +120,7 @@ pub(crate) fn publish_issues(
             .ok_or("canonical local ticket validation requires a published PRD path")?;
         validate_canonical_local_tickets(&issues, prd_path)?;
     }
-    validate_issue_dependency_contracts(&issues)?;
+    validate_issue_dependency_contracts(&issues, &tracker)?;
 
     let mut files = Vec::new();
     let mut publications = Vec::new();
@@ -210,7 +210,10 @@ fn validate_canonical_local_tickets(issues: &[IssuePayload], prd_path: &str) -> 
     Ok(())
 }
 
-fn validate_issue_dependency_contracts(issues: &[IssuePayload]) -> Result<(), String> {
+fn validate_issue_dependency_contracts(
+    issues: &[IssuePayload],
+    tracker: &TrackerKind,
+) -> Result<(), String> {
     for (issue_index, issue) in issues.iter().enumerate() {
         let mut seen = BTreeSet::new();
         for dependency in &issue.depends_on {
@@ -245,26 +248,47 @@ fn validate_issue_dependency_contracts(issues: &[IssuePayload]) -> Result<(), St
                     issue.title
                 )
             })?;
-        let expected_dependencies = issue
-            .depends_on
-            .iter()
-            .map(|index| issues[*index].title.as_str())
-            .collect::<Vec<_>>();
-        if expected_dependencies.is_empty() {
+        if issue.depends_on.is_empty() {
             if blocked_by != ["None — can start immediately."] {
                 return Err(format!(
                     "issue {:?} must declare exactly '- None — can start immediately.'",
                     issue.title
                 ));
             }
-        } else if blocked_by != expected_dependencies {
+        } else if blocked_by.len() != issue.depends_on.len()
+            || blocked_by
+                .iter()
+                .zip(&issue.depends_on)
+                .any(|(entry, index)| !dependency_entry_matches(entry, &issues[*index], tracker))
+        {
             return Err(format!(
-                "issue {:?} Blocked by entries must exactly match depends_on titles",
+                "issue {:?} Blocked by entries must match depends_on titles or confirmed tracker references",
                 issue.title
             ));
         }
     }
     Ok(())
+}
+
+fn dependency_entry_matches(entry: &str, dependency: &IssuePayload, tracker: &TrackerKind) -> bool {
+    if entry == dependency.title {
+        return true;
+    }
+    let TrackerKind::GitHub { repository } = tracker else {
+        return false;
+    };
+    let Some(publication) = dependency.external_publication.as_ref() else {
+        return false;
+    };
+    if let Some(artifact_id) = publication.get("artifact_id").and_then(Value::as_u64) {
+        if entry == format!("#{artifact_id}") || entry == format!("{repository}#{artifact_id}") {
+            return true;
+        }
+    }
+    publication
+        .get("artifact_url")
+        .and_then(Value::as_str)
+        .is_some_and(|artifact_url| entry == artifact_url)
 }
 
 fn validate_canonical_local_ticket(
