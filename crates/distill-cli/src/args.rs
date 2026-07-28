@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::util::{parse_revision, require_non_empty, require_run_id};
 
-pub(crate) const SUPPORTED_RUNTIMES: [&str; 3] = ["codex", "kimi", "reasonix"];
+pub(crate) const SUPPORTED_RUNTIMES: [&str; 4] = ["codex", "kimi", "opencode", "reasonix"];
 
 pub(crate) struct StartArgs {
     pub(crate) runtime: String,

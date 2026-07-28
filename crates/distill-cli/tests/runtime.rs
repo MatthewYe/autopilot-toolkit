@@ -50,7 +50,7 @@ fn assert_error_contains(output: Output, expected: &str) {
 
 #[test]
 fn start_accepts_only_supported_runtime_values() {
-    for runtime in ["codex", "kimi", "reasonix"] {
+    for runtime in ["codex", "kimi", "opencode", "reasonix"] {
         let tmp = tempfile::tempdir().unwrap();
         let worktree = tmp.path();
         write_local_tracker_config(worktree);
@@ -90,6 +90,6 @@ fn start_accepts_only_supported_runtime_values() {
             "--requirement",
             "Build a small audit dashboard for deployment status.",
         ]),
-        "--runtime must be one of: codex, kimi, reasonix",
+        "--runtime must be one of: codex, kimi, opencode, reasonix",
     );
 }

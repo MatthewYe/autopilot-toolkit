@@ -90,7 +90,7 @@ fn run() -> Result<(), String> {
 
 fn print_usage() {
     println!(
-        "Usage: distill start --json --runtime <codex|kimi|reasonix> --session-id <id> --worktree <path> (--requirement <text>|--intake-json <json>)\n       distill submit-evidence --json --worktree <path> --run-id <id> --session-id <id> --expected-revision <n> --stage <stage> --evidence <json>\n       distill set-project-quota --json --worktree <path> --bytes <n>\n       distill purge --json --user-authorized --worktree <path> --run-id <id> --session-id <id> --expected-revision <n>\n       distill abort --json --user-authorized --worktree <path> --run-id <id> --session-id <id> --expected-revision <n> --reason <reason>\n       distill inspect --json --worktree <path> --run-id <id> --session-id <id> --expected-revision <n>"
+        "Usage: distill start --json --runtime <codex|kimi|opencode|reasonix> --session-id <id> --worktree <path> (--requirement <text>|--intake-json <json>)\n       distill submit-evidence --json --worktree <path> --run-id <id> --session-id <id> --expected-revision <n> --stage <stage> --evidence <json>\n       distill set-project-quota --json --worktree <path> --bytes <n>\n       distill purge --json --user-authorized --worktree <path> --run-id <id> --session-id <id> --expected-revision <n>\n       distill abort --json --user-authorized --worktree <path> --run-id <id> --session-id <id> --expected-revision <n> --reason <reason>\n       distill inspect --json --worktree <path> --run-id <id> --session-id <id> --expected-revision <n>"
     );
 }
 
