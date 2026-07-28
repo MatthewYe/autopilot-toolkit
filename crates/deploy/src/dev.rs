@@ -18,7 +18,7 @@ pub fn dev_all(
     codex_skills_dir: &Path,
     codex_agents_dir: &Path,
     opencode_skills_dir: &Path,
-    _opencode_agents_dir: &Path,
+    opencode_agents_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     println!("==> Syncing all skills from source tree...");
 
@@ -61,21 +61,33 @@ pub fn dev_all(
                     count += 1;
                 }
 
-                // opencode agent.md → opencode skills (subagent)
+                // opencode agent.md → ~/.opencode/agents/<name>.md
                 let opencode_agent_src = src_dir.join("opencode").join("agent.md");
                 if opencode_agent_src.is_file() {
                     sync_path(
                         &opencode_agent_src,
-                        &opencode_skills_dir.join(format!("{}.md", name)),
+                        &opencode_agents_dir.join(format!("{}.md", name)),
                         SyncKind::File,
                     )?;
                     count += 1;
                 }
+                // opencode INSTRUCTIONS.md → ~/.opencode/skills/<name>.md (command)
+                let opencode_instr_src = src_dir.join("opencode").join("SKILL.md");
+                if opencode_instr_src.is_file() && !opencode_agent_src.is_file() {
+                    sync_path(
+                        &opencode_instr_src,
+                        &opencode_skills_dir.join(format!("{}.md", name)),
+                        SyncKind::File,
+                    )?;
+                }
             } else {
                 sync_path(&src_dir, &shared_skills_dir.join(&name), SyncKind::Dir)?;
-                // opencode: also symlink agnostic skills
-                remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
-                sync_path(&src_dir, &opencode_skills_dir.join(&name), SyncKind::Dir)?;
+                // opencode: flat .md symlink for command discovery
+                let skill_md = src_dir.join("SKILL.md");
+                if skill_md.is_file() {
+                    remove_project_symlink(&opencode_skills_dir.join(format!("{}.md", &name)), project_root)?;
+                    sync_path(&skill_md, &opencode_skills_dir.join(format!("{}.md", name)), SyncKind::File)?;
+                }
                 count += 1;
             }
         }
@@ -94,8 +106,11 @@ pub fn dev_all(
                         .join(src_parent);
                     if src_dir.is_dir() {
                         sync_path(&src_dir, &shared_skills_dir.join(&skill.name), SyncKind::Dir)?;
-                        remove_project_symlink(&opencode_skills_dir.join(&skill.name), project_root)?;
-                        sync_path(&src_dir, &opencode_skills_dir.join(&skill.name), SyncKind::Dir)?;
+                        let skill_md = src_dir.join("SKILL.md");
+                        if skill_md.is_file() {
+                            remove_project_symlink(&opencode_skills_dir.join(format!("{}.md", &skill.name)), project_root)?;
+                            sync_path(&skill_md, &opencode_skills_dir.join(format!("{}.md", skill.name)), SyncKind::File)?;
+                        }
                         count += 1;
                     } else {
                         eprintln!(
@@ -126,7 +141,7 @@ pub fn dev_clean(
     codex_skills_dir: &Path,
     codex_agents_dir: &Path,
     opencode_skills_dir: &Path,
-    _opencode_agents_dir: &Path,
+    opencode_agents_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     println!("==> Removing all dev symlinks...");
     let mut removed = 0u32;
@@ -155,7 +170,7 @@ pub fn dev_clean(
         }
     }
 
-    for agents_dir in &[codex_agents_dir, _opencode_agents_dir] {
+    for agents_dir in &[codex_agents_dir, opencode_agents_dir] {
         if !agents_dir.is_dir() {
             continue;
         }
