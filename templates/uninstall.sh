@@ -86,9 +86,29 @@ if [[ -d "${CODEX_AGENTS}" ]]; then
     done
 fi
 
-# 5. Remove OpenCode agent.md symlinks
+# 5. Remove OpenCode command wrappers + agent symlinks
 if [[ -d "${OPENCODE_SKILLS}" ]]; then
     for entry in "${OPENCODE_SKILLS}"/*.md; do
+        [[ -f "${entry}" ]] || continue
+        if [[ -L "${entry}" ]]; then
+            target="$(readlink "${entry}" 2>/dev/null || true)"
+            if [[ "${target}" == "${SKILLS_DIR}"/* ]]; then
+                rm -f "${entry}"
+                REMOVED=$((REMOVED + 1))
+            fi
+        fi
+    done
+fi
+local OPC_CMDS="${HOME}/.opencode/commands"
+if [[ -d "${OPC_CMDS}" ]]; then
+    for entry in "${OPC_CMDS}"/*.md; do
+        [[ -f "${entry}" ]] || continue
+        rm -f "${entry}"
+        REMOVED=$((REMOVED + 1))
+    done
+fi
+if [[ -d "${OPENCODE_AGENTS}" ]]; then
+    for entry in "${OPENCODE_AGENTS}"/*.md; do
         [[ -f "${entry}" ]] || continue
         if [[ -L "${entry}" ]]; then
             target="$(readlink "${entry}" 2>/dev/null || true)"

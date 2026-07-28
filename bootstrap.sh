@@ -24,6 +24,47 @@ deploy_flat_link() {
     fi
 }
 
+# ── write_command_wrapper ───────────────────────────────────────────────────
+# Generate a lightweight opencode command .md with frontmatter from the
+# canonical skill, then instruct the model to read the full skill body.
+write_command_wrapper() {
+    local out="$1" name="$2" src="$3"
+
+    # Extract name + description from source frontmatter
+    local fm_name="" fm_desc=""
+    local in_fm=0
+    while IFS= read -r line; do
+        [[ "${line}" == "---" ]] && { in_fm=$((in_fm + 1)); continue; }
+        [[ ${in_fm} -ge 2 ]] && break
+        [[ ${in_fm} -eq 1 ]] || continue
+        case "${line}" in
+            "name:"*)   fm_name="${line#name: }"; fm_name="${fm_name#\"}"; fm_name="${fm_name%\"}" ;;
+            "description:"*) fm_desc="${line#description: }"; fm_desc="${fm_desc#\"}"; fm_desc="${fm_desc%\"}" ;;
+        esac
+    done < "${src}"
+
+    [[ -z "${fm_name}" ]] && fm_name="${name}"
+    [[ -z "${fm_desc}" ]] && fm_desc="See ${SSOT}/${name}/SKILL.md for details"
+
+    local ssot_path="${SSOT}/${name}"
+    # Determine the canonical source to read
+    local read_path="${ssot_path}"
+    [[ -f "${ssot_path}/runtime/opencode/INSTRUCTIONS.md" ]] && read_path="${ssot_path}/runtime/opencode/INSTRUCTIONS.md"
+    [[ -f "${ssot_path}/SKILL.md" ]] && read_path="${ssot_path}/SKILL.md"
+
+    cat > "${out}" <<WRAPPER
+---
+name: ${fm_name}
+description: ${fm_desc}
+---
+
+You are running the **${fm_name}** skill.
+
+1. Read the full skill definition from \`${read_path}\`.
+2. Follow only that file's instructions. Do not load another runtime's variant.
+WRAPPER
+}
+
 usage() {
     cat <<EOF
 Usage: bootstrap.sh --target <runtime>
@@ -120,12 +161,12 @@ for existing_link in "${TARGET_SKILLS_DIR}"/*; do
 done
 
 # ── opencode agent + command deployment ────────────────────────────────────
-# OpenCode loads subagent definitions from ~/.opencode/agents/*.md
-# and slash commands from ~/.opencode/commands/*.md (or ~/.opencode/skills/).
+# OpenCode: subagents → ~/.opencode/agents/<name>.md (symlinked)
+#           commands   → ~/.opencode/commands/<name>.md (wrapped)
 
 if [[ "${TARGET}" == "opencode" ]]; then
     OPC_AGENTS_DIR="${OPENCODE_AGENTS_DIR:-${HOME}/.opencode/agents}"
-    OPC_COMMANDS_DIR="${OPENCODE_SKILLS_DIR:-${HOME}/.opencode/skills}"
+    OPC_COMMANDS_DIR="${HOME}/.opencode/commands"
     EXPECTED_AGENT_MD=""
     EXPECTED_CMD_MD=""
 
@@ -143,17 +184,21 @@ if [[ "${TARGET}" == "opencode" ]]; then
             deploy_flat_link "${agent_link}" "${agent_src}" "${SSOT}"
         fi
 
-        # ── slash command → ~/.opencode/skills/<name>.md ──
-        cmd_src=""
+        # ── command wrapper → ~/.opencode/commands/<name>.md ──
         if [[ -f "${instr_src}" && ! -f "${agent_src}" ]]; then
             cmd_src="${instr_src}"
         elif [[ -f "${skill_src}" && ! -f "${agent_src}" ]]; then
             cmd_src="${skill_src}"
+        else
+            cmd_src=""
         fi
         if [[ -n "${cmd_src}" ]]; then
+            mkdir -p "${OPC_COMMANDS_DIR}"
             cmd_link="${OPC_COMMANDS_DIR}/${skill_name}.md"
             EXPECTED_CMD_MD="${EXPECTED_CMD_MD}${skill_name}.md"$'\n'
-            deploy_flat_link "${cmd_link}" "${cmd_src}" "${SSOT}"
+            # Generate wrapper: extract name + description from source, then
+            # instruct the model to read the full skill body from SSOT.
+            write_command_wrapper "${cmd_link}" "${skill_name}" "${cmd_src}"
         fi
     done
 
@@ -171,16 +216,13 @@ if [[ "${TARGET}" == "opencode" ]]; then
         done
     fi
 
-    # Clean up stale command files
+    # Clean up stale command wrappers
     if [[ -d "${OPC_COMMANDS_DIR}" ]]; then
         for cf in "${OPC_COMMANDS_DIR}"/*.md; do
             [[ -f "${cf}" ]] || continue
             cn="$(basename "${cf}")"
             if ! echo "${EXPECTED_CMD_MD}" | grep -qxF "${cn}"; then
-                if [[ -L "${cf}" ]]; then
-                    rt="$(readlink "${cf}")"
-                    case "${rt}" in "${SSOT}"/*) rm -f "${cf}";; esac
-                fi
+                rm -f "${cf}"
             fi
         done
     fi
