@@ -44,12 +44,20 @@ pub fn dev_all(
                 remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
                 count += 1;
 
-                // opencode discovers skills from its own dir — symlink router
-                sync_path(
-                    &dev_staging,
-                    &opencode_skills_dir.join(&name),
-                    SyncKind::Dir,
-                )?;
+                // opencode discovers *.md files only — symlink runtime-specific source
+                let opencode_md = src_dir.join("opencode").join("agent.md");
+                let opencode_src = if opencode_md.is_file() {
+                    opencode_md
+                } else {
+                    src_dir.join("opencode").join("SKILL.md")
+                };
+                if opencode_src.is_file() {
+                    sync_path(
+                        &opencode_src,
+                        &opencode_skills_dir.join(format!("{}.md", name)),
+                        SyncKind::File,
+                    )?;
+                }
 
                 if codex_agent {
                     let agent_src = src_dir.join("codex").join("agent.toml");
@@ -60,22 +68,14 @@ pub fn dev_all(
                     )?;
                     count += 1;
                 }
-
-                // opencode agent.md → opencode skills (subagent)
-                let opencode_agent_src = src_dir.join("opencode").join("agent.md");
-                if opencode_agent_src.is_file() {
-                    sync_path(
-                        &opencode_agent_src,
-                        &opencode_skills_dir.join(format!("{}.md", name)),
-                        SyncKind::File,
-                    )?;
-                    count += 1;
-                }
             } else {
                 sync_path(&src_dir, &shared_skills_dir.join(&name), SyncKind::Dir)?;
-                // opencode: also symlink agnostic skills
-                remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
-                sync_path(&src_dir, &opencode_skills_dir.join(&name), SyncKind::Dir)?;
+                // opencode: symlink SKILL.md as flat .md file
+                let skill_md = src_dir.join("SKILL.md");
+                if skill_md.is_file() {
+                    remove_project_symlink(&opencode_skills_dir.join(format!("{}.md", &name)), project_root)?;
+                    sync_path(&skill_md, &opencode_skills_dir.join(format!("{}.md", name)), SyncKind::File)?;
+                }
                 count += 1;
             }
         }
@@ -94,8 +94,11 @@ pub fn dev_all(
                         .join(src_parent);
                     if src_dir.is_dir() {
                         sync_path(&src_dir, &shared_skills_dir.join(&skill.name), SyncKind::Dir)?;
-                        remove_project_symlink(&opencode_skills_dir.join(&skill.name), project_root)?;
-                        sync_path(&src_dir, &opencode_skills_dir.join(&skill.name), SyncKind::Dir)?;
+                        let skill_md = src_dir.join("SKILL.md");
+                        if skill_md.is_file() {
+                            remove_project_symlink(&opencode_skills_dir.join(format!("{}.md", &skill.name)), project_root)?;
+                            sync_path(&skill_md, &opencode_skills_dir.join(format!("{}.md", skill.name)), SyncKind::File)?;
+                        }
                         count += 1;
                     } else {
                         eprintln!(
