@@ -1088,12 +1088,12 @@ fn github_rejects_dependency_edges_that_contradict_blocked_by_body() {
             "issues",
             &evidence,
         ),
-        "must declare exactly '- None — can start immediately.'",
+        "must declare the no-blocker sentinel",
     );
 }
 
 #[test]
-fn github_accepts_blocked_by_references_to_confirmed_issue_numbers() {
+fn github_accepts_semantic_blocker_sets_with_tracker_references() {
     let tmp = tempfile::tempdir().unwrap();
     let worktree = tmp.path();
     write_github_tracker_config(worktree);
@@ -1109,6 +1109,14 @@ fn github_accepts_blocked_by_references_to_confirmed_issue_numbers() {
     ));
     let issues_revision = after_prd["revision"].as_u64().unwrap();
     let mut evidence = github_issue_evidence(&run_id, issues_revision);
+    let first_body = evidence["issues"][0]["body"].as_str().unwrap().replace(
+        "None — can start immediately.",
+        "None — can start immediately",
+    );
+    let first_hash = format!("{:x}", Sha256::digest(first_body.as_bytes()));
+    evidence["issues"][0]["body"] = json!(first_body);
+    evidence["issues"][0]["external_publication"]["payload_hash"] = json!(first_hash);
+
     let body = evidence["issues"][1]["body"]
         .as_str()
         .unwrap()
@@ -1116,6 +1124,22 @@ fn github_accepts_blocked_by_references_to_confirmed_issue_numbers() {
     let payload_hash = format!("{:x}", Sha256::digest(body.as_bytes()));
     evidence["issues"][1]["body"] = json!(body);
     evidence["issues"][1]["external_publication"]["payload_hash"] = json!(payload_hash);
+    let third_body = "## What to build\n\nBuild deployment.\n\n## Acceptance Criteria\n\n- [ ] Deployment works.\n\n## Blocked by\n\n- #61\n- #60\n";
+    let third_hash = format!("{:x}", Sha256::digest(third_body.as_bytes()));
+    evidence["issues"].as_array_mut().unwrap().push(json!({
+        "title": "Build deployment slice",
+        "body": third_body,
+        "depends_on": [0, 1],
+        "external_publication": {
+            "tracker": "github",
+            "repository": "matthewye/autopilot-toolkit",
+            "operation_id": format!("{run_id}-r{issues_revision}-issue-03"),
+            "payload_hash": third_hash,
+            "status": "confirmed",
+            "artifact_id": 62,
+            "artifact_url": "https://github.com/matthewye/autopilot-toolkit/issues/62"
+        }
+    }));
 
     let completed = json_success(submit_evidence(
         worktree,
@@ -1128,5 +1152,12 @@ fn github_accepts_blocked_by_references_to_confirmed_issue_numbers() {
     assert_eq!(
         completed["publications"]["issues"][1]["dependency_artifact_ids"][0],
         "github:matthewye/autopilot-toolkit#60"
+    );
+    assert_eq!(
+        completed["publications"]["issues"][2]["dependency_artifact_ids"],
+        json!([
+            "github:matthewye/autopilot-toolkit#60",
+            "github:matthewye/autopilot-toolkit#61"
+        ])
     );
 }

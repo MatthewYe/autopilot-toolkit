@@ -249,18 +249,36 @@ fn validate_issue_dependency_contracts(
                 )
             })?;
         if issue.depends_on.is_empty() {
-            if blocked_by != ["None — can start immediately."] {
+            let valid_no_blocker = match tracker {
+                TrackerKind::GitHub { .. } => {
+                    blocked_by.len() == 1
+                        && blocked_by[0].trim_end_matches('.') == "None — can start immediately"
+                }
+                _ => blocked_by == ["None — can start immediately."],
+            };
+            if !valid_no_blocker {
                 return Err(format!(
-                    "issue {:?} must declare exactly '- None — can start immediately.'",
+                    "issue {:?} must declare the no-blocker sentinel",
                     issue.title
                 ));
             }
-        } else if blocked_by.len() != issue.depends_on.len()
-            || blocked_by
-                .iter()
-                .zip(&issue.depends_on)
-                .any(|(entry, index)| !dependency_entry_matches(entry, &issues[*index], tracker))
-        {
+        } else {
+            let dependencies_match = match tracker {
+                TrackerKind::GitHub { .. } => {
+                    github_dependency_entries_match(&blocked_by, &issue.depends_on, issues, tracker)
+                }
+                _ => {
+                    let expected = issue
+                        .depends_on
+                        .iter()
+                        .map(|index| issues[*index].title.as_str())
+                        .collect::<Vec<_>>();
+                    blocked_by == expected
+                }
+            };
+            if dependencies_match {
+                continue;
+            }
             return Err(format!(
                 "issue {:?} Blocked by entries must match depends_on titles or confirmed tracker references",
                 issue.title
@@ -268,6 +286,52 @@ fn validate_issue_dependency_contracts(
         }
     }
     Ok(())
+}
+
+fn github_dependency_entries_match(
+    entries: &[&str],
+    dependency_indices: &[usize],
+    issues: &[IssuePayload],
+    tracker: &TrackerKind,
+) -> bool {
+    if entries.len() != dependency_indices.len() {
+        return false;
+    }
+    let mut candidates = entries
+        .iter()
+        .map(|entry| {
+            dependency_indices
+                .iter()
+                .enumerate()
+                .filter_map(|(position, index)| {
+                    dependency_entry_matches(entry, &issues[*index], tracker).then_some(position)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(Vec::len);
+    match_dependency_candidates(&candidates, 0, &mut vec![false; dependency_indices.len()])
+}
+
+fn match_dependency_candidates(
+    candidates: &[Vec<usize>],
+    entry_index: usize,
+    used_dependencies: &mut [bool],
+) -> bool {
+    if entry_index == candidates.len() {
+        return true;
+    }
+    for dependency in &candidates[entry_index] {
+        if used_dependencies[*dependency] {
+            continue;
+        }
+        used_dependencies[*dependency] = true;
+        if match_dependency_candidates(candidates, entry_index + 1, used_dependencies) {
+            return true;
+        }
+        used_dependencies[*dependency] = false;
+    }
+    false
 }
 
 fn dependency_entry_matches(entry: &str, dependency: &IssuePayload, tracker: &TrackerKind) -> bool {
