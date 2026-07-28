@@ -26,7 +26,7 @@ autopilot supports two issue sources. Determine the source from the explicit `ta
 - Require lower-case `key`, `title`, `type`, `status`, and `parent` frontmatter plus exact `## What to build`, `## Acceptance Criteria`, `## Blocked by`, and `## Comments` headings.
 - Update state by editing only the lower-case `status:` line in `issue_file`.
 - Extract the contract from `## What to build` and `## Acceptance Criteria` in the same file, and append comments to its existing `## Comments` section.
-- Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` are read-only compatibility inputs. Detect them explicitly; never require that directory shape for canonical flat files.
+- Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` remain compatibility inputs. Detect them explicitly, use `AGENT-BRIEF.md` as their contract, and preserve lifecycle writes in legacy `issue.md`; never require that directory shape for canonical flat files.
 
 ### GitHub Issue Mode
 
@@ -226,17 +226,19 @@ Maintain `retry_count = 0` for round tracking and suggestion matching. No hard r
 
 ### 更新状态（抽象）
 
-- Local: edit the canonical `status:` line in `issue_file`.
+- Local canonical: edit the canonical `status:` line in `issue_file`.
+- Local legacy: edit the `Status:` line in legacy `issue.md`.
 - GitHub: update labels through MCP or `gh issue edit`.
 
 ### 追加注释（抽象）
 
-- Local: append to `## Comments`.
+- Local canonical: append to `## Comments` in `issue_file`.
+- Local legacy: append to `## Comments` in legacy `issue.md`.
 - GitHub: add an issue comment through MCP or `gh issue comment`.
 
 ### 交叉 Issue Suggestion 匹配
 
-Before dispatching the implementer, check whether `.scratch/<feature>/suggestions.json` exists and contains entries with `status: "pending"`.
+Before dispatching the implementer, check whether `.scratch/<feature>/suggestions.json` exists and contains entries with `status: "pending"`. Match them against the current contract: the canonical `issue_file` body or legacy `AGENT-BRIEF.md`.
 
 Use the algorithm in `references/suggestion-matching.md`:
 
@@ -282,7 +284,8 @@ The task description must include:
 - `ROUND: <retry_count>`
 - On retry rounds, `PREV_REVIEW: <previous REVIEWER_REPORT>`
 - Matched `CROSS_ISSUE_SUGGESTIONS`, if any
-- Local mode: absolute issue directory path
+- Local canonical mode: canonical `issue_file` absolute path
+- Local legacy mode: legacy issue directory absolute path
 - GitHub mode: issue body and `IS_GITHUB: true`
 
 Wait for the implementer result and parse `IMPLEMENTER_REPORT:`.

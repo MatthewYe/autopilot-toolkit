@@ -120,6 +120,7 @@ pub(crate) fn publish_issues(
             .ok_or("canonical local ticket validation requires a published PRD path")?;
         validate_canonical_local_tickets(&issues, prd_path)?;
     }
+    validate_issue_dependency_contracts(&issues)?;
 
     let mut files = Vec::new();
     let mut publications = Vec::new();
@@ -204,7 +205,64 @@ fn local_feature_root_from_prd_state(state: &Value) -> Result<String, String> {
 fn validate_canonical_local_tickets(issues: &[IssuePayload], prd_path: &str) -> Result<(), String> {
     for (index, issue) in issues.iter().enumerate() {
         let key = format!("{:02}-{}", index + 1, slugify(&issue.title));
-        validate_canonical_local_ticket(issue, &key, prd_path, issues, index)?;
+        validate_canonical_local_ticket(issue, &key, prd_path)?;
+    }
+    Ok(())
+}
+
+fn validate_issue_dependency_contracts(issues: &[IssuePayload]) -> Result<(), String> {
+    for (issue_index, issue) in issues.iter().enumerate() {
+        let mut seen = BTreeSet::new();
+        for dependency in &issue.depends_on {
+            if *dependency >= issue_index {
+                return Err(format!(
+                    "issue {:?} dependencies must reference earlier issues",
+                    issue.title
+                ));
+            }
+            if !seen.insert(*dependency) {
+                return Err(format!(
+                    "issue {:?} repeats dependency index {dependency}",
+                    issue.title
+                ));
+            }
+        }
+
+        let normalized = issue.body.replace("\r\n", "\n");
+        let blocked_by = normalized
+            .split_once("## Blocked by")
+            .map(|(_, rest)| {
+                rest.lines()
+                    .take_while(|line| !line.starts_with("## "))
+                    .filter_map(|line| line.trim().strip_prefix("- "))
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .ok_or_else(|| {
+                format!(
+                    "issue {:?} must include a ## Blocked by section",
+                    issue.title
+                )
+            })?;
+        let expected_dependencies = issue
+            .depends_on
+            .iter()
+            .map(|index| issues[*index].title.as_str())
+            .collect::<Vec<_>>();
+        if expected_dependencies.is_empty() {
+            if blocked_by != ["None — can start immediately."] {
+                return Err(format!(
+                    "issue {:?} must declare exactly '- None — can start immediately.'",
+                    issue.title
+                ));
+            }
+        } else if blocked_by != expected_dependencies {
+            return Err(format!(
+                "issue {:?} Blocked by entries must exactly match depends_on titles",
+                issue.title
+            ));
+        }
     }
     Ok(())
 }
@@ -213,8 +271,6 @@ fn validate_canonical_local_ticket(
     issue: &IssuePayload,
     expected_key: &str,
     expected_parent: &str,
-    issues: &[IssuePayload],
-    issue_index: usize,
 ) -> Result<(), String> {
     let normalized = issue.body.replace("\r\n", "\n");
     let Some((frontmatter, body)) = normalized
@@ -274,56 +330,6 @@ fn validate_canonical_local_ticket(
         ));
     }
 
-    let blocked_by = body
-        .split_once("## Blocked by")
-        .and_then(|(_, rest)| rest.split_once("## Comments"))
-        .map(|(section, _)| {
-            section
-                .lines()
-                .filter_map(|line| line.trim().strip_prefix("- "))
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .ok_or_else(|| {
-            format!(
-                "canonical local ticket {:?} has an invalid Blocked by section",
-                issue.title
-            )
-        })?;
-    let mut seen = BTreeSet::new();
-    for dependency in &issue.depends_on {
-        if *dependency >= issue_index {
-            return Err(format!(
-                "canonical local ticket {:?} dependencies must reference earlier issues",
-                issue.title
-            ));
-        }
-        if !seen.insert(*dependency) {
-            return Err(format!(
-                "canonical local ticket {:?} repeats dependency index {dependency}",
-                issue.title
-            ));
-        }
-    }
-    let expected_dependencies = issue
-        .depends_on
-        .iter()
-        .map(|index| issues[*index].title.as_str())
-        .collect::<Vec<_>>();
-    if expected_dependencies.is_empty() {
-        if blocked_by != ["None — can start immediately."] {
-            return Err(format!(
-                "canonical local ticket {:?} must declare exactly '- None — can start immediately.'",
-                issue.title
-            ));
-        }
-    } else if blocked_by != expected_dependencies {
-        return Err(format!(
-            "canonical local ticket {:?} Blocked by entries must exactly match depends_on titles",
-            issue.title
-        ));
-    }
     Ok(())
 }
 

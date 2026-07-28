@@ -37,7 +37,7 @@ autopilot 支持两种 issue 来源。根据 `target` 参数或扫描结果判�
 - canonical issue 是 `.scratch/<feature>/issues/<NN-slug>.md` flat file；将选中路径保存为 `issue_file`。
 - 要求 lower-case `key`、`title`、`type`、`status`、`parent` frontmatter，以及精确的 `## What to build`、`## Acceptance Criteria`、`## Blocked by`、`## Comments` 标题。
 - 只修改 `issue_file` 中 lower-case `status:` 行；从同一文件提取 What to build 与 Acceptance Criteria 作为合约，并把评论追加到既有 Comments 节。
-- Legacy issue directories（`issue.md` + `AGENT-BRIEF.md`）仅作为只读兼容输入；canonical flat file 不得被要求具有旧目录结构。
+- Legacy issue directories（`issue.md` + `AGENT-BRIEF.md`）继续作为兼容输入：使用 `AGENT-BRIEF.md` 作为 contract，并在 legacy `issue.md` 中执行生命周期写入；canonical flat file 不得被要求具有旧目录结构。
 
 ### GitHub Issue 模式
 
@@ -240,17 +240,19 @@ orchestrator 裁量前对照下表，排除偷懒判断：
 
 ### 更新状态（抽象）
 
-- **local**: `Edit` 工具修改 canonical `issue_file` 的 `status:` 行
+- **local canonical**: `Edit` 工具修改 canonical `issue_file` 的 `status:` 行
+- **local legacy**: `Edit` 工具修改 legacy `issue.md` 的 `Status:` 行
 - **github**: `gh issue edit <N> --add-label "<新>" --remove-label "<旧>"`
 
 ### 追加注释（抽象）
 
-- **local**: 在 canonical `issue_file` 的 `## Comments` 节末尾添加条目
+- **local canonical**: 在 canonical `issue_file` 的 `## Comments` 节末尾添加条目
+- **local legacy**: 在 legacy `issue.md` 的 `## Comments` 节末尾添加条目
 - **github**: `gh issue comment <N> --body "<时间戳> autopilot: <内容>"`
 
 ### 交叉 Issue Suggestion 匹配
 
-dispatch implementer 前，若 `.scratch/<feature>/suggestions.json` 存在且有 `status: "pending"` 条目，按 `references/suggestion-matching.md` 中的算法匹配到当前 issue 的 AGENT-BRIEF。匹配到的条目组装为 `CROSS_ISSUE_SUGGESTIONS` 传入 implementer；否则跳过。
+dispatch implementer 前，若 `.scratch/<feature>/suggestions.json` 存在且有 `status: "pending"` 条目，按 `references/suggestion-matching.md` 中的算法匹配当前 contract：canonical `issue_file` body 或 legacy `AGENT-BRIEF.md`。匹配到的条目组装为 `CROSS_ISSUE_SUGGESTIONS` 传入 implementer；否则跳过。
 
 ### 执行 implementer
 
@@ -286,7 +288,8 @@ dispatch implementer 前，检测项目的工具链是否可用：
   - 首次（retry_count = 0）：`ROUND: 0`
   - retry（retry_count >= 1）：`ROUND: <retry_count>` + `PREV_REVIEW: <上一轮 REVIEWER_REPORT 全文>`
   - 如有匹配到的 CROSS_ISSUE_SUGGESTIONS，一并传入
-- **本地模式**：额外传 issue 目录绝对路径
+- **本地 canonical 模式**：额外传 canonical `issue_file` 绝对路径
+- **本地 legacy 模式**：额外传 legacy issue 目录绝对路径
 - **GitHub 模式**：额外传 issue body（含 AC）+ `IS_GITHUB: true`
 
 等待 implementer 回复，解析 `IMPLEMENTER_REPORT:`。

@@ -1059,3 +1059,35 @@ fn github_issue_receipts_preserve_confirmed_dependency_artifact_ids() {
     );
     assert!(!worktree.join(".scratch/distill-tracer/issues").exists());
 }
+
+#[test]
+fn github_rejects_dependency_edges_that_contradict_blocked_by_body() {
+    let tmp = tempfile::tempdir().unwrap();
+    let worktree = tmp.path();
+    write_github_tracker_config(worktree);
+    let session = "session-github-dependency-contradiction";
+    let (run_id, prd_revision) = reach_prd_stage(worktree, session);
+    let after_prd = json_success(submit_evidence(
+        worktree,
+        &run_id,
+        session,
+        prd_revision,
+        "prd",
+        &github_prd_evidence(&format!("{run_id}-r{prd_revision}-prd"), 70, "confirmed"),
+    ));
+    let issues_revision = after_prd["revision"].as_u64().unwrap();
+    let mut evidence = github_issue_evidence(&run_id, issues_revision);
+    evidence["issues"][1]["depends_on"] = json!([]);
+
+    assert_error_contains(
+        submit_evidence(
+            worktree,
+            &run_id,
+            session,
+            issues_revision,
+            "issues",
+            &evidence,
+        ),
+        "must declare exactly '- None — can start immediately.'",
+    );
+}

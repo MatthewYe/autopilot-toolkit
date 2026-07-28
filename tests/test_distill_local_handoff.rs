@@ -109,6 +109,22 @@ mod tests {
                 skill.contains("## Acceptance Criteria"),
                 "{path} must extract the exact canonical Acceptance Criteria heading"
             );
+            assert!(
+                skill.contains("canonical `issue_file` body")
+                    || skill.contains("canonical issue_file body"),
+                "{path} must match suggestions against the canonical flat ticket body"
+            );
+            assert!(
+                !skill.contains("Local mode: absolute issue directory path")
+                    && !skill.contains("本地模式：额外传 issue 目录绝对路径")
+                    && !skill.contains("本地模式**：额外传 issue 目录绝对路径"),
+                "{path} must not require a directory path for canonical flat tickets"
+            );
+            assert!(
+                skill.contains("legacy `issue.md`")
+                    || skill.contains("legacy issue.md"),
+                "{path} must preserve lifecycle writes for legacy directory inputs"
+            );
         }
     }
 

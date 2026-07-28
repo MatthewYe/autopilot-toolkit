@@ -34,7 +34,7 @@ autopilot supports two issue sources. Determine which based on the `target` para
 - Require lower-case `key`, `title`, `type`, `status`, and `parent` frontmatter plus exact `## What to build`, `## Acceptance Criteria`, `## Blocked by`, and `## Comments` headings.
 - Update state by editing only the lower-case `status:` line in `issue_file`.
 - Extract the contract from `## What to build` and `## Acceptance Criteria` in the same file, and append comments to its existing `## Comments` section.
-- Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` are read-only compatibility inputs. Detect them explicitly; never require that directory shape for canonical flat files.
+- Legacy issue directories containing `issue.md` plus `AGENT-BRIEF.md` remain compatibility inputs. Detect them explicitly, use `AGENT-BRIEF.md` as their contract, and preserve lifecycle writes in legacy `issue.md`; never require that directory shape for canonical flat files.
 
 ### GitHub Issue mode
 
@@ -240,17 +240,19 @@ Maintain `retry_count = 0` for round tracking and suggestion matching. No hard r
 
 ### Update status (abstract)
 
-- **local**: edit the canonical `status:` line in `issue_file`
+- **local canonical**: edit the canonical `status:` line in `issue_file`
+- **local legacy**: edit the `Status:` line in legacy `issue.md`
 - **github**: `gh issue edit <N> --add-label "<new>" --remove-label "<old>"`
 
 ### Append comment (abstract)
 
-- **local**: append the entry to the `## Comments` section in `issue_file`
+- **local canonical**: append the entry to the `## Comments` section in `issue_file`
+- **local legacy**: append the entry to the `## Comments` section in legacy `issue.md`
 - **github**: `gh issue comment <N> --body "<timestamp> autopilot: <content>"`
 
 ### Cross-issue Suggestion matching
 
-Before dispatching implementer, if `.scratch/<feature>/suggestions.json` exists and has `status: "pending"` entries, match against the current issue's AGENT-BRIEF using the algorithm in `references/suggestion-matching.md`. Pass matched entries as `CROSS_ISSUE_SUGGESTIONS` to implementer; otherwise skip.
+Before dispatching implementer, if `.scratch/<feature>/suggestions.json` exists and has `status: "pending"` entries, match against the current contract: the canonical `issue_file` body or legacy `AGENT-BRIEF.md`. Use the algorithm in `references/suggestion-matching.md`. Pass matched entries as `CROSS_ISSUE_SUGGESTIONS` to implementer; otherwise skip.
 
 ### Execute implementer
 
@@ -288,7 +290,8 @@ Task description conveys:
   - First run (retry_count = 0): `ROUND: 0`
   - Retry (retry_count >= 1): `ROUND: <retry_count>` + `PREV_REVIEW: <full text of previous REVIEWER_REPORT>`
   - If matched CROSS_ISSUE_SUGGESTIONS exist, include them.
-- **Local mode**: additionally pass the issue directory absolute path.
+- **Local canonical mode**: additionally pass the canonical `issue_file` absolute path.
+- **Local legacy mode**: additionally pass the legacy issue directory absolute path.
 - **GitHub mode**: additionally pass issue body (with AC) + `IS_GITHUB: true`.
 
 Wait for implementer response, parse `IMPLEMENTER_REPORT:`.
