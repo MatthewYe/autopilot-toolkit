@@ -99,64 +99,43 @@ for existing_link in "${TARGET_SKILLS_DIR}"/*; do
     esac
 done
 
-# ── opencode flat skill symlinks ───────────────────────────────────────────
-# OpenCode discovers skills from ~/.opencode/skills/ flat *.md files only
-# (directory-based skills require a plugin.json). Create per-skill .md
-# symlinks pointing to the runtime-appropriate source:
-#   - agent.md  for subagent skills (implementer, reviewer)
-#   - INSTRUCTIONS.md for coupled skills (orchestrator, distill, audit)
-#   - SKILL.md   for agnostic/upstream skills
+# ── opencode skill symlinks ───────────────────────────────────────────────
+# OpenCode discovers skills from ~/.opencode/skills/ only. Symlink every
+# skill directory from SSOT so slash commands resolve for all skills
+# (upstream, agnostic, and coupled routers).
 
 if [[ "${TARGET}" == "opencode" ]]; then
-    EXPECTED_MD=""  # newline-separated list of expected .md names
-
+    EXPECTED_SKILLS=""  # newline-separated list of expected skill names
     for skill_dir in "${SSOT}"/*/; do
         skill_name="$(basename "${skill_dir}")"
-
-        # Determine the correct source for this skill
-        agent_src="${skill_dir}runtime/opencode/agent.md"
-        instr_src="${skill_dir}runtime/opencode/INSTRUCTIONS.md"
-        skill_src="${skill_dir}SKILL.md"
-        src=""
-
-        if [[ -f "${agent_src}" ]]; then
-            src="${agent_src}"
-        elif [[ -f "${instr_src}" ]]; then
-            src="${instr_src}"
-        elif [[ -f "${skill_src}" ]]; then
-            src="${skill_src}"
-        else
+        skill_link="${TARGET_SKILLS_DIR}/${skill_name}"
+        EXPECTED_SKILLS="${EXPECTED_SKILLS}${skill_name}"$'\n'
+        # Allow user overrides: skip if a real directory exists (not symlink)
+        if [[ -d "${skill_link}" && ! -L "${skill_link}" ]]; then
+            echo "  Skipping ${skill_name}: user-owned real directory exists"
             continue
         fi
-
-        md_link="${TARGET_SKILLS_DIR}/${skill_name}.md"
-        EXPECTED_MD="${EXPECTED_MD}${skill_name}.md"$'\n'
-
-        if [[ -f "${md_link}" && ! -L "${md_link}" ]]; then
-            echo "  Skipping ${skill_name}.md: user-owned real file exists"
-            continue
-        fi
-        if [[ -L "${md_link}" ]]; then
-            existing_target="$(readlink "${md_link}")"
-            if [[ "${existing_target}" != "${src}" ]]; then
-                rm -f "${md_link}"
+        if [[ -L "${skill_link}" ]]; then
+            existing_target="$(readlink "${skill_link}")"
+            if [[ "${existing_target}" != "${skill_dir}" ]]; then
+                rm -f "${skill_link}"
             fi
         fi
-        if [[ ! -e "${md_link}" ]]; then
-            ln -sf "${src}" "${md_link}"
+        if [[ ! -e "${skill_link}" ]]; then
+            ln -sf "${skill_dir}" "${skill_link}"
         fi
     done
 
-    # Clean up stale .md symlinks
-    for md_file in "${TARGET_SKILLS_DIR}"/*.md; do
-        md_name="$(basename "${md_file}")"
-        if ! echo "${EXPECTED_MD}" | grep -qxF "${md_name}"; then
-            if [[ -L "${md_file}" ]]; then
-                existing_target="$(readlink "${md_file}")"
+    # Clean up stale skill symlinks
+    for skill_entry in "${TARGET_SKILLS_DIR}"/*/; do
+        entry_name="$(basename "${skill_entry}")"
+        if ! echo "${EXPECTED_SKILLS}" | grep -qxF "${entry_name}"; then
+            if [[ -L "${skill_entry}" ]]; then
+                existing_target="$(readlink "${skill_entry}")"
                 case "${existing_target}" in
                     "${SSOT}"/*)
-                        echo "  Removing stale skill symlink: ${md_file}"
-                        rm -f "${md_file}"
+                        echo "  Removing stale skill symlink: ${skill_entry}"
+                        rm -f "${skill_entry}"
                         ;;
                 esac
             fi
@@ -196,6 +175,53 @@ if [[ "${TARGET}" == "codex" ]]; then
 
     # Clean up stale agent.toml symlinks
     for agent_file in "${TARGET_AGENTS_DIR}"/*.toml; do
+        agent_name="$(basename "${agent_file}")"
+        if ! echo "${EXPECTED_AGENTS}" | grep -qxF "${agent_name}"; then
+            if [[ -L "${agent_file}" ]]; then
+                existing_target="$(readlink "${agent_file}")"
+                case "${existing_target}" in
+                    "${SSOT}"/*)
+                        echo "  Removing stale agent symlink: ${agent_file}"
+                        rm -f "${agent_file}"
+                        ;;
+                esac
+            fi
+        fi
+    done
+fi
+
+# ── opencode agent.md deployment ──────────────────────────────────────────
+
+if [[ "${TARGET}" == "opencode" ]]; then
+    EXPECTED_AGENTS=""  # newline-separated list of expected agent.md names
+    mkdir -p "${TARGET_SKILLS_DIR}"
+
+    for skill_dir in "${SSOT}"/*/; do
+        skill_name="$(basename "${skill_dir}")"
+        agent_md="${skill_dir}runtime/opencode/agent.md"
+
+        if [[ -f "${agent_md}" ]]; then
+            agent_link="${TARGET_SKILLS_DIR}/${skill_name}.md"
+            EXPECTED_AGENTS="${EXPECTED_AGENTS}${skill_name}.md"$'\n'
+
+            if [[ -L "${agent_link}" ]]; then
+                existing_target="$(readlink "${agent_link}")"
+                if [[ "${existing_target}" != "${agent_md}" ]]; then
+                    rm -f "${agent_link}"
+                fi
+            elif [[ -e "${agent_link}" ]]; then
+                echo "  WARNING: ${agent_link} exists as a real file, skipping"
+                continue
+            fi
+
+            if [[ ! -e "${agent_link}" ]]; then
+                ln -sf "${agent_md}" "${agent_link}"
+            fi
+        fi
+    done
+
+    # Clean up stale agent.md symlinks
+    for agent_file in "${TARGET_SKILLS_DIR}"/*.md; do
         agent_name="$(basename "${agent_file}")"
         if ! echo "${EXPECTED_AGENTS}" | grep -qxF "${agent_name}"; then
             if [[ -L "${agent_file}" ]]; then
