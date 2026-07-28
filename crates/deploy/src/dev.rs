@@ -44,6 +44,13 @@ pub fn dev_all(
                 remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
                 count += 1;
 
+                // opencode discovers skills from its own dir — symlink router
+                sync_path(
+                    &dev_staging,
+                    &opencode_skills_dir.join(&name),
+                    SyncKind::Dir,
+                )?;
+
                 if codex_agent {
                     let agent_src = src_dir.join("codex").join("agent.toml");
                     sync_path(
@@ -66,6 +73,9 @@ pub fn dev_all(
                 }
             } else {
                 sync_path(&src_dir, &shared_skills_dir.join(&name), SyncKind::Dir)?;
+                // opencode: also symlink agnostic skills
+                remove_project_symlink(&opencode_skills_dir.join(&name), project_root)?;
+                sync_path(&src_dir, &opencode_skills_dir.join(&name), SyncKind::Dir)?;
                 count += 1;
             }
         }
@@ -84,6 +94,8 @@ pub fn dev_all(
                         .join(src_parent);
                     if src_dir.is_dir() {
                         sync_path(&src_dir, &shared_skills_dir.join(&skill.name), SyncKind::Dir)?;
+                        remove_project_symlink(&opencode_skills_dir.join(&skill.name), project_root)?;
+                        sync_path(&src_dir, &opencode_skills_dir.join(&skill.name), SyncKind::Dir)?;
                         count += 1;
                     } else {
                         eprintln!(

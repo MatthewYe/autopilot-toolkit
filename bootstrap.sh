@@ -99,6 +99,50 @@ for existing_link in "${TARGET_SKILLS_DIR}"/*; do
     esac
 done
 
+# ── opencode skill symlinks ───────────────────────────────────────────────
+# OpenCode discovers skills from ~/.opencode/skills/ only. Symlink every
+# skill directory from SSOT so slash commands resolve for all skills
+# (upstream, agnostic, and coupled routers).
+
+if [[ "${TARGET}" == "opencode" ]]; then
+    EXPECTED_SKILLS=""  # newline-separated list of expected skill names
+    for skill_dir in "${SSOT}"/*/; do
+        skill_name="$(basename "${skill_dir}")"
+        skill_link="${TARGET_SKILLS_DIR}/${skill_name}"
+        EXPECTED_SKILLS="${EXPECTED_SKILLS}${skill_name}"$'\n'
+        # Allow user overrides: skip if a real directory exists (not symlink)
+        if [[ -d "${skill_link}" && ! -L "${skill_link}" ]]; then
+            echo "  Skipping ${skill_name}: user-owned real directory exists"
+            continue
+        fi
+        if [[ -L "${skill_link}" ]]; then
+            existing_target="$(readlink "${skill_link}")"
+            if [[ "${existing_target}" != "${skill_dir}" ]]; then
+                rm -f "${skill_link}"
+            fi
+        fi
+        if [[ ! -e "${skill_link}" ]]; then
+            ln -sf "${skill_dir}" "${skill_link}"
+        fi
+    done
+
+    # Clean up stale skill symlinks
+    for skill_entry in "${TARGET_SKILLS_DIR}"/*/; do
+        entry_name="$(basename "${skill_entry}")"
+        if ! echo "${EXPECTED_SKILLS}" | grep -qxF "${entry_name}"; then
+            if [[ -L "${skill_entry}" ]]; then
+                existing_target="$(readlink "${skill_entry}")"
+                case "${existing_target}" in
+                    "${SSOT}"/*)
+                        echo "  Removing stale skill symlink: ${skill_entry}"
+                        rm -f "${skill_entry}"
+                        ;;
+                esac
+            fi
+        fi
+    done
+fi
+
 # ── codex agent.toml deployment ──────────────────────────────────────────
 
 if [[ "${TARGET}" == "codex" ]]; then
