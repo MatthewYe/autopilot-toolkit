@@ -508,7 +508,10 @@ mod tests {
             "grilling",
             "handoff",
             "teach",
-            "writing-great-skills",
+            "to-questionnaire",
+            "wait-what",
+            "wizard",
+            "writing-for-agents",
         ];
         for name in upstream_expected {
             assert!(
