@@ -8,7 +8,11 @@ use super::distill::distill_artifacts_command;
 use super::pack::{get_repo_slug, get_version, pack_command};
 
 /// Pack + push to GitHub Releases.
-pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
+///
+/// When `skip_distill_build` is true, the Distill CLI build is skipped and the
+/// prebuilt artifacts under `dist/distill/` are used as-is (CI matrix builds
+/// stage them per platform beforehand); `pack` fails if any are missing.
+pub fn release_command(project_root: &Path, skip_distill_build: bool) -> Result<(), anyhow::Error> {
     // Check gh is available
     if !std::process::Command::new("gh")
         .arg("--version")
@@ -38,7 +42,11 @@ pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
     }
 
     println!("==> Releasing {} to {}", tag, repo_slug);
-    distill_artifacts_command(project_root, None)?;
+    if skip_distill_build {
+        println!("==> Skipping distill build — using prebuilt artifacts in dist/distill/");
+    } else {
+        distill_artifacts_command(project_root, None)?;
+    }
     pack_command(project_root)?;
 
     let tarball = project_root.join("dist").join("autopilot-toolkit.tar.gz");
