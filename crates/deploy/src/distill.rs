@@ -10,7 +10,7 @@ use std::process::Command;
 
 use anyhow::Context;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct DistillTarget {
     pub platform: &'static str,
     pub rust_target: &'static str,
@@ -49,8 +49,16 @@ pub fn all_distill_artifacts_present(artifacts_root: &Path) -> bool {
     })
 }
 
-/// Build Distill CLI executables for all release platforms.
-pub fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Error> {
+/// Build Distill CLI executables for the selected release platforms.
+///
+/// `platform_filter` is an optional comma-separated list of platform names
+/// (see `DISTILL_TARGETS`); `None` builds all platforms. An unknown platform
+/// name is an error and nothing is built.
+pub fn distill_artifacts_command(
+    project_root: &Path,
+    platform_filter: Option<&str>,
+) -> Result<(), anyhow::Error> {
+    let targets = select_distill_targets(platform_filter)?;
     let artifacts_root = project_root.join("dist").join("distill");
     let cargo = env::var("DISTILL_CARGO").unwrap_or_else(|_| "cargo".to_string());
     let rustc = env::var("DISTILL_RUSTC").ok();
@@ -60,7 +68,7 @@ pub fn distill_artifacts_command(project_root: &Path) -> Result<(), anyhow::Erro
     } else {
         None
     };
-    for target in DISTILL_TARGETS {
+    for target in targets {
         println!(
             "==> Building distill for {} ({})",
             target.platform, target.rust_target
@@ -195,6 +203,31 @@ pub fn stage_distill_executables(
     Ok(platforms)
 }
 
+/// Resolve an optional comma-separated platform filter to the targets to build.
+///
+/// `None` selects all targets. Unknown platform names are an error listing
+/// the valid platforms; nothing is selected in that case.
+pub fn select_distill_targets(
+    platform_filter: Option<&str>,
+) -> Result<Vec<&'static DistillTarget>, anyhow::Error> {
+    let Some(filter) = platform_filter else {
+        return Ok(DISTILL_TARGETS.iter().collect());
+    };
+    let valid: Vec<&str> = DISTILL_TARGETS.iter().map(|t| t.platform).collect();
+    let mut selected = Vec::new();
+    for name in filter.split(',').map(str::trim) {
+        match DISTILL_TARGETS.iter().find(|t| t.platform == name) {
+            Some(target) => selected.push(target),
+            None => anyhow::bail!(
+                "unknown distill platform '{}'. Valid platforms: {}",
+                name,
+                valid.join(", ")
+            ),
+        }
+    }
+    Ok(selected)
+}
+
 fn derive_rust_lld(rustc: &Option<String>) -> Result<Option<String>, anyhow::Error> {
     let rustc_bin = rustc.as_deref().unwrap_or("rustc");
     let sysroot = Command::new(rustc_bin)
@@ -235,4 +268,49 @@ fn derive_rust_lld(rustc: &Option<String>) -> Result<Option<String>, anyhow::Err
             .to_string_lossy()
             .to_string()
     }))
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_filter_selects_all_targets() {
+        let selected = select_distill_targets(None).unwrap();
+        let platforms: Vec<&str> = selected.iter().map(|t| t.platform).collect();
+        assert_eq!(
+            platforms,
+            vec!["darwin-arm64", "linux-arm64", "linux-x64"]
+        );
+    }
+
+    #[test]
+    fn filter_selects_only_matching_platforms() {
+        let selected = select_distill_targets(Some("linux-x64,linux-arm64")).unwrap();
+        let platforms: Vec<&str> = selected.iter().map(|t| t.platform).collect();
+        assert_eq!(platforms, vec!["linux-x64", "linux-arm64"]);
+    }
+
+    #[test]
+    fn unknown_platform_errors_listing_valid_names() {
+        let err = select_distill_targets(Some("linux-x64,windows-x64")).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("windows-x64"),
+            "error should name the unknown platform: {msg}"
+        );
+        for valid in ["darwin-arm64", "linux-arm64", "linux-x64"] {
+            assert!(
+                msg.contains(valid),
+                "error should list valid platform {valid}: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_filter_is_an_error() {
+        assert!(select_distill_targets(Some("")).is_err());
+    }
 }

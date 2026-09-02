@@ -38,7 +38,7 @@ pub fn release_command(project_root: &Path) -> Result<(), anyhow::Error> {
     }
 
     println!("==> Releasing {} to {}", tag, repo_slug);
-    distill_artifacts_command(project_root)?;
+    distill_artifacts_command(project_root, None)?;
     pack_command(project_root)?;
 
     let tarball = project_root.join("dist").join("autopilot-toolkit.tar.gz");
