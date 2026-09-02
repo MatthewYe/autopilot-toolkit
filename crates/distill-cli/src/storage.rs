@@ -12,10 +12,34 @@ pub const PROJECT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const EVENT_BYTES: usize = 64 * 1024;
 pub const RUN_EVENT_LOG_BYTES: u64 = 32 * 1024 * 1024;
 
+/// How a planned file participates in the commit protocol.
+///
+/// `RunArtifact` bytes land inside `.distill`: they count against run/project
+/// quota and are written atomically. `WorktreeProjection` bytes land outside
+/// `.distill` (e.g. local-markdown tracker projections): they count against
+/// neither budget and are written directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PlannedWrite {
+    RunArtifact,
+    WorktreeProjection,
+}
+
+impl PlannedWrite {
+    pub(crate) fn counts_against_quota(self) -> bool {
+        matches!(self, Self::RunArtifact)
+    }
+
+    pub(crate) fn atomic(self) -> bool {
+        // Run artifacts are exactly the quota-counted files: keep the two
+        // facts coupled by deriving one from the other.
+        self.counts_against_quota()
+    }
+}
+
 pub(crate) struct PlannedFile {
     pub(crate) path: PathBuf,
     pub(crate) bytes: Vec<u8>,
-    pub(crate) counts_against_quota: bool,
+    pub(crate) write: PlannedWrite,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -16,6 +16,7 @@ mod args;
 mod state;
 mod event;
 mod report;
+mod transition;
 
 pub(crate) const CURRENT_SCHEMA_VERSION: u64 = 1;
 pub(crate) const WORKFLOW_SOURCE: &str = "embedded:distill.v1.json";
@@ -358,31 +359,14 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
             )],
             &limits,
         )?;
-        let state_bytes =
-            serde_json::to_vec_pretty(&next_state).map_err(|err| format!("json error: {err}"))?;
-        let current_state_bytes = fs::metadata(state::state_path(&args.worktree, &args.run_id)?)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
-        let additional_distill_bytes = event::event_log_bytes(&event_lines)
-            .saturating_add(
-                planned_files
-                    .iter()
-                    .filter(|file| file.counts_against_quota)
-                    .map(|file| file.bytes.len() as u64)
-                    .fold(0_u64, u64::saturating_add),
-            )
-            .saturating_add((state_bytes.len() as u64).saturating_sub(current_state_bytes));
-        storage::preflight_additional_run_bytes(
+        transition::commit(
             &args.worktree,
             &args.run_id,
-            additional_distill_bytes,
+            &next_state,
+            &event_lines,
+            planned_files,
             &limits,
         )?;
-        event::append_event_lines(&args.worktree, &args.run_id, &event_lines, &limits)?;
-        for file in planned_files {
-            state::write_bytes(&file.path, &file.bytes, file.counts_against_quota)?;
-        }
-        state::write_state(&args.worktree, &next_state)?;
         let mut response = report::response_from_state(&next_state);
         response["publication_blocked"] = json!(blocked_reason);
         return Ok(response);
@@ -455,32 +439,14 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
         &limits,
     )?;
 
-    let state_bytes =
-        serde_json::to_vec_pretty(&next_state).map_err(|err| format!("json error: {err}"))?;
-    let current_state_bytes = fs::metadata(state::state_path(&args.worktree, &args.run_id)?)
-        .map(|metadata| metadata.len())
-        .unwrap_or(0);
-    let additional_distill_bytes = event::event_log_bytes(&event_lines)
-        .saturating_add(
-            planned_files
-                .iter()
-                .filter(|file| file.counts_against_quota)
-                .map(|file| file.bytes.len() as u64)
-                .fold(0_u64, u64::saturating_add),
-        )
-        .saturating_add((state_bytes.len() as u64).saturating_sub(current_state_bytes));
-    storage::preflight_additional_run_bytes(
+    transition::commit(
         &args.worktree,
         &args.run_id,
-        additional_distill_bytes,
+        &next_state,
+        &event_lines,
+        planned_files,
         &limits,
     )?;
-
-    event::append_event_lines(&args.worktree, &args.run_id, &event_lines, &limits)?;
-    for file in planned_files {
-        state::write_bytes(&file.path, &file.bytes, file.counts_against_quota)?;
-    }
-    state::write_state(&args.worktree, &next_state)?;
     Ok(report::response_from_state(&next_state))
 }
 
@@ -979,25 +945,7 @@ fn record_stage_boundary(
         )],
         limits,
     )?;
-    let state_bytes =
-        serde_json::to_vec_pretty(&state).map_err(|err| format!("json error: {err}"))?;
-    let current_state_bytes = fs::metadata(state::state_path(worktree, run_id)?)
-        .map(|metadata| metadata.len())
-        .unwrap_or(0);
-    let additional_distill_bytes = event::event_log_bytes(&event_lines)
-        .saturating_add(
-            planned_files
-                .iter()
-                .map(|file| file.bytes.len() as u64)
-                .sum::<u64>(),
-        )
-        .saturating_add((state_bytes.len() as u64).saturating_sub(current_state_bytes));
-    storage::preflight_additional_run_bytes(worktree, run_id, additional_distill_bytes, limits)?;
-    event::append_event_lines(worktree, run_id, &event_lines, limits)?;
-    for file in planned_files {
-        state::write_bytes(&file.path, &file.bytes, file.counts_against_quota)?;
-    }
-    state::write_state(worktree, &state)?;
+    transition::commit(worktree, run_id, &state, &event_lines, planned_files, limits)?;
     Ok(report::response_from_state(&state))
 }
 

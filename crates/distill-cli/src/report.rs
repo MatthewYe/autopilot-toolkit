@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::env;
 use std::path::Path;
 
-use crate::storage::PlannedFile;
+use crate::storage::{PlannedFile, PlannedWrite};
 use crate::util::sha256_hex;
 use crate::CURRENT_SCHEMA_VERSION;
 
@@ -134,13 +134,13 @@ pub(crate) fn plan_completion_report(
     let mut files = vec![PlannedFile {
         path: worktree.join(&json_rel),
         bytes: serde_json::to_vec_pretty(&report).map_err(|err| format!("json error: {err}"))?,
-        counts_against_quota: true,
+        write: PlannedWrite::RunArtifact,
     }];
     if !renderer_fails {
         files.push(PlannedFile {
             path: worktree.join(&markdown_rel),
             bytes: render_markdown_report(&report)?.into_bytes(),
-            counts_against_quota: true,
+            write: PlannedWrite::RunArtifact,
         });
     }
     Ok(files)

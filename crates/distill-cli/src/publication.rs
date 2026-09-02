@@ -1,4 +1,4 @@
-use crate::storage::{self, PlannedFile};
+use crate::storage::{self, PlannedFile, PlannedWrite};
 use crate::util::{sha256_hex, slugify};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -772,7 +772,7 @@ fn local_projection_file(
         vec![PlannedFile {
             path: worktree.join(&item.fallback_path),
             bytes: item.body.as_bytes().to_vec(),
-            counts_against_quota: false,
+            write: PlannedWrite::WorktreeProjection,
         }]
     } else {
         Vec::new()

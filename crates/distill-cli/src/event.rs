@@ -3,7 +3,7 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use crate::storage::{self, PlannedFile};
+use crate::storage::{self, PlannedFile, PlannedWrite};
 use crate::util::{current_timestamp_millis, sha256_hex};
 use crate::CURRENT_SCHEMA_VERSION;
 
@@ -30,7 +30,7 @@ pub(crate) fn plan_evidence_artifact(
     planned_files.push(PlannedFile {
         path: worktree.join(&rel),
         bytes,
-        counts_against_quota: true,
+        write: PlannedWrite::RunArtifact,
     });
     Ok(json!({
         "schema_version": CURRENT_SCHEMA_VERSION,

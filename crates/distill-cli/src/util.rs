@@ -74,6 +74,32 @@ pub(crate) fn parse_revision(value: Option<String>, name: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Serializes tests that pin DISTILL_FIXED_TIMESTAMP_MILLIS: they run in
+    /// one process, so unsynchronized set_var calls race. The guard removes
+    /// the var on drop so state never leaks into other tests.
+    static TIMESTAMP_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct FixedTimestampEnv {
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl FixedTimestampEnv {
+        fn set(value: &str) -> Self {
+            let guard = TIMESTAMP_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", value);
+            Self { _guard: guard }
+        }
+    }
+
+    impl Drop for FixedTimestampEnv {
+        fn drop(&mut self) {
+            std::env::remove_var("DISTILL_FIXED_TIMESTAMP_MILLIS");
+        }
+    }
 
     // --- sha256_hex ---
 
@@ -184,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_create_run_id_format() {
-        std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", "1234567890");
+        let _fixed = FixedTimestampEnv::set("1234567890");
         let run_id = create_run_id("my-session");
         assert!(run_id.starts_with("run-"));
         assert!(run_id.ends_with("-1234567890"));
@@ -193,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_create_run_id_truncates_long_session() {
-        std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", "999");
+        let _fixed = FixedTimestampEnv::set("999");
         let long = "a".repeat(50);
         let run_id = create_run_id(&long);
         // session part truncated to 24 chars
@@ -207,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_create_run_id_filters_special_chars() {
-        std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", "0");
+        let _fixed = FixedTimestampEnv::set("0");
         let run_id = create_run_id("hello world!@#");
         // spaces and special chars filtered out, only alphanumeric and dash
         assert!(!run_id.contains(' '));
@@ -269,13 +295,13 @@ mod tests {
 
     #[test]
     fn test_current_timestamp_millis_uses_env() {
-        std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", "7777");
+        let _fixed = FixedTimestampEnv::set("7777");
         assert_eq!(current_timestamp_millis(), 7777);
     }
 
     #[test]
     fn test_current_timestamp_millis_ignores_invalid_env() {
-        std::env::set_var("DISTILL_FIXED_TIMESTAMP_MILLIS", "not-a-number");
+        let _fixed = FixedTimestampEnv::set("not-a-number");
         // Should fall back to system time (just verify it returns something)
         let ts = current_timestamp_millis();
         assert!(ts > 0);
