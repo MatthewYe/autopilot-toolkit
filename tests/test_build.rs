@@ -260,6 +260,70 @@ chmod +x "target/${{target}}/release/distill"
     fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// Write fake `rustup`, `rustc`, `git`, and `gh` executables that log each
+/// invocation. When `fail_linux_arm64_target_install` is true, `rustup target
+/// add` fails for the aarch64 musl target. `git` returns a fixed HEAD hash and
+/// origin slug; `gh release view` always fails (release does not exist yet).
+fn write_fake_release_tools(fake_bin: &Path, log: &Path, fail_linux_arm64_target_install: bool) {
+    fs::write(
+        fake_bin.join("rustup"),
+        format!(
+            "#!/usr/bin/env bash\nset -euo pipefail\necho \"rustup $*\" >> \"{}\"\n{}\n",
+            log.display(),
+            if fail_linux_arm64_target_install {
+                "if [[ \"$*\" == *aarch64-unknown-linux-musl* ]]; then exit 42; fi"
+            } else {
+                ""
+            }
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(fake_bin.join("rustup"), fs::Permissions::from_mode(0o755)).unwrap();
+
+    fs::write(
+        fake_bin.join("rustc"),
+        "#!/usr/bin/env bash\nif [[ \"$*\" == \"--print sysroot\" ]]; then echo \"/mock/rust/sysroot\"; elif [[ \"$*\" == \"-vV\" ]]; then echo \"host: test-host-triple\"; fi\n",
+    )
+    .unwrap();
+    fs::set_permissions(fake_bin.join("rustc"), fs::Permissions::from_mode(0o755)).unwrap();
+
+    fs::write(
+        fake_bin.join("git"),
+        format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "git $*" >> "{}"
+case "$*" in
+  "rev-parse HEAD") echo "1234567890abcdef1234567890abcdef12345678" ;;
+  "remote get-url origin") echo "git@github.com:test/repo.git" ;;
+  tag*|push*) exit 0 ;;
+  *) exit 0 ;;
+esac
+"#,
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(fake_bin.join("git"), fs::Permissions::from_mode(0o755)).unwrap();
+
+    fs::write(
+        fake_bin.join("gh"),
+        format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "gh $*" >> "{}"
+if [[ "$*" == release\ view* ]]; then
+  exit 1
+fi
+exit 0
+"#,
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(fake_bin.join("gh"), fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     version: String,
@@ -301,6 +365,7 @@ mod tests {
         __distill_artifacts_command_unknown_platform_fails_without_building();
         __release_stops_when_target_install_fails();
         __release_builds_packs_and_publishes_once_in_order();
+        __release_skip_distill_build_publishes_without_building();
         __pack_fails_when_distill_artifact_set_is_incomplete();
         __build_creates_dist_dir_if_missing();
         __build_exits_nonzero_when_not_in_git_repo();
@@ -1005,6 +1070,52 @@ fi
         assert_release_builds_packs_and_publishes_once_in_order(&["release"], true);
     }
 
+    fn __release_skip_distill_build_publishes_without_building() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        write_mock_distill_artifacts(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("release.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+        write_fake_release_tools(&fake_bin, &log, false);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .args(["release", "--skip-distill-build"])
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs release --skip-distill-build");
+        assert!(
+            output.status.success(),
+            "release --skip-distill-build should succeed with prestaged artifacts, stdout: {}, stderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        assert!(
+            !logged.contains("cargo build"),
+            "release --skip-distill-build must not build distill artifacts, log:\n{}",
+            logged
+        );
+        assert!(
+            !logged.contains("rustup target add"),
+            "release --skip-distill-build must not install rust targets, log:\n{}",
+            logged
+        );
+        assert_eq!(
+            logged.matches("gh release create").count(),
+            1,
+            "release --skip-distill-build should publish once, log:\n{}",
+            logged
+        );
+    }
+
     fn assert_release_builds_packs_and_publishes_once_in_order(
         deploy_args: &[&str],
         fail_linux_arm64_target_install: bool,
@@ -1017,65 +1128,8 @@ fi
         let log = tmp.path().join("release.log");
         fs::create_dir_all(&fake_bin).unwrap();
 
-        fs::write(
-            fake_bin.join("rustup"),
-            format!(
-                "#!/usr/bin/env bash\nset -euo pipefail\necho \"rustup $*\" >> \"{}\"\n{}\n",
-                log.display(),
-                if fail_linux_arm64_target_install {
-                    "if [[ \"$*\" == *aarch64-unknown-linux-musl* ]]; then exit 42; fi"
-                } else {
-                    ""
-                }
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(fake_bin.join("rustup"), fs::Permissions::from_mode(0o755)).unwrap();
-
-        fs::write(
-            fake_bin.join("rustc"),
-            "#!/usr/bin/env bash\nif [[ \"$*\" == \"--print sysroot\" ]]; then echo \"/mock/rust/sysroot\"; elif [[ \"$*\" == \"-vV\" ]]; then echo \"host: test-host-triple\"; fi\n",
-        )
-        .unwrap();
-        fs::set_permissions(fake_bin.join("rustc"), fs::Permissions::from_mode(0o755)).unwrap();
-
         write_fake_cargo(&fake_bin, &log);
-
-        fs::write(
-            fake_bin.join("git"),
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "git $*" >> "{}"
-case "$*" in
-  "rev-parse HEAD") echo "1234567890abcdef1234567890abcdef12345678" ;;
-  "remote get-url origin") echo "git@github.com:test/repo.git" ;;
-  tag*|push*) exit 0 ;;
-  *) exit 0 ;;
-esac
-"#,
-                log.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(fake_bin.join("git"), fs::Permissions::from_mode(0o755)).unwrap();
-
-        fs::write(
-            fake_bin.join("gh"),
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "gh $*" >> "{}"
-if [[ "$*" == release\ view* ]]; then
-  exit 1
-fi
-exit 0
-"#,
-                log.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(fake_bin.join("gh"), fs::Permissions::from_mode(0o755)).unwrap();
+        write_fake_release_tools(&fake_bin, &log, fail_linux_arm64_target_install);
 
         let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
         let mut command = Command::new("rust-script");

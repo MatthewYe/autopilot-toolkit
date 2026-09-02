@@ -3,8 +3,41 @@ name: Release
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  build-distill:
+    name: build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            os: macos-latest
+          - platform: linux-arm64
+            os: ubuntu-latest
+          - platform: linux-x64
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install rust-script
+        run: cargo install rust-script
+      - name: Build distill artifact for ${{ matrix.platform }}
+        run: rust-script deploy.rs distill-artifacts --platform ${{ matrix.platform }}
+      - name: Upload distill artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/distill/${{ matrix.platform }}/distill
+          if-no-files-found: error
+
   release:
+    name: release
+    needs: build-distill
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -12,11 +45,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install rust-script
         run: cargo install rust-script
-
-      - name: Build and release
+      - name: Download all distill artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/distill
+      - name: Pack and release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: rust-script deploy.rs release
+        run: rust-script deploy.rs release --skip-distill-build

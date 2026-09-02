@@ -22,6 +22,7 @@ fn usage() -> ! {
     println!("  distill-artifacts       Build Distill CLI executables for release platforms");
     println!("                          [--platform <csv>] to build only the named platforms");
     println!("  release                 Pack + push to GitHub Releases");
+    println!("                          [--skip-distill-build] to reuse prebuilt dist/distill/ artifacts");
     println!("  dev-clean               Remove all dev symlinks from agent dirs");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
     std::process::exit(1);
@@ -95,10 +96,19 @@ fn main() -> anyhow::Result<()> {
             deploy::distill::distill_artifacts_command(&project_root, platform_filter.as_deref())?;
         }
         "release" => {
-            if !positional.is_empty() {
-                warn(&format!("ignoring extra arguments: {:?}", positional));
+            let mut skip_distill_build = false;
+            let mut extras: Vec<&str> = Vec::new();
+            for arg in &positional {
+                if *arg == "--skip-distill-build" {
+                    skip_distill_build = true;
+                } else {
+                    extras.push(arg);
+                }
             }
-            deploy::release::release_command(&project_root)?;
+            if !extras.is_empty() {
+                warn(&format!("ignoring extra arguments: {:?}", extras));
+            }
+            deploy::release::release_command(&project_root, skip_distill_build)?;
         }
         "dev" => {
             if !positional.is_empty() {
