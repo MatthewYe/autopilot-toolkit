@@ -20,6 +20,7 @@ fn usage() -> ! {
     println!("  dev                     Symlink all skills from source tree into agent dirs");
     println!("  pack                    Build a self-contained tarball into dist/");
     println!("  distill-artifacts       Build Distill CLI executables for release platforms");
+    println!("                          [--platform <csv>] to build only the named platforms");
     println!("  release                 Pack + push to GitHub Releases");
     println!("  dev-clean               Remove all dev symlinks from agent dirs");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
@@ -70,10 +71,28 @@ fn main() -> anyhow::Result<()> {
             deploy::pack::pack_command(&project_root)?;
         }
         "distill-artifacts" => {
-            if !positional.is_empty() {
-                warn(&format!("ignoring extra arguments: {:?}", positional));
+            let mut platform_filter: Option<String> = None;
+            let mut extras: Vec<&str> = Vec::new();
+            let mut i = 0;
+            while i < positional.len() {
+                if positional[i] == "--platform" {
+                    i += 1;
+                    if i >= positional.len() {
+                        eprintln!("ERROR: --platform requires a comma-separated value");
+                        usage();
+                    }
+                    platform_filter = Some(positional[i].to_string());
+                } else if let Some(value) = positional[i].strip_prefix("--platform=") {
+                    platform_filter = Some(value.to_string());
+                } else {
+                    extras.push(positional[i]);
+                }
+                i += 1;
             }
-            deploy::distill::distill_artifacts_command(&project_root)?;
+            if !extras.is_empty() {
+                warn(&format!("ignoring extra arguments: {:?}", extras));
+            }
+            deploy::distill::distill_artifacts_command(&project_root, platform_filter.as_deref())?;
         }
         "release" => {
             if !positional.is_empty() {

@@ -226,6 +226,40 @@ fn write_mock_distill_artifacts(root: &Path) {
     }
 }
 
+/// Write a fake `cargo` executable that logs each invocation (including the
+/// linux linker env vars) and produces a mock distill artifact under
+/// `target/<triple>/release/`, mimicking `cargo build --target <triple>`.
+fn write_fake_cargo(fake_bin: &Path, log: &Path) {
+    let cargo = fake_bin.join("cargo");
+    fs::write(
+        &cargo,
+        format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "cargo $*" >> "{}"
+echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
+target=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--target" ]]; then
+    shift
+    target="$1"
+  fi
+  shift || true
+done
+mkdir -p "target/${{target}}/release"
+printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
+chmod +x "target/${{target}}/release/distill"
+"#,
+            log.display(),
+            log.display(),
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     version: String,
@@ -262,6 +296,9 @@ mod tests {
         __build_tarball_structure_and_metadata();
         __distill_artifacts_command_builds_supported_targets();
         __distill_artifacts_command_installs_targets_before_build_and_derives_linux_linker();
+        __distill_artifacts_command_platform_filter_builds_only_selected_targets();
+        __distill_artifacts_command_platform_equals_form_filter();
+        __distill_artifacts_command_unknown_platform_fails_without_building();
         __release_stops_when_target_install_fails();
         __release_builds_packs_and_publishes_once_in_order();
         __pack_fails_when_distill_artifact_set_is_incomplete();
@@ -642,34 +679,7 @@ mod tests {
         let fake_bin = tmp.path().join("bin");
         let log = tmp.path().join("cargo.log");
         fs::create_dir_all(&fake_bin).unwrap();
-        let cargo = fake_bin.join("cargo");
-        fs::write(
-            &cargo,
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "$*" >> "{}"
-echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
-echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
-target=""
-while [[ $# -gt 0 ]]; do
-  if [[ "$1" == "--target" ]]; then
-    shift
-    target="$1"
-  fi
-  shift || true
-done
-mkdir -p "target/${{target}}/release"
-printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
-chmod +x "target/${{target}}/release/distill"
-"#,
-                log.display(),
-                log.display(),
-                log.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+        write_fake_cargo(&fake_bin, &log);
 
         let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
         let output = Command::new("rust-script")
@@ -707,6 +717,164 @@ chmod +x "target/${{target}}/release/distill"
         );
         assert!(logged.contains("arm64_linker=/toolchains/aarch64-linker"));
         assert!(logged.contains("x64_linker=/toolchains/x86_64-linker"));
+    }
+
+    fn __distill_artifacts_command_platform_filter_builds_only_selected_targets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .arg("--platform")
+            .arg("linux-x64,linux-arm64")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            output.status.success(),
+            "distill-artifacts --platform should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        for triple in &["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"] {
+            assert!(
+                logged.contains(&format!("--target {}", triple)),
+                "cargo should build filtered target {}, log:\n{}",
+                triple,
+                logged
+            );
+        }
+        assert!(
+            !logged.contains("--target aarch64-apple-darwin"),
+            "cargo should not build the filtered-out darwin target, log:\n{}",
+            logged
+        );
+
+        for platform in &["linux-x64", "linux-arm64"] {
+            assert!(
+                root.join("dist")
+                    .join("distill")
+                    .join(platform)
+                    .join("distill")
+                    .is_file(),
+                "artifact should exist for filtered platform {}",
+                platform
+            );
+        }
+        assert!(
+            !root
+                .join("dist")
+                .join("distill")
+                .join("darwin-arm64")
+                .join("distill")
+                .exists(),
+            "no artifact should be staged for the filtered-out darwin-arm64 platform"
+        );
+    }
+
+    fn __distill_artifacts_command_platform_equals_form_filter() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .arg("--platform=linux-x64")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            output.status.success(),
+            "distill-artifacts --platform=linux-x64 should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        assert!(
+            logged.contains("--target x86_64-unknown-linux-musl"),
+            "cargo should build the equals-form filtered target, log:\n{}",
+            logged
+        );
+        for triple in &["aarch64-unknown-linux-musl", "aarch64-apple-darwin"] {
+            assert!(
+                !logged.contains(&format!("--target {}", triple)),
+                "cargo should not build unfiltered target {}, log:\n{}",
+                triple,
+                logged
+            );
+        }
+        assert!(
+            root.join("dist")
+                .join("distill")
+                .join("linux-x64")
+                .join("distill")
+                .is_file(),
+            "artifact should exist for equals-form filtered platform linux-x64"
+        );
+    }
+
+    fn __distill_artifacts_command_unknown_platform_fails_without_building() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("distill-artifacts")
+            .arg("--platform")
+            .arg("windows-x64")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs distill-artifacts");
+        assert!(
+            !output.status.success(),
+            "distill-artifacts with an unknown platform should fail, stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("windows-x64"),
+            "error should name the unknown platform, stderr: {}",
+            stderr
+        );
+        for valid in &["darwin-arm64", "linux-arm64", "linux-x64"] {
+            assert!(
+                stderr.contains(valid),
+                "error should list valid platform {}, stderr: {}",
+                valid,
+                stderr
+            );
+        }
+        assert!(
+            !log.exists(),
+            "cargo should never be invoked when the platform filter is invalid"
+        );
     }
 
     fn __distill_artifacts_command_installs_targets_before_build_and_derives_linux_linker() {
@@ -747,34 +915,7 @@ fi
         .unwrap();
         fs::set_permissions(&rustc, fs::Permissions::from_mode(0o755)).unwrap();
 
-        let cargo = fake_bin.join("cargo");
-        fs::write(
-            &cargo,
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "cargo $*" >> "{}"
-echo "arm64_linker=${{CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
-echo "x64_linker=${{CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:-}}" >> "{}"
-target=""
-while [[ $# -gt 0 ]]; do
-  if [[ "$1" == "--target" ]]; then
-    shift
-    target="$1"
-  fi
-  shift || true
-done
-mkdir -p "target/${{target}}/release"
-printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
-chmod +x "target/${{target}}/release/distill"
-"#,
-                log.display(),
-                log.display(),
-                log.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
+        write_fake_cargo(&fake_bin, &log);
 
         let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
         let output = Command::new("rust-script")
@@ -898,26 +1039,7 @@ chmod +x "target/${{target}}/release/distill"
         .unwrap();
         fs::set_permissions(fake_bin.join("rustc"), fs::Permissions::from_mode(0o755)).unwrap();
 
-        fs::write(
-            fake_bin.join("cargo"),
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-echo "cargo $*" >> "{}"
-target=""
-while [[ $# -gt 0 ]]; do
-  if [[ "$1" == "--target" ]]; then shift; target="$1"; fi
-  shift || true
-done
-mkdir -p "target/${{target}}/release"
-printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
-chmod +x "target/${{target}}/release/distill"
-"#,
-                log.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(fake_bin.join("cargo"), fs::Permissions::from_mode(0o755)).unwrap();
+        write_fake_cargo(&fake_bin, &log);
 
         fs::write(
             fake_bin.join("git"),
