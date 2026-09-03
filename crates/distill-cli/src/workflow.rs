@@ -1,15 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fs;
-use std::path::Path;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct WorkflowDefinition {
     pub(crate) version: String,
     pub(crate) stages: Vec<WorkflowStage>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct WorkflowStage {
     pub(crate) id: String,
     pub(crate) executor: String,
@@ -44,42 +42,7 @@ pub(crate) fn initial_stage_states(workflow: &WorkflowDefinition) -> Result<Vec<
         .collect()
 }
 
-pub(crate) fn active_run_for_session(worktree: &Path, session_id: &str) -> Result<Option<String>, String> {
-    let runs_dir = worktree.join(".distill/runs");
-    if !runs_dir.exists() {
-        return Ok(None);
-    }
-    let mut matches = Vec::new();
-    for entry in fs::read_dir(&runs_dir)
-        .map_err(|err| format!("cannot list runs in {}: {err}", runs_dir.display()))?
-    {
-        let entry = entry.map_err(|err| format!("cannot inspect run entry: {err}"))?;
-        let state_path = entry.path().join("state.json");
-        if !state_path.is_file() {
-            continue;
-        }
-        let state: Value = serde_json::from_str(
-            &fs::read_to_string(&state_path)
-                .map_err(|err| format!("cannot read {}: {err}", state_path.display()))?,
-        )
-        .map_err(|err| format!("cannot parse {}: {err}", state_path.display()))?;
-        if (state["state"] == "active" || state["state"] == "blocked")
-            && state["session_binding"]["session_id"] == session_id
-        {
-            if let Some(run_id) = state["run_id"].as_str() {
-                matches.push(run_id.to_string());
-            }
-        }
-    }
-    match matches.len() {
-        0 => Ok(None),
-        1 => Ok(matches.pop()),
-        _ => Err(format!(
-            "multiple unfinished runs are bound to session {session_id}"
-        )),
-    }
-}
-
+#[cfg(test)]
 pub(crate) fn workflow_stage(state: &Value, id: &str) -> Result<WorkflowStage, String> {
     let stages = state["workflow"]["stages"]
         .as_array()
@@ -105,23 +68,6 @@ pub(crate) fn next_stage_after(workflow: &WorkflowDefinition, id: &str) -> Resul
         .get(index + 1)
         .cloned()
         .ok_or_else(|| format!("workflow has no stage after {id}"))
-}
-
-pub(crate) fn next_stage_after_snapshot(state: &Value, id: &str) -> Result<Option<WorkflowStage>, String> {
-    let stages = state["workflow"]["stages"]
-        .as_array()
-        .ok_or("state workflow stages are invalid")?;
-    let index = stages
-        .iter()
-        .position(|stage| stage["id"] == id)
-        .ok_or_else(|| format!("workflow stage not found: {id}"))?;
-    stages
-        .get(index + 1)
-        .map(|stage| {
-            serde_json::from_value(stage.clone())
-                .map_err(|err| format!("invalid workflow stage snapshot: {err}"))
-        })
-        .transpose()
 }
 
 pub(crate) fn authorized_action(stage: &WorkflowStage) -> Value {
