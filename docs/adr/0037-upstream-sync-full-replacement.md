@@ -1,4 +1,4 @@
-# ADR 0009: Upstream Sync via Full Replacement with Automation Script
+# ADR 0037: Upstream Sync via Full Replacement with Automation Script
 
 ## Context
 

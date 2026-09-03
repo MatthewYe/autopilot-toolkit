@@ -126,9 +126,10 @@ fn start_distill(args: args::StartArgs) -> Result<Value, String> {
     storage::ensure_distill_ignored(&args.worktree)?;
     let _start_lock = state::acquire_project_start_lock(&args.worktree)?;
 
-    if let Some(existing) = workflow::active_run_for_session(&args.worktree, &args.session_id)? {
+    if let Some(existing) = state::active_run_for_session(&args.worktree, &args.session_id)? {
         let state = state::read_state(&args.worktree, &existing)?;
-        return Ok(report::response_from_state(&state));
+        let run_state = state::run_state_from_value(state)?;
+        return Ok(report::response_from_state(&run_state));
     }
 
     let workflow = workflow::load_workflow()?;
@@ -144,48 +145,39 @@ fn start_distill(args: args::StartArgs) -> Result<Value, String> {
         })
         .unwrap_or_default();
 
-    let state = json!({
-        "schema_version": CURRENT_SCHEMA_VERSION,
-        "run_id": run_id,
-        "state": "active",
-        "revision": 1,
-        "current_stage": first_stage.id,
-        "session_binding": {
-            "runtime": args.runtime,
-            "session_id": args.session_id,
+    let run_state = state::RunState::new(state::NewRunState {
+        run_id: run_id.clone(),
+        lifecycle: state::RunLifecycle::Active,
+        current_stage: first_stage.id.clone(),
+        predecessor_run_id: None,
+        session_binding: state::SessionBinding {
+            runtime: args.runtime.clone(),
+            session_id: args.session_id.clone(),
+            released: None,
+            released_revision: None,
         },
-        "workflow": {
-            "version": workflow.version,
-            "source": WORKFLOW_SOURCE,
-            "stages": workflow.stages,
+        workflow: state::WorkflowSnapshot {
+            version: workflow.version.clone(),
+            source: WORKFLOW_SOURCE.to_string(),
+            stages: workflow.stages.clone(),
         },
-        "requirement": {
-            "source": if args.intake_json.is_some() { "runtime-intake-json" } else { "explicit-text" },
-            "text": requirement_text,
+        requirement: state::Requirement {
+            source: if args.intake_json.is_some() {
+                "runtime-intake-json"
+            } else {
+                "explicit-text"
+            }
+            .to_string(),
+            text: requirement_text,
+            supersession_reason: None,
         },
-        "requirement_snapshot": intake_snapshot.manifest.clone(),
-        "clarification": Value::Null,
-        "storage": storage::storage_summary(&args.worktree, &limits)?,
-        "stages": workflow::initial_stage_states(&workflow)?,
-        "completion_evidence": [{
-            "stage": "intake",
-            "completed_revision": 1,
-            "accepted_user_checkpoint": "explicit-text-captured",
-            "summary": "Captured the supplied requirement text.",
-        }],
-        "publications": {
-            "prd": Value::Null,
-            "issues": [],
-        },
-        "report": Value::Null,
-        "context_baseline": context::capture_context_baseline(&args.worktree)?,
-        "drift_acknowledgments": [],
-        "boundaries": [],
-        "abort": Value::Null,
-        "handoffs": [],
-        "migration_events": [],
-        "implementation_started": false,
-    });
+        requirement_snapshot: Some(intake_snapshot.manifest.clone()),
+        storage: Some(storage::storage_summary(&args.worktree, &limits)?),
+        stage_states: workflow::initial_stage_states(&workflow)?,
+        intake_summary: "Captured the supplied requirement text.".to_string(),
+        context_baseline: context::capture_context_baseline(&args.worktree)?,
+    })?;
+    let state = state::to_state_value(&run_state)?;
 
     let session_event = event::run_event(
         &run_id,
@@ -214,14 +206,13 @@ fn start_distill(args: args::StartArgs) -> Result<Value, String> {
         relative_path: PathBuf::from("events.jsonl"),
         bytes: format!("{event_line}\n").into_bytes(),
     });
-    let state_bytes =
-        serde_json::to_vec_pretty(&state).map_err(|err| format!("json error: {err}"))?;
+    let state_bytes = state::serialize_state(&state)?;
     intake_snapshot.files.push(storage::RunFile {
         relative_path: PathBuf::from("state.json"),
         bytes: state_bytes,
     });
     storage::commit_new_run(&args.worktree, &run_id, intake_snapshot.files, &limits)?;
-    let mut response = report::response_from_state(&state);
+    let mut response = report::response_from_state(&run_state);
     response["intake"] = json!({ "source_count": intake_snapshot.source_count });
     response["storage"] = storage::storage_summary(&args.worktree, &limits)?;
     response["storage"]["usage"]["run_raw_source_bytes"] = json!(intake_snapshot.total_raw_bytes);
@@ -235,32 +226,28 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
     state::ensure_worktree(&args.worktree)?;
 
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    state::ensure_no_pending_purge(&state)?;
-    if state["state"] != "active" && state["state"] != "blocked" {
-        return Err("run is not active or blocked".to_string());
-    }
-    if state["session_binding"]["session_id"] != args.session_id {
-        return Err("session id does not match active run binding".to_string());
-    }
-
-    let expected_stage = state["current_stage"]
-        .as_str()
-        .ok_or("state is missing current_stage")?;
-    if state::completed_stage_ids(&state)?.contains(&args.stage.as_str()) {
-        return Err(format!("stage {} is already completed", args.stage));
-    }
-    if args.stage != expected_stage {
-        return Err(format!(
-            "stage {} is not authorized; expected {expected_stage}",
-            args.stage
-        ));
-    }
+    let mut run_state = state::read_run_state_for_update_at_revision(
+        &args.worktree,
+        &args.run_id,
+        args.expected_revision,
+    )?;
+    // Upfront guard, before any publication side effects; the transition
+    // methods re-enforce the same guard internally.
+    run_state.guard_stage_submission(&args.session_id, &args.stage)?;
 
     let evidence: Value = serde_json::from_str(&args.evidence)
         .map_err(|err| format!("--evidence must be valid JSON: {err}"))?;
-    let stage = workflow::workflow_stage(&state, expected_stage)?.clone();
+    let expected_stage = run_state
+        .current_stage
+        .clone()
+        .ok_or("state is missing current_stage")?;
+    let stage = run_state
+        .workflow
+        .stages
+        .iter()
+        .find(|stage| stage.id == expected_stage)
+        .cloned()
+        .ok_or(format!("workflow stage not found: {expected_stage}"))?;
     let checkpoint = evidence["checkpoint"]
         .as_str()
         .ok_or("evidence.checkpoint is required")?;
@@ -271,15 +258,15 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
         ));
     }
     let limits = storage::StorageLimits::load(&args.worktree)?;
-    let mut next_state = state.clone();
     if let Some(boundary) = evidence["status"].as_str() {
         if boundary == "waiting" || boundary == "blocked" {
             return record_stage_boundary(
                 &args.worktree,
                 &args.run_id,
+                &args.session_id,
                 &stage,
                 &evidence,
-                next_state,
+                run_state,
                 &limits,
             );
         }
@@ -288,25 +275,27 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
         }
     }
 
-    let current_revision = state["revision"]
-        .as_u64()
-        .ok_or("state revision is invalid")?;
+    let current_revision = run_state.revision;
     let next_revision = current_revision + 1;
 
     let clarification = (stage.id == "clarification")
         .then(|| validate_clarification_evidence(&args.worktree, &evidence))
         .transpose()?;
-    context::validate_context_drift(
-        &args.worktree,
-        &mut next_state,
-        &stage.id,
-        &evidence,
-        clarification.as_ref(),
-    )?;
+    // `context` and `publication` still mutate untyped state Values (their
+    // typed migration is a later ticket); bridge through the canonical
+    // Value projection, which the typed round-trip keeps lossless.
+    state::with_value_projection(&mut run_state, |projection| {
+        context::validate_context_drift(
+            &args.worktree,
+            projection,
+            &stage.id,
+            &evidence,
+            clarification.as_ref(),
+        )
+    })?;
     if let Some(clarification) = clarification {
-        next_state["clarification"] = clarification;
+        run_state.clarification = clarification;
     }
-    next_state["state"] = json!("active");
 
     let mut planned_files = Vec::new();
     let evidence_artifact = event::plan_evidence_artifact(
@@ -319,46 +308,52 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
     )?;
     let mut blocked_publication = None;
     if stage.id == "prd" {
-        let outcome = publication::publish_prd(
-            &args.worktree,
-            &args.run_id,
-            current_revision,
-            &mut next_state,
-            &evidence,
-        )?;
+        let outcome = state::with_value_projection(&mut run_state, |projection| {
+            publication::publish_prd(
+                &args.worktree,
+                &args.run_id,
+                current_revision,
+                projection,
+                &evidence,
+            )
+        })?;
         planned_files.extend(outcome.files);
         blocked_publication = outcome.blocked;
     } else if stage.id == "issues" {
-        let outcome = publication::publish_issues(
-            &args.worktree,
-            &args.run_id,
-            current_revision,
-            &mut next_state,
-            &evidence,
-        )?;
+        let outcome = state::with_value_projection(&mut run_state, |projection| {
+            publication::publish_issues(
+                &args.worktree,
+                &args.run_id,
+                current_revision,
+                projection,
+                &evidence,
+            )
+        })?;
         planned_files.extend(outcome.files);
         blocked_publication = outcome.blocked;
     }
 
     if let Some(blocked_reason) = blocked_publication {
-        mark_stage_reconciliation(&mut next_state, &stage.id, next_revision)?;
-        next_state["revision"] = json!(next_revision);
-        next_state["storage"] = storage::storage_summary(&args.worktree, &limits)?;
+        run_state.mark_stage_needs_reconciliation(&args.session_id, &stage.id)?;
+        run_state.storage = Some(storage::storage_summary(&args.worktree, &limits)?);
         let event_lines = event::build_transition_events(
             &args.worktree,
             &args.run_id,
-            next_revision,
+            run_state.revision,
             vec![(
                 "publication-reconciliation",
                 json!({
                     "stage": stage.id,
                     "reason": blocked_reason,
                     "evidence": evidence_artifact,
-                    "publications": next_state["publications"],
+                    "publications": serde_json::to_value(&run_state.publications)
+                        .map_err(|err| format!("json error: {err}"))?,
                 }),
             )],
             &limits,
         )?;
+        let next_state =
+            state::to_state_value(&run_state)?;
         transition::commit(
             &args.worktree,
             &args.run_id,
@@ -367,12 +362,15 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
             planned_files,
             &limits,
         )?;
-        let mut response = report::response_from_state(&next_state);
+        let mut response = report::response_from_state(&run_state);
         response["publication_blocked"] = json!(blocked_reason);
         return Ok(response);
     }
 
-    record_stage_completion(&mut next_state, &stage, next_revision, &evidence)?;
+    let summary = evidence["summary"]
+        .as_str()
+        .unwrap_or("Completion evidence accepted.");
+    let completion = run_state.complete_stage(&args.session_id, &stage, summary)?;
     let mut event_payloads = vec![(
         "stage-completed",
         json!({
@@ -386,7 +384,8 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
             "publication-recorded",
             json!({
                 "stage": "prd",
-                "publication": next_state["publications"]["prd"],
+                "publication": serde_json::to_value(&run_state.publications.prd)
+                    .map_err(|err| format!("json error: {err}"))?,
             }),
         ));
     } else if stage.id == "issues" {
@@ -394,51 +393,44 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
             "publication-recorded",
             json!({
                 "stage": "issues",
-                "publications": next_state["publications"]["issues"],
+                "publications": serde_json::to_value(&run_state.publications.issues)
+                    .map_err(|err| format!("json error: {err}"))?,
             }),
         ));
     }
 
-    if let Some(next_stage) = workflow::next_stage_after_snapshot(&next_state, &stage.id)? {
-        next_state["current_stage"] = json!(next_stage.id);
-        mark_stage_active(&mut next_state, &next_stage.id, next_revision)?;
-    } else {
-        next_state["state"] = json!("completed");
-        next_state["current_stage"] = json!(Value::Null);
-        next_state["session_binding"]["released"] = json!(true);
-        next_state["session_binding"]["released_revision"] = json!(next_revision);
-        next_state["revision"] = json!(next_revision);
-        next_state["storage"] = storage::storage_summary(&args.worktree, &limits)?;
+    if completion == state::StageCompletion::RunCompleted {
+        run_state.storage = Some(storage::storage_summary(&args.worktree, &limits)?);
         planned_files.extend(report::plan_completion_report(
             &args.worktree,
             &args.run_id,
-            &mut next_state,
+            &mut run_state,
         )?);
         event_payloads.push((
             "session-released",
             json!({
-                "session_id": next_state["session_binding"]["session_id"],
-                "released_revision": next_revision,
+                "session_id": run_state.session_binding.session_id,
+                "released_revision": run_state.revision,
             }),
         ));
         event_payloads.push((
             "terminal-completed",
             json!({
-                "final_revision": next_revision,
-                "report": next_state["report"],
+                "final_revision": run_state.revision,
+                "report": run_state.report,
             }),
         ));
     }
-    next_state["revision"] = json!(next_revision);
-    next_state["storage"] = storage::storage_summary(&args.worktree, &limits)?;
+    run_state.storage = Some(storage::storage_summary(&args.worktree, &limits)?);
     let event_lines = event::build_transition_events(
         &args.worktree,
         &args.run_id,
-        next_revision,
+        run_state.revision,
         event_payloads,
         &limits,
     )?;
 
+    let next_state = state::to_state_value(&run_state)?;
     transition::commit(
         &args.worktree,
         &args.run_id,
@@ -447,7 +439,7 @@ fn submit_evidence(args: args::SubmitArgs) -> Result<Value, String> {
         planned_files,
         &limits,
     )?;
-    Ok(report::response_from_state(&next_state))
+    Ok(report::response_from_state(&run_state))
 }
 
 fn set_project_quota(args: args::QuotaArgs) -> Result<Value, String> {
@@ -468,54 +460,54 @@ fn purge_run(args: args::PurgeArgs) -> Result<Value, String> {
     state::ensure_worktree(&args.worktree)?;
     storage::ensure_distill_path_safe(&args.worktree)?;
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let mut state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    if state["session_binding"]["session_id"] != args.session_id {
-        return Err("session id does not match run binding".to_string());
-    }
-    let recovering = state["purge"]["cleanup_state"].as_str() == Some("pending");
-    if state["state"] == "purged" && !recovering {
-        return Err("run is already purged".to_string());
-    }
-    let next_revision = if recovering {
-        args.expected_revision
-    } else {
-        args.expected_revision + 1
-    };
+    let mut run_state = state::read_run_state_for_update_at_revision(
+        &args.worktree,
+        &args.run_id,
+        args.expected_revision,
+    )?;
+    // The tombstone is priced for a fresh purge; recovery keeps the durable
+    // one from the interrupted attempt instead.
+    let empty_snapshot = Value::Null;
+    let requirement_snapshot = run_state
+        .requirement_snapshot
+        .as_ref()
+        .unwrap_or(&empty_snapshot);
+    let tombstone = json!({
+        "run_id": args.run_id,
+        "state": "purged",
+        "revision": run_state.revision + 1,
+        "purged_at": current_timestamp_millis(),
+        "user_authorized": true,
+        "source_hashes": intake::source_hashes(requirement_snapshot),
+        "publications": run_state.publications,
+    });
+    let begin = run_state.begin_purge(&args.session_id, tombstone)?;
     let limits = storage::StorageLimits::load(&args.worktree)?;
     let run_dir = storage::run_dir(&args.worktree, &args.run_id)?;
-    if !recovering {
-        let tombstone = json!({
-            "run_id": args.run_id,
-            "state": "purged",
-            "revision": next_revision,
-            "purged_at": current_timestamp_millis(),
-            "user_authorized": true,
-            "source_hashes": intake::source_hashes(&state["requirement_snapshot"]),
-            "publications": state["publications"],
-        });
-        state["revision"] = json!(next_revision);
-        state["purge"] = json!({
-            "cleanup_state": "pending",
-            "source_revision": args.expected_revision,
-            "revision": next_revision,
-            "user_authorized": true,
-            "tombstone": tombstone,
-        });
-        state::write_state(&args.worktree, &state)?;
+    if begin == state::PurgeBegin::Started {
+        // The durable pending state must precede the authorization event so
+        // an interrupted purge stays recoverable — the sanctioned
+        // state-before-event exception to the commit protocol.
+        let state_value =
+            state::to_state_value(&run_state)?;
+        state::write_state(&args.worktree, &state_value)?;
     }
     if env::var("DISTILL_FAIL_PURGE_BEFORE_AUTH_EVENT").as_deref() == Ok(args.run_id.as_str()) {
         return Err("injected purge interruption before authorization event".to_string());
     }
     if !event::event_type_exists(&args.worktree, &args.run_id, "run-purge-authorized")? {
+        let purge = run_state
+            .purge
+            .as_ref()
+            .expect("begin_purge guarantees a purge state");
         event::append_audit_event(
             &args.worktree,
             &args.run_id,
-            next_revision,
+            run_state.revision,
             "run-purge-authorized",
             json!({
-                "expected_revision": state["purge"]["source_revision"],
-                "next_revision": state["purge"]["revision"],
+                "expected_revision": purge.source_revision,
+                "next_revision": purge.revision,
                 "user_authorized": true,
             }),
             &limits,
@@ -524,36 +516,39 @@ fn purge_run(args: args::PurgeArgs) -> Result<Value, String> {
     if env::var("DISTILL_FAIL_PURGE_AFTER_PENDING").as_deref() == Ok(args.run_id.as_str()) {
         return Err("injected purge interruption after durable pending state".to_string());
     }
-    let tombstone = state["purge"]["tombstone"].clone();
+    let tombstone = run_state
+        .purge
+        .as_ref()
+        .expect("begin_purge guarantees a purge state")
+        .tombstone
+        .clone();
     storage::remove_dir_if_exists(&run_dir.join("snapshots"))?;
     storage::remove_dir_if_exists(&run_dir.join("artifacts"))?;
     storage::atomic_write_json(&run_dir.join("tombstone.json"), &tombstone, false)?;
-    state["state"] = json!("purged");
-    state["revision"] = json!(next_revision);
-    state["current_stage"] = json!(Value::Null);
-    state["session_binding"]["released"] = json!(true);
-    state["session_binding"]["released_revision"] = json!(next_revision);
-    state["requirement"] = json!(Value::Null);
-    state["requirement_snapshot"] = json!({
-        "purged": true,
-        "tombstone_path": format!(".distill/runs/{}/tombstone.json", args.run_id),
-    });
-    state["purge"]["cleanup_state"] = json!("completed");
-    if !event::event_type_exists(&args.worktree, &args.run_id, "run-purged")? {
-        event::append_audit_event(
+    run_state.complete_purge(&args.session_id)?;
+    let event_lines = if event::event_type_exists(&args.worktree, &args.run_id, "run-purged")? {
+        // Recovery of an attempt that appended the event but failed the
+        // state write: do not double-append.
+        Vec::new()
+    } else {
+        event::build_transition_events(
             &args.worktree,
             &args.run_id,
-            next_revision,
-            "run-purged",
-            json!({
-                "tombstone_path": format!(".distill/runs/{}/tombstone.json", args.run_id),
-                "user_authorized": true,
-            }),
+            run_state.revision,
+            vec![(
+                "run-purged",
+                json!({
+                    "tombstone_path": format!(".distill/runs/{}/tombstone.json", args.run_id),
+                    "user_authorized": true,
+                }),
+            )],
             &limits,
-        )?;
-    }
-    state::write_state(&args.worktree, &state)?;
-    Ok(report::response_from_state(&state))
+        )?
+    };
+    let state_value =
+        state::to_state_value(&run_state)?;
+    transition::commit_audit_only(&args.worktree, &args.run_id, &state_value, &event_lines, &limits)?;
+    Ok(report::response_from_state(&run_state))
 }
 
 fn abort_run(args: args::AbortArgs) -> Result<Value, String> {
@@ -565,45 +560,34 @@ fn abort_run(args: args::AbortArgs) -> Result<Value, String> {
     }
     state::ensure_worktree(&args.worktree)?;
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let mut state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    state::ensure_no_pending_purge(&state)?;
-    if state["state"] != "active" && state["state"] != "blocked" {
-        return Err("run is not active or blocked".to_string());
-    }
-    if state["session_binding"]["session_id"] != args.session_id {
-        return Err("session id does not match run binding".to_string());
-    }
-    let next_revision = args.expected_revision + 1;
-    state["state"] = json!("aborted");
-    state["revision"] = json!(next_revision);
-    state["current_stage"] = json!(Value::Null);
-    state["session_binding"]["released"] = json!(true);
-    state["session_binding"]["released_revision"] = json!(next_revision);
-    state["abort"] = json!({
-        "reason": args.reason,
-        "revision": next_revision,
-        "user_authorized": true,
-        "domain_document_artifacts": changed_domain_document_artifacts(
-            &args.worktree,
-            &state["context_baseline"],
-        )?,
-    });
-    state::write_state(&args.worktree, &state)?;
-    let limits = storage::StorageLimits::load(&args.worktree)?;
-    event::append_audit_event(
+    let mut run_state = state::read_run_state_for_update_at_revision(
         &args.worktree,
         &args.run_id,
-        next_revision,
-        "run-aborted",
-        json!({
-            "reason": state["abort"]["reason"],
-            "user_authorized": true,
-            "session_released": true,
-        }),
+        args.expected_revision,
+    )?;
+    // Computed before the transition so a failure leaves the state untouched.
+    let domain_document_artifacts =
+        changed_domain_document_artifacts(&args.worktree, &run_state.context_baseline)?;
+    run_state.abort(&args.session_id, &args.reason, domain_document_artifacts)?;
+    let limits = storage::StorageLimits::load(&args.worktree)?;
+    let event_lines = event::build_transition_events(
+        &args.worktree,
+        &args.run_id,
+        run_state.revision,
+        vec![(
+            "run-aborted",
+            json!({
+                "reason": args.reason,
+                "user_authorized": true,
+                "session_released": true,
+            }),
+        )],
         &limits,
     )?;
-    Ok(report::response_from_state(&state))
+    let state_value =
+        state::to_state_value(&run_state)?;
+    transition::commit_audit_only(&args.worktree, &args.run_id, &state_value, &event_lines, &limits)?;
+    Ok(report::response_from_state(&run_state))
 }
 
 fn takeover_run(args: args::TakeoverArgs) -> Result<Value, String> {
@@ -615,47 +599,32 @@ fn takeover_run(args: args::TakeoverArgs) -> Result<Value, String> {
     }
     state::ensure_worktree(&args.worktree)?;
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let mut state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    state::ensure_no_pending_purge(&state)?;
-    if state["state"] != "active" && state["state"] != "blocked" {
-        return Err("run is not active or blocked".to_string());
-    }
-    if state["session_binding"]["session_id"] != args.from_session {
-        return Err("from-session does not match active run binding".to_string());
-    }
-    let next_revision = args.expected_revision + 1;
-    let from_session = args.from_session.clone();
-    let to_session = args.to_session.clone();
-    let reason = args.reason.clone();
-    state["session_binding"]["session_id"] = json!(args.to_session);
-    state["revision"] = json!(next_revision);
-    state["handoffs"]
-        .as_array_mut()
-        .ok_or("state handoffs are invalid")?
-        .push(json!({
-            "from_session": args.from_session,
-            "to_session": to_session,
-            "reason": args.reason,
-            "revision": next_revision,
-            "invalidates_previous_session": true,
-        }));
-    state::write_state(&args.worktree, &state)?;
-    let limits = storage::StorageLimits::load(&args.worktree)?;
-    event::append_audit_event(
+    let mut run_state = state::read_run_state_for_update_at_revision(
         &args.worktree,
         &args.run_id,
-        next_revision,
-        "session-takeover",
-        json!({
-            "from_session": from_session,
-            "to_session": to_session,
-            "reason": reason,
-            "user_authorized": true,
-        }),
+        args.expected_revision,
+    )?;
+    run_state.takeover(&args.from_session, &args.to_session, &args.reason)?;
+    let limits = storage::StorageLimits::load(&args.worktree)?;
+    let event_lines = event::build_transition_events(
+        &args.worktree,
+        &args.run_id,
+        run_state.revision,
+        vec![(
+            "session-takeover",
+            json!({
+                "from_session": args.from_session,
+                "to_session": args.to_session,
+                "reason": args.reason,
+                "user_authorized": true,
+            }),
+        )],
         &limits,
     )?;
-    Ok(report::response_from_state(&state))
+    let state_value =
+        state::to_state_value(&run_state)?;
+    transition::commit_audit_only(&args.worktree, &args.run_id, &state_value, &event_lines, &limits)?;
+    Ok(report::response_from_state(&run_state))
 }
 
 fn supersede_run(args: args::SupersedeArgs) -> Result<Value, String> {
@@ -664,61 +633,45 @@ fn supersede_run(args: args::SupersedeArgs) -> Result<Value, String> {
     }
     state::ensure_worktree(&args.worktree)?;
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let mut state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    state::ensure_no_pending_purge(&state)?;
-    if state["state"] != "active" && state["state"] != "blocked" {
-        return Err("run is not active or blocked".to_string());
-    }
-    if state["session_binding"]["session_id"] != args.session_id {
-        return Err("session id does not match active run binding".to_string());
-    }
+    let mut run_state = state::read_run_state_for_update_at_revision(
+        &args.worktree,
+        &args.run_id,
+        args.expected_revision,
+    )?;
 
-    let predecessor_before_supersession = state.clone();
+    let predecessor_before_supersession = run_state.clone();
     let workflow = workflow::load_workflow()?;
     let successor_id = create_run_id(&args.session_id);
     let first_stage = workflow::next_stage_after(&workflow, "intake")?;
-    let mut successor = json!({
-        "schema_version": CURRENT_SCHEMA_VERSION,
-        "run_id": successor_id,
-        "state": "supersession-pending",
-        "revision": 1,
-        "current_stage": first_stage.id,
-        "predecessor_run_id": args.run_id,
-        "session_binding": state["session_binding"],
-        "workflow": {
-            "version": workflow.version,
-            "source": WORKFLOW_SOURCE,
-            "stages": workflow.stages,
+    let session_binding = run_state.session_binding.clone();
+    // Guards + single-run mutation; the cross-run two-write + rollback
+    // transaction below stays orchestrated here.
+    run_state.mark_superseded(&args.session_id, &args.reason, &successor_id)?;
+    let mut successor_state = state::RunState::new(state::NewRunState {
+        run_id: successor_id.clone(),
+        lifecycle: state::RunLifecycle::SupersessionPending,
+        current_stage: first_stage.id.clone(),
+        predecessor_run_id: Some(args.run_id.clone()),
+        session_binding,
+        workflow: state::WorkflowSnapshot {
+            version: workflow.version.clone(),
+            source: WORKFLOW_SOURCE.to_string(),
+            stages: workflow.stages.clone(),
         },
-        "requirement": {
-            "source": "explicit-text",
-            "text": args.requirement,
-            "supersession_reason": args.reason,
+        requirement: state::Requirement {
+            source: "explicit-text".to_string(),
+            text: args.requirement.clone(),
+            supersession_reason: Some(args.reason.clone()),
         },
-        "clarification": Value::Null,
-        "stages": workflow::initial_stage_states(&workflow)?,
-        "completion_evidence": [{
-            "stage": "intake",
-            "completed_revision": 1,
-            "accepted_user_checkpoint": "explicit-text-captured",
-            "summary": "Captured the superseding requirement text.",
-        }],
-        "publications": {
-            "prd": Value::Null,
-            "issues": [],
-        },
-        "report": Value::Null,
-        "context_baseline": context::capture_context_baseline(&args.worktree)?,
-        "drift_acknowledgments": [],
-        "boundaries": [],
-        "abort": Value::Null,
-        "handoffs": [],
-        "migration_events": [],
-        "implementation_started": false,
-    });
-    let successor_bytes = serde_json::to_vec_pretty(&successor)
-        .map_err(|err| format!("cannot serialize successor run: {err}"))?;
+        requirement_snapshot: None,
+        storage: None,
+        stage_states: workflow::initial_stage_states(&workflow)?,
+        intake_summary: "Captured the superseding requirement text.".to_string(),
+        context_baseline: context::capture_context_baseline(&args.worktree)?,
+    })?;
+    let successor_value =
+        serde_json::to_value(&successor_state).map_err(|err| format!("json error: {err}"))?;
+    let successor_bytes = state::serialize_state(&successor_value)?;
     storage::commit_new_run(
         &args.worktree,
         successor_id.as_str(),
@@ -730,24 +683,21 @@ fn supersede_run(args: args::SupersedeArgs) -> Result<Value, String> {
     )
     .map_err(|err| format!("cannot create successor run: {err}"))?;
 
-    state["state"] = json!("superseded");
-    state["current_stage"] = json!(Value::Null);
-    state["superseded_by"] = json!(successor_id);
-    state["supersession"] = json!({
-        "reason": args.reason,
-        "revision": args.expected_revision + 1,
-        "successor_run_id": successor["run_id"],
-    });
-    state["revision"] = json!(args.expected_revision + 1);
-    if let Err(err) = state::write_state(&args.worktree, &state) {
+    let predecessor_value =
+        state::to_state_value(&run_state)?;
+    if let Err(err) = state::write_state(&args.worktree, &predecessor_value) {
         state::rollback_successor(&args.worktree, successor_id.as_str())?;
         return Err(format!("cannot supersede predecessor run: {err}"));
     }
 
-    successor["state"] = json!("active");
-    if let Err(err) = state::write_state(&args.worktree, &successor) {
+    successor_state.state = state::RunLifecycle::Active;
+    let successor_value =
+        serde_json::to_value(&successor_state).map_err(|err| format!("json error: {err}"))?;
+    if let Err(err) = state::write_state(&args.worktree, &successor_value) {
         let rollback_result = state::rollback_successor(&args.worktree, successor_id.as_str());
-        let restore_result = state::write_state(&args.worktree, &predecessor_before_supersession);
+        let restore_value = serde_json::to_value(&predecessor_before_supersession)
+            .map_err(|err| format!("json error: {err}"))?;
+        let restore_result = state::write_state(&args.worktree, &restore_value);
         if let Err(rollback_err) = rollback_result {
             return Err(format!(
                 "cannot activate successor run: {err}; cannot roll back successor run: {rollback_err}"
@@ -761,24 +711,25 @@ fn supersede_run(args: args::SupersedeArgs) -> Result<Value, String> {
         return Err(format!("cannot activate successor run: {err}"));
     }
     let limits = storage::StorageLimits::load(&args.worktree)?;
-    event::append_audit_event(
+    let event_lines = event::build_transition_events(
         &args.worktree,
         &args.run_id,
-        state["revision"]
-            .as_u64()
-            .unwrap_or(args.expected_revision + 1),
-        "run-superseded",
-        json!({
-            "successor_run_id": successor["run_id"],
-            "reason": state["supersession"]["reason"],
-        }),
+        run_state.revision,
+        vec![(
+            "run-superseded",
+            json!({
+                "successor_run_id": successor_id,
+                "reason": args.reason,
+            }),
+        )],
         &limits,
     )?;
+    transition::commit_audit_only(&args.worktree, &args.run_id, &predecessor_value, &event_lines, &limits)?;
     Ok(json!({
         "status": "superseded",
         "run_id": args.run_id,
-        "successor_run_id": successor["run_id"],
-        "revision": state["revision"],
+        "successor_run_id": successor_id,
+        "revision": run_state.revision,
     }))
 }
 
@@ -788,30 +739,34 @@ fn inspect_run(args: args::InspectArgs) -> Result<Value, String> {
     }
     state::ensure_worktree(&args.worktree)?;
     let _lock = state::acquire_run_lock(&args.worktree, &args.run_id)?;
-    let state =
-        state::read_state_for_update_at_revision(&args.worktree, &args.run_id, args.expected_revision)?;
-    if state["session_binding"]["session_id"] != args.session_id {
+    let (run_state, migration_backfill) = state::read_run_state_for_inspect_at_revision(
+        &args.worktree,
+        &args.run_id,
+        args.expected_revision,
+    )?;
+    if run_state.session_binding.session_id != args.session_id {
         return Err("session id does not match run binding".to_string());
     }
-    state::write_state(&args.worktree, &state)?;
-    if state["migration_events"]
-        .as_array()
-        .is_some_and(|events| !events.is_empty())
-        && !event::event_type_exists(&args.worktree, &args.run_id, "state-migrated")?
-    {
-        let limits = storage::StorageLimits::load(&args.worktree)?;
-        event::append_audit_event(
-            &args.worktree,
-            &args.run_id,
-            state["revision"].as_u64().unwrap_or(args.expected_revision),
-            "state-migrated",
-            json!({
-                "migration_events": state["migration_events"],
-            }),
-            &limits,
-        )?;
+    // Persist the (possibly migrated/backfilled) canonical state.
+    let state_value =
+        state::to_state_value(&run_state)?;
+    state::write_state(&args.worktree, &state_value)?;
+    if let Some(migration_events) = migration_backfill {
+        if !event::event_type_exists(&args.worktree, &args.run_id, "state-migrated")? {
+            let limits = storage::StorageLimits::load(&args.worktree)?;
+            event::append_audit_event(
+                &args.worktree,
+                &args.run_id,
+                run_state.revision,
+                "state-migrated",
+                json!({
+                    "migration_events": migration_events,
+                }),
+                &limits,
+            )?;
+        }
     }
-    Ok(report::response_from_state(&state))
+    Ok(report::response_from_state(&run_state))
 }
 
 fn events_run(args: args::EventsArgs) -> Result<Value, String> {
@@ -872,9 +827,10 @@ fn render_report_run(args: args::RenderReportArgs) -> Result<Value, String> {
 fn record_stage_boundary(
     worktree: &Path,
     run_id: &str,
+    session_id: &str,
     stage: &workflow::WorkflowStage,
     evidence: &Value,
-    mut state: Value,
+    mut run_state: state::RunState,
     limits: &storage::StorageLimits,
 ) -> Result<Value, String> {
     let boundary = evidence["status"]
@@ -885,36 +841,15 @@ fn record_stage_boundary(
         .as_str()
         .unwrap_or("")
         .trim();
-    if reason.is_empty() {
-        return Err("boundary evidence.reason must not be empty".to_string());
-    }
-    if required_next_action.is_empty() {
-        return Err("boundary evidence.required_next_action must not be empty".to_string());
-    }
-    let next_revision = state["revision"]
-        .as_u64()
-        .ok_or("state revision is invalid")?
-        + 1;
-    mark_stage_state(&mut state, &stage.id, boundary, next_revision)?;
-    state["state"] = json!(if boundary == "blocked" {
-        "blocked"
+    let boundary_state = if boundary == "blocked" {
+        state::BoundaryState::Blocked
     } else {
-        "active"
-    });
-    state["revision"] = json!(next_revision);
-    if !state["boundaries"].is_array() {
-        state["boundaries"] = json!([]);
-    }
-    state["boundaries"]
-        .as_array_mut()
-        .ok_or("state boundaries are invalid")?
-        .push(json!({
-            "stage": stage.id,
-            "state": boundary,
-            "reason": reason,
-            "required_next_action": required_next_action,
-            "revision": next_revision,
-        }));
+        state::BoundaryState::Waiting
+    };
+    // Guards (including the empty reason/next-action checks) live inside the
+    // transition methods.
+    run_state.defer_stage(session_id, &stage.id, boundary_state, reason, required_next_action)?;
+    let next_revision = run_state.revision;
 
     let mut planned_files = Vec::new();
     let evidence_artifact = event::plan_evidence_artifact(
@@ -925,7 +860,7 @@ fn record_stage_boundary(
         evidence,
         &mut planned_files,
     )?;
-    state["storage"] = storage::storage_summary(worktree, limits)?;
+    run_state.storage = Some(storage::storage_summary(worktree, limits)?);
     let event_lines = event::build_transition_events(
         worktree,
         run_id,
@@ -945,8 +880,9 @@ fn record_stage_boundary(
         )],
         limits,
     )?;
-    transition::commit(worktree, run_id, &state, &event_lines, planned_files, limits)?;
-    Ok(report::response_from_state(&state))
+    let next_state = state::to_state_value(&run_state)?;
+    transition::commit(worktree, run_id, &next_state, &event_lines, planned_files, limits)?;
+    Ok(report::response_from_state(&run_state))
 }
 
 fn validate_clarification_evidence(worktree: &Path, evidence: &Value) -> Result<Value, String> {
@@ -1171,88 +1107,6 @@ fn changed_domain_document_artifacts(
         }
     }
     Ok(artifacts)
-}
-
-fn record_stage_completion(
-    state: &mut Value,
-    stage: &workflow::WorkflowStage,
-    revision: u64,
-    evidence: &Value,
-) -> Result<(), String> {
-    let summary = evidence["summary"]
-        .as_str()
-        .unwrap_or("Completion evidence accepted.");
-    let mut evidence_entry = json!({
-        "stage": stage.id,
-        "completed_revision": revision,
-        "accepted_user_checkpoint": stage.checkpoint,
-        "summary": summary,
-        "adapter": {
-            "executor": stage.executor,
-            "skill": stage.skill,
-            "invocation": "unmodified-skill",
-        }
-    });
-    if stage.id == "clarification" {
-        evidence_entry["clarification"] = state["clarification"].clone();
-    }
-    state["completion_evidence"]
-        .as_array_mut()
-        .ok_or("state completion_evidence is invalid")?
-        .push(evidence_entry);
-    mark_stage_completed(state, &stage.id, revision)
-}
-
-fn mark_stage_completed(state: &mut Value, stage_id: &str, revision: u64) -> Result<(), String> {
-    mark_stage_state(state, stage_id, "completed", revision)
-}
-
-fn mark_stage_state(
-    state: &mut Value,
-    stage_id: &str,
-    stage_state: &str,
-    revision: u64,
-) -> Result<(), String> {
-    let stages = state["stages"]
-        .as_array_mut()
-        .ok_or("state stages are invalid")?;
-    let stage = stages
-        .iter_mut()
-        .find(|stage| stage["id"] == stage_id)
-        .ok_or_else(|| format!("stage state not found: {stage_id}"))?;
-    stage["state"] = json!(stage_state);
-    stage["revision"] = json!(revision);
-    Ok(())
-}
-
-fn mark_stage_active(state: &mut Value, stage_id: &str, revision: u64) -> Result<(), String> {
-    let stages = state["stages"]
-        .as_array_mut()
-        .ok_or("state stages are invalid")?;
-    let stage = stages
-        .iter_mut()
-        .find(|stage| stage["id"] == stage_id)
-        .ok_or_else(|| format!("stage state not found: {stage_id}"))?;
-    stage["state"] = json!("active");
-    stage["revision"] = json!(revision);
-    Ok(())
-}
-
-fn mark_stage_reconciliation(
-    state: &mut Value,
-    stage_id: &str,
-    revision: u64,
-) -> Result<(), String> {
-    let stages = state["stages"]
-        .as_array_mut()
-        .ok_or("state stages are invalid")?;
-    let stage = stages
-        .iter_mut()
-        .find(|stage| stage["id"] == stage_id)
-        .ok_or_else(|| format!("stage state not found: {stage_id}"))?;
-    stage["state"] = json!("needs-reconciliation");
-    stage["revision"] = json!(revision);
-    Ok(())
 }
 
 
