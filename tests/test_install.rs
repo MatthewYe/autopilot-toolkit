@@ -243,10 +243,7 @@ mod tests {
 
         // Vendor skill symlinked to ~/.agents/skills/
         let vendor_link = skills.join("vendor-skill");
-        assert!(
-            vendor_link.is_symlink(),
-            "vendor-skill should be a symlink"
-        );
+        assert!(vendor_link.is_symlink(), "vendor-skill should be a symlink");
         assert!(
             vendor_link.is_dir(),
             "vendor symlink should resolve to a directory"

@@ -246,7 +246,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
         write_vendor_lockfile(
             root,
@@ -305,7 +309,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
         write_vendor_lockfile(
             root,
