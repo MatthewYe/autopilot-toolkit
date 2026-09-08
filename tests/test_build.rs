@@ -157,6 +157,7 @@ fn setup_full_pack_project(root: &Path) {
         "deploy.rs",
         "bootstrap.sh",
         ".skill-lock.json",
+        ".vendor-lock.json",
         "Cargo.toml",
     ] {
         fs::copy(source.join(file), root.join(file)).unwrap();
@@ -481,6 +482,10 @@ mod tests {
             autopilot_dir.join(".skill-lock.json").is_file(),
             ".autopilot/.skill-lock.json should exist"
         );
+        assert!(
+            autopilot_dir.join(".vendor-lock.json").is_file(),
+            ".autopilot/.vendor-lock.json should exist"
+        );
 
         // ── AC 7: dist/install.sh is executable and embeds correct version ──
         let install_sh = root.join("dist").join("install.sh");
@@ -638,6 +643,27 @@ mod tests {
                 name
             );
         }
+
+        // Check vendor skills are present and correctly classified
+        assert!(
+            manifest.skills.contains_key("show-me"),
+            "show-me should be in manifest"
+        );
+        let show_me = &manifest.skills["show-me"];
+        assert_eq!(
+            show_me.skill_type, "vendor",
+            "show-me should be vendor, got {}",
+            show_me.skill_type
+        );
+        assert!(!show_me.codex_agent, "show-me should not be codex_agent");
+        assert!(
+            skills_dir.join("show-me").is_dir(),
+            "skills/show-me directory should exist for vendor skill"
+        );
+        assert!(
+            skills_dir.join("show-me").join("PROVENANCE.md").is_file(),
+            "vendor skill should ship its provenance file"
+        );
 
         // Verify all autopilot skill dirs exist
         for name in &[

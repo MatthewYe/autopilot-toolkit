@@ -2,11 +2,19 @@
 //!
 //! Provides:
 //! - `project_root()` — unified project root derivation
-//! - `SkillLock` / `LockedSkill` — strong types for `.skill-lock.json`
+//! - `SkillLock` / `LockedSkill` — strong types for `.skill-lock.json` and `.vendor-lock.json`
 //! - `load_skill_lock()` — single parse entrypoint for `.skill-lock.json`
+//! - `load_vendor_lock()` — single parse entrypoint for `.vendor-lock.json`
 
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+// ── Lock file names ────────────────────────────────────────────────────────
+
+/// Upstream skill lock (mattpocock/skills snapshot).
+pub const SKILL_LOCK_FILE: &str = ".skill-lock.json";
+/// Vendor skill lock (third-party skills under `skills/vendor/`).
+pub const VENDOR_LOCK_FILE: &str = ".vendor-lock.json";
 
 // ── .skill-lock.json types ─────────────────────────────────────────────────
 
@@ -33,9 +41,25 @@ pub struct LockedSkill {
     /// Git tree hash of the skill's directory at lock time.
     #[serde(rename = "skillFolderHash")]
     pub skill_folder_hash: String,
+    /// Local directory for a vendor skill, relative to the project root
+    /// (e.g. `skills/vendor/show-me`). Present only in `.vendor-lock.json`.
+    #[serde(rename = "vendorPath", default)]
+    pub vendor_path: Option<String>,
     /// Timestamp when the skill was first installed (ISO 8601).
     #[serde(rename = "installedAt", default)]
     pub installed_at: Option<String>,
+}
+
+impl LockedSkill {
+    /// Local vendor skill directory, relative to the project root.
+    ///
+    /// Prefers the explicit `vendorPath`; falls back to the conventional
+    /// `skills/vendor/<name>` location when the field is absent.
+    pub fn vendor_dir(&self) -> String {
+        self.vendor_path
+            .clone()
+            .unwrap_or_else(|| format!("skills/vendor/{}", self.name))
+    }
 }
 
 /// Top-level structure of `.skill-lock.json`.
@@ -89,12 +113,34 @@ pub fn load_skill_lock() -> Result<SkillLock, String> {
 ///
 /// Prefer `load_skill_lock()` in production code; this variant is useful
 /// for tests that operate on synthetic project roots.
-pub fn load_skill_lock_at(root: &std::path::Path) -> Result<SkillLock, String> {
-    let lock_path = root.join(".skill-lock.json");
-    let content =
-        std::fs::read_to_string(&lock_path).map_err(|e| format!("cannot read {:?}: {}", lock_path, e))?;
+pub fn load_skill_lock_at(root: &Path) -> Result<SkillLock, String> {
+    load_lock_at(root, SKILL_LOCK_FILE)
+}
+
+/// Read and parse `.vendor-lock.json` from the project root.
+///
+/// Returns an error if the file is missing, unreadable, or contains invalid
+/// JSON / unexpected structure.
+pub fn load_vendor_lock() -> Result<SkillLock, String> {
+    let root = project_root();
+    load_vendor_lock_at(&root)
+}
+
+/// Read and parse `.vendor-lock.json` from a specific directory.
+///
+/// Prefer `load_vendor_lock()` in production code; this variant is useful
+/// for tests that operate on synthetic project roots.
+pub fn load_vendor_lock_at(root: &Path) -> Result<SkillLock, String> {
+    load_lock_at(root, VENDOR_LOCK_FILE)
+}
+
+/// Shared lock-file reader used by both the upstream and vendor locks.
+fn load_lock_at(root: &Path, file_name: &str) -> Result<SkillLock, String> {
+    let lock_path = root.join(file_name);
+    let content = std::fs::read_to_string(&lock_path)
+        .map_err(|e| format!("cannot read {:?}: {}", lock_path, e))?;
     let lock: SkillLock =
-        serde_json::from_str(&content).map_err(|e| format!("invalid .skill-lock.json: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("invalid {}: {}", file_name, e))?;
     Ok(lock)
 }
 
@@ -236,6 +282,30 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_vendor_skill_with_vendor_path() {
+        let json = r#"{
+            "version": 1,
+            "skills": {
+                "show-me": {
+                    "source": "humanlayer/skills",
+                    "sourceType": "github",
+                    "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+                    "skillFolderHash": "abc123",
+                    "vendorPath": "skills/vendor/show-me"
+                }
+            }
+        }"#;
+
+        let lock: SkillLock = serde_json::from_str(json).expect("should parse");
+        assert_eq!(lock.version, 1);
+        assert_eq!(lock.skills.len(), 1);
+        let skill = &lock.skills[0];
+        assert_eq!(skill.name, "show-me");
+        assert_eq!(skill.source_type, "github");
+        assert_eq!(skill.vendor_path.as_deref(), Some("skills/vendor/show-me"));
+    }
+
+    #[test]
     fn deserialize_round_trip_via_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join(".skill-lock.json");
@@ -298,6 +368,42 @@ mod tests {
         assert!(
             result.unwrap_err().contains("skillPath"),
             "error should mention skillPath"
+        );
+    }
+
+    #[test]
+    fn load_vendor_lock_from_temp_project() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock_json = r#"{
+            "version": 1,
+            "skills": {
+                "show-me": {
+                    "sourceType": "github",
+                    "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+                    "skillFolderHash": "deadbeef",
+                    "vendorPath": "skills/vendor/show-me"
+                }
+            }
+        }"#;
+        std::fs::write(dir.path().join(".vendor-lock.json"), lock_json).expect("write");
+
+        let lock = load_vendor_lock_at(dir.path()).expect("should load");
+        assert_eq!(lock.skills.len(), 1);
+        assert_eq!(lock.skills[0].name, "show-me");
+        assert_eq!(
+            lock.skills[0].vendor_path.as_deref(),
+            Some("skills/vendor/show-me")
+        );
+    }
+
+    #[test]
+    fn load_vendor_lock_missing_file_is_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = load_vendor_lock_at(dir.path()).unwrap_err();
+        assert!(
+            err.contains(".vendor-lock.json"),
+            "error should mention .vendor-lock.json, got: {}",
+            err
         );
     }
 

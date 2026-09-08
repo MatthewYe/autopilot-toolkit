@@ -1,27 +1,35 @@
 # Autopilot Toolkit
 
-A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 19 skills — 13 upstream (from mattpocock/skills, tracked in `.skill-lock.json`) plus 6 autopilot (custom, living in `skills/autopilot/`). 15 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 4 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
+A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 37 skills — 29 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 7 autopilot (custom, living in `skills/autopilot/`). 32 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 5 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
 
 ## Language
 
 **Toolkit skill**:
-One of the 19 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream) or a directory under `skills/autopilot/` (autopilot).
+One of the 37 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream), a `.vendor-lock.json` entry (vendor), or a directory under `skills/autopilot/` (autopilot).
 _Avoid_: project skill, owned skill
 
 **Expected set**:
-The authoritative list of toolkit skills, derived at runtime by reading `.skill-lock.json` (upstream) and scanning `skills/autopilot/*/SKILL.md` (autopilot). No separate manifest — the sources are the SSOT.
+The authoritative list of toolkit skills, derived at runtime by reading `.skill-lock.json` (upstream) and `.vendor-lock.json` (vendor), and scanning `skills/autopilot/*/SKILL.md` (autopilot). No separate manifest — the sources are the SSOT.
 _Avoid_: skill inventory, skill manifest
 
 **Skill source**:
-The origin of a toolkit skill — either `upstream` (mattpocock/skills, synced via `.skill-lock.json`) or `autopilot` (local, under `skills/autopilot/`).
+The origin of a toolkit skill — `upstream` (mattpocock/skills, synced via `.skill-lock.json`), `vendor` (third-party, pinned in `.vendor-lock.json` under `skills/vendor/`), or `autopilot` (local, under `skills/autopilot/`).
 _Avoid_: skill type, skill category
 
+**Vendor skill**:
+A third-party skill vendored under `skills/vendor/`, pinned by source repository, commit, path, and git tree hash in `.vendor-lock.json`, with its license recorded in the skill directory.
+_Avoid_: third-party skill, external skill
+
+**Vendor lock**:
+`.vendor-lock.json` — the provenance and integrity document for vendor skills. Separate from `.skill-lock.json` so a full upstream replacement never touches vendor entries.
+_Avoid_: vendor manifest, vendor registry
+
 **Runtime-agnostic skill**:
-A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Kimi Code, Claude Code, etc.). 15 of 19 toolkit skills fall in this category.
+A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Kimi Code, Claude Code, etc.). 32 of 37 toolkit skills fall in this category.
 _Avoid_: universal skill, portable skill
 
 **Runtime-coupled skill**:
-A skill whose body depends on runtime-specific mechanisms (subagent dispatch, session export, proprietary tools). The 4 autopilot workflow skills (orchestrator, implementer, reviewer, audit-autopilot) are runtime-coupled.
+A skill whose body depends on runtime-specific mechanisms (subagent dispatch, session export, proprietary tools). The 5 autopilot workflow skills (orchestrator, implementer, reviewer, distill, audit-autopilot) are runtime-coupled.
 _Avoid_: platform-specific skill, bound skill
 
 **Skill variant**:
@@ -77,11 +85,13 @@ _Avoid_: selfcheck, install flow
 ## Relationships
 
 - The **SSOT** (`~/.agents/skills/`) is the canonical home for all toolkit skills; agent-exclusive directories hold only **bootstrap symlinks** into it
+- **Vendor skills** live under `skills/vendor/` and are tracked in `.vendor-lock.json`; the upstream full replacement never touches them
 - **Bootstrap** is driven by filesystem convention: `<name>/<runtime>/SKILL.md` exists → create symlink
 - The **fallback variant** (`<name>/SKILL.md`) is used when no native variant exists for the agent's runtime
 - The **manifest** defines ownership: only directories it lists are removed during upgrade
 - **deploy.rs pack** produces the tarball; **deploy.rs dev** provides the dev fast path
 - Upstream skills are tracked in `.skill-lock.json` (source repo) and in `.autopilot/.skill-lock.json` (tarball copy)
+- Vendor skills are tracked in `.vendor-lock.json` (source repo) and in `.autopilot/.vendor-lock.json` (tarball copy)
 
 ## Autopilot Workflow
 
@@ -172,7 +182,7 @@ An optional free-text annotation on an AC (`Seam: <boundary>`) that tells the im
 _Avoid_: test boundary, mock point, interface cut
 
 **Upstream snapshot**:
-The vendored copy of `mattpocock/skills` under `skills/upstream/`. A full directory tree (excluding `.git/`) from a specific upstream release tag, with integrity tracked by per-skill git tree hashes in `.skill-lock.json`.
+The vendored copy of `mattpocock/skills` under `skills/upstream/`. A full directory tree (excluding `.git/`) from a specific upstream release tag, with integrity tracked by per-skill git tree hashes in `.skill-lock.json`. Vendor skills are deliberately outside this subtree so the upstream replacement never touches them.
 _Avoid_: upstream vendor, skills submodule
 
 **Upstream replacement**:

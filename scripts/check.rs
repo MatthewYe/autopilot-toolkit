@@ -32,6 +32,14 @@ fn main() {
         }
     }
 
+    // Update vendor lock file if any FIX applied
+    if !report.updated_vendor.is_empty() {
+        if let Err(e) = skill_check::write_updated_vendor_lockfile(&root, &report.updated_vendor) {
+            eprintln!("ERROR: {}", e);
+            process::exit(1);
+        }
+    }
+
     // Exit status
     let code = skill_check::determine_exit_code(&report.results, report.found_github);
     if code == 0 && !report.found_github {

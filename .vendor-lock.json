@@ -1,0 +1,19 @@
+{
+  "skills": {
+    "show-me": {
+      "installedAt": "2026-09-09T00:00:00.000Z",
+      "license": "MIT",
+      "pluginName": "show-me",
+      "pluginVersion": "1.0.1",
+      "skillFolderHash": "6826c96329a4184febc7ecd1fb741411b41c3754",
+      "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+      "source": "humanlayer/skills",
+      "sourceCommit": "3c2629142c5d437428269b1b722b08c0b87f574d",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/humanlayer/skills.git",
+      "updatedAt": "2026-09-09T00:00:00.000Z",
+      "vendorPath": "skills/vendor/show-me"
+    }
+  },
+  "version": 1
+}
