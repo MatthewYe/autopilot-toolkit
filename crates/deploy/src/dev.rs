@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use skill_index::{classify_skill, SkillType};
+use skill_index::{classify_skill, discover_vendor_skill_dirs, SkillType};
 
 use super::{stage_coupled_skill, sync_path, SyncKind};
 
@@ -31,15 +31,11 @@ pub fn dev_all(
             let name = entry.file_name().to_string_lossy().to_string();
             let src_dir = entry.path();
 
-            let (skill_type, _variants, codex_agent) = classify_skill(&src_dir);
-
+            let (skill_type, codex_agent) =
+                sync_source_skill(&name, &src_dir, project_root, shared_skills_dir)?;
             if skill_type == SkillType::Coupled {
-                let dev_staging = project_root.join("dist").join("dev-skills").join(&name);
-                stage_coupled_skill(&src_dir, &dev_staging)?;
-                sync_path(&dev_staging, &shared_skills_dir.join(&name), SyncKind::Dir)?;
                 remove_project_symlink(&reasonix_skills_dir.join(&name), project_root)?;
                 remove_project_symlink(&codex_skills_dir.join(&name), project_root)?;
-                count += 1;
 
                 if codex_agent {
                     let agent_src = src_dir.join("codex").join("agent.toml");
@@ -50,11 +46,15 @@ pub fn dev_all(
                     )?;
                     count += 1;
                 }
-            } else {
-                sync_path(&src_dir, &shared_skills_dir.join(&name), SyncKind::Dir)?;
-                count += 1;
             }
+            count += 1;
         }
+    }
+
+    // ── Vendor skills (lock-driven) ──
+    for (name, src_dir) in discover_vendor_skill_dirs(project_root)? {
+        sync_source_skill(&name, &src_dir, project_root, shared_skills_dir)?;
+        count += 1;
     }
 
     // ── Upstream skills ──
@@ -143,6 +143,28 @@ pub fn dev_clean(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+/// Sync one source skill into the shared skills directory.
+///
+/// Runtime-coupled skills are staged into the router layout first; agnostic
+/// skills are symlinked directly from the source tree. Returns the skill type
+/// and whether the skill also ships a Codex `agent.toml`.
+fn sync_source_skill(
+    name: &str,
+    src_dir: &Path,
+    project_root: &Path,
+    shared_skills_dir: &Path,
+) -> Result<(SkillType, bool), anyhow::Error> {
+    let (skill_type, _variants, codex_agent) = classify_skill(src_dir);
+    if skill_type == SkillType::Coupled {
+        let dev_staging = project_root.join("dist").join("dev-skills").join(name);
+        stage_coupled_skill(src_dir, &dev_staging)?;
+        sync_path(&dev_staging, &shared_skills_dir.join(name), SyncKind::Dir)?;
+    } else {
+        sync_path(src_dir, &shared_skills_dir.join(name), SyncKind::Dir)?;
+    }
+    Ok((skill_type, codex_agent))
+}
 
 fn remove_project_symlink(path: &Path, project_root: &Path) -> Result<(), anyhow::Error> {
     if !path.is_symlink() {

@@ -23,7 +23,8 @@ logic manually.
 ## Procedure
 
 1. Resolve `PROJECT_ROOT` to the repository root and confirm these files exist:
-   `deploy.rs`, `.skill-lock.json`, and `skills/autopilot/`.
+   `deploy.rs`, `.skill-lock.json`, `.vendor-lock.json`, `skills/autopilot/`,
+   and `skills/vendor/`.
 2. Inspect `git status --short`. Report existing changes, but do not discard or
    overwrite them.
 3. Run:
@@ -33,8 +34,10 @@ logic manually.
    rust-script "$PROJECT_ROOT/deploy.rs" link-principles "$PROJECT_ROOT/principles"
    ```
 
-4. Derive the expected skill names from `.skill-lock.json` and
-   `skills/autopilot/*/`; do not hardcode the list.
+4. Derive the expected skill names from `.skill-lock.json` (upstream),
+   `.vendor-lock.json` (vendor), and `skills/autopilot/*/` (autopilot); do not
+   hardcode the list. Vendor directories without a `.vendor-lock.json` entry
+   are orphans — report them, do not install them.
 5. Verify every expected shared entry is a valid directory or symlink.
 6. For every source skill that has any of `codex/`, `kimi/`, or `reasonix/`,
    verify:

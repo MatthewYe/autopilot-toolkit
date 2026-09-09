@@ -6,11 +6,12 @@
 //!
 //! Public API:
 //! - `discover_skills(project_root)` → `Result<Vec<DiscoveredSkill>>`
+//! - `discover_vendor_skill_dirs(project_root)` → lock-driven vendor directories
 //! - `classify_skill(skill_dir)` → `(SkillType, Vec<String>, bool)`
 //! - `generate_manifest(skills, version)` → `Manifest`
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ pub enum SkillType {
 #[derive(Debug, Clone)]
 pub struct DiscoveredSkill {
     pub name: String,
-    /// "autopilot" or "upstream".
+    /// "autopilot", "upstream", or "vendor".
     pub source: String,
     pub skill_type: SkillType,
     /// Variant directory names (e.g. ["codex", "kimi", "reasonix"]).
@@ -90,11 +91,38 @@ pub fn classify_skill(skill_dir: &Path) -> (SkillType, Vec<String>, bool) {
     (skill_type, variants, codex_agent)
 }
 
+// ── discover_vendor_skill_dirs ──────────────────────────────────────────────
+
+/// Resolve vendor skill directories from `.vendor-lock.json`.
+///
+/// The vendor lock is the source of truth for which vendor skills belong to
+/// the toolkit: a directory without a lock entry is an orphan and is ignored.
+/// A missing vendor lock yields an empty list (no vendor skills installed).
+pub fn discover_vendor_skill_dirs(
+    project_root: &Path,
+) -> Result<Vec<(String, PathBuf)>, anyhow::Error> {
+    if !project_root.join(shared::VENDOR_LOCK_FILE).is_file() {
+        return Ok(Vec::new());
+    }
+
+    let lock = shared::load_vendor_lock_at(project_root).map_err(|e| anyhow::anyhow!(e))?;
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+    for skill in &lock.skills {
+        let dir = project_root.join(skill.vendor_dir());
+        if dir.is_dir() {
+            entries.push((skill.name.clone(), dir));
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(entries)
+}
+
 // ── discover_skills ─────────────────────────────────────────────────────────
 
 /// Discover all skills from the source tree.
 ///
-/// Scans `skills/autopilot/` for autopilot (custom) skills and reads
+/// Scans `skills/autopilot/` for autopilot (custom) skills, reads
+/// `.vendor-lock.json` for third-party vendored skills, and reads
 /// `.skill-lock.json` for upstream (vendored) skills.
 pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyhow::Error> {
     let mut skills: Vec<DiscoveredSkill> = Vec::new();
@@ -119,6 +147,18 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyh
                 codex_agent,
             });
         }
+    }
+
+    // ── Vendor skills (lock-driven: provenance is mandatory) ──
+    for (name, src_dir) in discover_vendor_skill_dirs(project_root)? {
+        let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
+        skills.push(DiscoveredSkill {
+            name,
+            source: "vendor".to_string(),
+            skill_type,
+            variants,
+            codex_agent,
+        });
     }
 
     // ── Upstream skills (from .skill-lock.json) ──
@@ -172,6 +212,7 @@ pub fn generate_manifest(skills: &[DiscoveredSkill], version: &str) -> Manifest 
     for skill in skills {
         let skill_type_str = match skill.skill_type {
             SkillType::Agnostic if skill.source == "upstream" => "upstream",
+            SkillType::Agnostic if skill.source == "vendor" => "vendor",
             SkillType::Agnostic => "agnostic",
             SkillType::Coupled => "coupled",
         };
@@ -260,6 +301,59 @@ mod tests {
     }
 
     #[test]
+    fn discover_vendor_skill_dirs_is_lock_driven() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        std::fs::create_dir_all(root.join("skills/vendor/show-me")).unwrap();
+        std::fs::write(
+            root.join("skills/vendor/show-me/SKILL.md"),
+            "---\nname: show-me\ndescription: test\n---\n",
+        )
+        .unwrap();
+
+        // Orphan directory without a lock entry — must be ignored.
+        std::fs::create_dir_all(root.join("skills/vendor/orphan")).unwrap();
+        std::fs::write(
+            root.join("skills/vendor/orphan/SKILL.md"),
+            "---\nname: orphan\ndescription: test\n---\n",
+        )
+        .unwrap();
+
+        std::fs::write(
+            root.join(".vendor-lock.json"),
+            r#"{
+                "version": 1,
+                "skills": {
+                    "show-me": {
+                        "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+                        "skillFolderHash": "abc123",
+                        "vendorPath": "skills/vendor/show-me"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let entries = discover_vendor_skill_dirs(root).unwrap();
+        assert_eq!(entries.len(), 1, "only locked vendor skills are discovered");
+        assert_eq!(entries[0].0, "show-me");
+        assert!(entries[0].1.ends_with("skills/vendor/show-me"));
+    }
+
+    #[test]
+    fn discover_vendor_skill_dirs_missing_lock_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("skills/vendor/show-me")).unwrap();
+
+        let entries = discover_vendor_skill_dirs(tmp.path()).unwrap();
+        assert!(
+            entries.is_empty(),
+            "a missing vendor lock must yield no vendor skills"
+        );
+    }
+
+    #[test]
     fn generate_manifest_includes_all_skills() {
         let skills = vec![
             DiscoveredSkill {
@@ -290,10 +384,17 @@ mod tests {
                 variants: vec![],
                 codex_agent: false,
             },
+            DiscoveredSkill {
+                name: "show-me".into(),
+                source: "vendor".into(),
+                skill_type: SkillType::Agnostic,
+                variants: vec![],
+                codex_agent: false,
+            },
         ];
         let manifest = generate_manifest(&skills, "abc123");
         assert_eq!(manifest.version, "abc123");
-        assert_eq!(manifest.skills.len(), 4);
+        assert_eq!(manifest.skills.len(), 5);
 
         let toolkit = &manifest.skills["toolkit-setup"];
         assert_eq!(toolkit.skill_type, "agnostic");
@@ -301,6 +402,10 @@ mod tests {
 
         let tdd = &manifest.skills["tdd"];
         assert_eq!(tdd.skill_type, "upstream");
+
+        let show_me = &manifest.skills["show-me"];
+        assert_eq!(show_me.skill_type, "vendor");
+        assert!(show_me.variants.is_empty());
 
         let orch = &manifest.skills["autopilot-orchestrator"];
         assert_eq!(orch.skill_type, "coupled");
@@ -321,7 +426,7 @@ mod tests {
             .parent()
             .unwrap();
         let skills = discover_skills(root).unwrap();
-        // We should have at least the 6 autopilot skills + upstream skills
+        // We should have at least the 7 autopilot skills + upstream + vendor skills
         assert!(
             skills.len() >= 20,
             "expected >= 20 skills, got {}",
@@ -334,6 +439,14 @@ mod tests {
             .find(|s| s.name == "toolkit-setup")
             .expect("toolkit-setup not found");
         assert_eq!(ts.skill_type, SkillType::Agnostic);
+
+        // show-me should be a vendor skill
+        let show_me = skills
+            .iter()
+            .find(|s| s.name == "show-me")
+            .expect("show-me not found");
+        assert_eq!(show_me.source, "vendor");
+        assert_eq!(show_me.skill_type, SkillType::Agnostic);
 
         // autopilot-orchestrator should be coupled with reasonix/kimi/codex
         let orch = skills

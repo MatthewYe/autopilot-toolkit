@@ -1,8 +1,10 @@
 # autopilot-toolkit
 
-19 skills for Reasonix, Codex, and Kimi Code — 13 upstream engineering/productivity skills plus 6 autopilot workflow skills. Self-contained tarball distribution with one-command install.
+37 skills for Reasonix, Codex, and Kimi Code — 29 upstream engineering/productivity skills, 1 vendored third-party skill, and 7 autopilot workflow skills. Self-contained tarball distribution with one-command install.
 
 Upstream v1.1 renamed `/to-prd` to `/to-spec`, replaced `/to-issues` with `/to-tickets`, and added `/code-review`, `/research`, and `/wayfinder`. The vendored upstream snapshot is tracked by `.skill-lock.json` and synced via `scripts/sync-upstream.rs`.
+
+Third-party skills live under `skills/vendor/` and are tracked separately by `.vendor-lock.json`, so an upstream sync never touches them.
 
 ## Install
 

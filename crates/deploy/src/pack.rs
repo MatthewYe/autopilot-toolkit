@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::distill::stage_distill_executables;
 use super::stage_coupled_skill;
-use skill_index::{classify_skill, SkillType};
+use skill_index::{classify_skill, discover_vendor_skill_dirs, SkillType};
 use anyhow::Context;
 
 /// Build a self-contained tarball into `dist/`.
@@ -41,13 +41,13 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
             let skill_name = entry.file_name();
             let skill_name_str = skill_name.to_string_lossy().to_string();
             let src_dir = entry.path();
-            let (skill_type, _variants, _codex_agent) = classify_skill(&src_dir);
-            if skill_type == SkillType::Coupled {
-                stage_coupled_skill(&src_dir, &skills_staging.join(&skill_name_str))?;
-            } else {
-                copy_dir_all(&src_dir, &skills_staging.join(&skill_name_str))?;
-            }
+            stage_skill_source(&src_dir, &skills_staging.join(&skill_name_str))?;
         }
+    }
+
+    // ── scan vendor skills (lock-driven file copy) ──
+    for (skill_name, src_dir) in discover_vendor_skill_dirs(project_root)? {
+        stage_skill_source(&src_dir, &skills_staging.join(&skill_name))?;
     }
 
     // ── scan upstream skills (file copy, uses shared::load_skill_lock for paths) ──
@@ -106,6 +106,15 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── copy .skill-lock.json ──
     if lock_path.is_file() {
         std::fs::copy(&lock_path, autopilot_staging.join(".skill-lock.json"))?;
+    }
+
+    // ── copy .vendor-lock.json ──
+    let vendor_lock_path = project_root.join(shared::VENDOR_LOCK_FILE);
+    if vendor_lock_path.is_file() {
+        std::fs::copy(
+            &vendor_lock_path,
+            autopilot_staging.join(".vendor-lock.json"),
+        )?;
     }
 
     // ── generate install.sh from template ──
@@ -187,6 +196,17 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     println!("Built: {}", tarball_path.display());
     println!("Install script: {}", install_sh_path.display());
     Ok(())
+}
+
+/// Stage one source skill into the tarball: coupled skills get the
+/// runtime-router layout, agnostic skills are copied as-is.
+fn stage_skill_source(src_dir: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    let (skill_type, _variants, _codex_agent) = classify_skill(src_dir);
+    if skill_type == SkillType::Coupled {
+        stage_coupled_skill(src_dir, dst)
+    } else {
+        copy_dir_all(src_dir, dst)
+    }
 }
 
 /// Recursively copy a directory tree.

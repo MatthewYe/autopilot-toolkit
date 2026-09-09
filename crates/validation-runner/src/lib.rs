@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use validation::{parse_frontmatter, validate_skill_with_variant, SkillVariant, ValidationResult};
@@ -41,7 +41,7 @@ pub struct Skill {
     pub name: String,
     /// Relative path from project root to the SKILL.md file.
     pub relative_path: String,
-    /// "upstream" or "autopilot".
+    /// "upstream", "vendor", or "autopilot".
     pub source: String,
     /// Runtime variant: None for runtime-agnostic, Some("reasonix") etc.
     pub variant: Option<String>,
@@ -93,38 +93,20 @@ pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
     }
 
     // ── Autopilot skills ──
-    // Collect into a temp vec for deterministic sorting (name, then variant)
-    let mut autopilot_entries: Vec<(String, String, Option<String>)> = Vec::new();
-    for d in &discovered {
-        if d.source != "autopilot" {
-            continue;
-        }
-        // Root-level SKILL.md (agnostic skill or fallback)
-        let root_skill_path = project_root.join(format!("skills/autopilot/{}/SKILL.md", d.name));
-        if root_skill_path.is_file() {
-            autopilot_entries.push((
+    let autopilot_candidates: Vec<(String, PathBuf, Vec<String>)> = discovered
+        .iter()
+        .filter(|d| d.source == "autopilot")
+        .map(|d| {
+            (
                 d.name.clone(),
-                format!("skills/autopilot/{}/SKILL.md", d.name),
-                None,
-            ));
-        }
-        // Variant subdirectories
-        for variant in &d.variants {
-            let variant_path = project_root.join(format!(
-                "skills/autopilot/{}/{}/SKILL.md",
-                d.name, variant
-            ));
-            if variant_path.is_file() {
-                autopilot_entries.push((
-                    d.name.clone(),
-                    format!("skills/autopilot/{}/{}/SKILL.md", d.name, variant),
-                    Some(variant.clone()),
-                ));
-            }
-        }
-    }
-    autopilot_entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
-    for (name, relative_path, variant) in autopilot_entries {
+                project_root.join(format!("skills/autopilot/{}", d.name)),
+                d.variants.clone(),
+            )
+        })
+        .collect();
+    for (name, relative_path, variant) in
+        collect_skill_entries(project_root, autopilot_candidates)
+    {
         skills.push(Skill {
             name,
             relative_path,
@@ -133,7 +115,74 @@ pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
         });
     }
 
+    // ── Vendor skills (lock-driven paths) ──
+    let vendor_variants: HashMap<&str, &Vec<String>> = discovered
+        .iter()
+        .filter(|d| d.source == "vendor")
+        .map(|d| (d.name.as_str(), &d.variants))
+        .collect();
+    let vendor_candidates: Vec<(String, PathBuf, Vec<String>)> =
+        skill_index::discover_vendor_skill_dirs(project_root)?
+            .into_iter()
+            .map(|(name, src_dir)| {
+                let variants = vendor_variants
+                    .get(name.as_str())
+                    .map(|variants| (*variants).clone())
+                    .unwrap_or_default();
+                (name, src_dir, variants)
+            })
+            .collect();
+    for (name, relative_path, variant) in
+        collect_skill_entries(project_root, vendor_candidates)
+    {
+        skills.push(Skill {
+            name,
+            relative_path,
+            source: "vendor".to_string(),
+            variant,
+        });
+    }
+
     Ok(skills)
+}
+
+/// Collect `(name, relative_path, variant)` entries for a set of skill
+/// directories, including each skill's variant subdirectories.
+fn collect_skill_entries(
+    project_root: &Path,
+    candidates: Vec<(String, PathBuf, Vec<String>)>,
+) -> Vec<(String, String, Option<String>)> {
+    let mut entries = Vec::new();
+    for (name, src_dir, variants) in candidates {
+        let relative_dir = src_dir
+            .strip_prefix(project_root)
+            .unwrap_or(&src_dir)
+            .to_path_buf();
+        let root_skill = src_dir.join("SKILL.md");
+        if root_skill.is_file() {
+            entries.push((
+                name.clone(),
+                relative_dir.join("SKILL.md").to_string_lossy().to_string(),
+                None,
+            ));
+        }
+        for variant in &variants {
+            let variant_skill = src_dir.join(variant).join("SKILL.md");
+            if variant_skill.is_file() {
+                entries.push((
+                    name.clone(),
+                    relative_dir
+                        .join(variant)
+                        .join("SKILL.md")
+                        .to_string_lossy()
+                        .to_string(),
+                    Some(variant.clone()),
+                ));
+            }
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
+    entries
 }
 
 // ── Batch validation ───────────────────────────────────────────────────────
@@ -191,6 +240,7 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
         count_by_source(skills, results, "upstream");
     let (autopilot_total, autopilot_pass, autopilot_fail) =
         count_by_source(skills, results, "autopilot");
+    let (vendor_total, vendor_pass, vendor_fail) = count_by_source(skills, results, "vendor");
 
     let mut report = String::new();
 
@@ -221,6 +271,12 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
     );
     wln!(report);
     write_skill_entries(&mut report, skills, results, "upstream", true, project_root);
+
+    // ── Vendor section ──
+    wln!(report, "--- Vendor Skills ({}) ---", vendor_total);
+    wln!(report, "Passed: {} / Failed: {}", vendor_pass, vendor_fail);
+    wln!(report);
+    write_skill_entries(&mut report, skills, results, "vendor", true, project_root);
 
     // ── Autopilot section ──
     wln!(report, "--- Autopilot Skills ({}) ---", autopilot_total);
@@ -620,14 +676,16 @@ mod tests {
     }
 
     #[test]
-    fn report_shows_upstream_and_autopilot_sections() {
+    fn report_shows_upstream_vendor_and_autopilot_sections() {
         let skills = vec![
             test_skill("up-skill", "upstream"),
+            test_skill("vendor-skill", "vendor"),
             test_skill("auto-skill", "autopilot"),
         ];
-        let results = vec![pass_result(), pass_result()];
+        let results = vec![pass_result(), pass_result(), pass_result()];
         let report = generate_report(&skills, &results, None);
         assert!(report.contains("Upstream Skills"));
+        assert!(report.contains("Vendor Skills"));
         assert!(report.contains("Autopilot Skills"));
     }
 
@@ -725,15 +783,23 @@ mod tests {
     }
 
     #[test]
-    fn expand_skills_finds_both_sources() {
+    fn expand_skills_finds_all_sources() {
         let root = repo_root();
         let skills = expand_skills(root).expect("expand_skills should succeed");
         assert!(!skills.is_empty(), "should find at least some skills");
 
         let has_upstream = skills.iter().any(|s| s.source == "upstream");
+        let has_vendor = skills.iter().any(|s| s.source == "vendor");
         let has_autopilot = skills.iter().any(|s| s.source == "autopilot");
         assert!(has_upstream, "should find upstream skills");
+        assert!(has_vendor, "should find vendor skills");
         assert!(has_autopilot, "should find autopilot skills");
+
+        let show_me = skills
+            .iter()
+            .find(|s| s.name == "show-me")
+            .expect("show-me should be discovered as a vendor skill");
+        assert_eq!(show_me.source, "vendor");
     }
 
     #[test]

@@ -120,6 +120,22 @@ fn setup_mock_project(root: &Path) {
     )
     .unwrap();
 
+    // Create minimal vendor skill
+    let vendor = root.join("skills/vendor/vendor-skill");
+    fs::create_dir_all(&vendor).unwrap();
+    fs::write(
+        vendor.join("SKILL.md"),
+        "---\nname: vendor-skill\ndescription: vendor test\n---\n",
+    )
+    .unwrap();
+
+    // Create .vendor-lock.json
+    fs::write(
+        root.join(".vendor-lock.json"),
+        r#"{"version":1,"skills":{"vendor-skill":{"sourceType":"github","skillPath":"plugins/vendor-skill/skills/vendor-skill/SKILL.md","skillFolderHash":"TODO","vendorPath":"skills/vendor/vendor-skill"}}}"#,
+    )
+    .unwrap();
+
     // Create templates/install.sh.in
     let templates = root.join("templates");
     fs::create_dir_all(&templates).unwrap();
@@ -224,6 +240,14 @@ mod tests {
                 variant
             );
         }
+
+        // Vendor skill symlinked to ~/.agents/skills/
+        let vendor_link = skills.join("vendor-skill");
+        assert!(vendor_link.is_symlink(), "vendor-skill should be a symlink");
+        assert!(
+            vendor_link.is_dir(),
+            "vendor symlink should resolve to a directory"
+        );
     }
 
     #[test]

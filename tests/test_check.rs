@@ -98,6 +98,16 @@ fn write_lockfile(dir: &Path, skills: &serde_json::Value) {
     fs::write(dir.join(".skill-lock.json"), content).expect("write lockfile");
 }
 
+/// Write .vendor-lock.json with given skills.
+fn write_vendor_lockfile(dir: &Path, skills: &serde_json::Value) {
+    let lock = serde_json::json!({
+        "version": 1,
+        "skills": skills
+    });
+    let content = serde_json::to_string_pretty(&lock).unwrap() + "\n";
+    fs::write(dir.join(".vendor-lock.json"), content).expect("write vendor lockfile");
+}
+
 /// Create a minimal skill directory with a SKILL.md file.
 fn create_skill_dir(base: &Path, rel_path: &str, content: &str) {
     let dir = base.join(rel_path);
@@ -222,6 +232,110 @@ mod tests {
         assert!(
             stdout.contains("lockfile: 0000000000000000000000000000000000000000"),
             "should mention lockfile hash, got: {}",
+            stdout
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test: vendor lock hash FIX then PASS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn vendor_hash_fix_then_pass() {
+        let tmp = TempDir::new("check-test-vendor");
+        let root = tmp.path();
+
+        create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
+        write_lockfile(root, &serde_json::json!({}));
+        write_vendor_lockfile(
+            root,
+            &serde_json::json!({
+                "show-me": {
+                    "sourceType": "github",
+                    "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+                    "skillFolderHash": "TODO-recalculated",
+                    "vendorPath": "skills/vendor/show-me"
+                }
+            }),
+        );
+
+        let (stdout1, stderr1, code1) = run_check(&check_script_path(), root);
+        assert_eq!(
+            code1, 0,
+            "FIX run should exit 0, stdout: {} stderr: {}",
+            stdout1, stderr1
+        );
+        assert!(
+            stdout1.contains("FIX: show-me →"),
+            "first run should FIX vendor hash, stdout: {}",
+            stdout1
+        );
+        assert!(
+            stdout1.contains("PASS: show-me"),
+            "first run should PASS after fix, stdout: {}",
+            stdout1
+        );
+
+        let (stdout2, stderr2, code2) = run_check(&check_script_path(), root);
+        assert_eq!(
+            code2, 0,
+            "second run should exit 0, stdout: {} stderr: {}",
+            stdout2, stderr2
+        );
+        assert!(
+            stdout2.contains("PASS: show-me"),
+            "second run should PASS, stdout: {}",
+            stdout2
+        );
+        assert!(
+            !stdout2.contains("FIX: show-me"),
+            "second run should not FIX, stdout: {}",
+            stdout2
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Test: vendor lock hash mismatch FAILs
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn vendor_fail_when_hash_mismatches() {
+        let tmp = TempDir::new("check-test-vendor-fail");
+        let root = tmp.path();
+
+        create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
+        write_lockfile(root, &serde_json::json!({}));
+        write_vendor_lockfile(
+            root,
+            &serde_json::json!({
+                "show-me": {
+                    "sourceType": "github",
+                    "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+                    "skillFolderHash": "0000000000000000000000000000000000000000",
+                    "vendorPath": "skills/vendor/show-me"
+                }
+            }),
+        );
+
+        let (stdout, stderr, code) = run_check(&check_script_path(), root);
+        assert_eq!(
+            code, 1,
+            "mismatch run should exit 1, stdout: {} stderr: {}",
+            stdout, stderr
+        );
+        assert!(
+            stdout.contains("FAIL: show-me"),
+            "should report vendor FAIL, stdout: {}",
             stdout
         );
     }
