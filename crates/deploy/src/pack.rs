@@ -199,7 +199,10 @@ fn fail_on_missing_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::E
 /// as-is. Upstream skills are agnostic by policy and are copied directly,
 /// exactly as the tarball shipped them before.
 fn stage_entry_skill(entry: &ExpectedSetEntry, dst: &Path) -> Result<(), anyhow::Error> {
-    let coupled = entry.source != "upstream" && entry.skill_type == SkillType::Coupled;
+    // Upstream entries cannot reach this arm as coupled: the enumerator
+    // constructs them as `SkillType::Agnostic` (agnostic by policy), so no
+    // source check is needed here.
+    let coupled = entry.skill_type == SkillType::Coupled;
     if coupled {
         stage_coupled_skill(&entry.source_dir, dst)
     } else {
