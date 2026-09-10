@@ -9,7 +9,7 @@
     {
       "name": "mattpocock-skills",
       "source": "./",
-      "description": "Matt Pocock's agent skills for real engineering — grilling, spec/ticket flows, TDD, code review, domain modelling and more.",
+      "description": "Matt Pocock's agent skills for real engineering (grilling, spec/ticket flows, TDD, code review, domain modelling and more).",
       "category": "engineering",
       "keywords": [
         "engineering",

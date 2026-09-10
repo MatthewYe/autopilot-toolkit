@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-37 skills for Reasonix, Codex, and Kimi Code — 29 upstream engineering/productivity skills from mattpocock/skills, 1 vendored third-party skill, plus 7 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
+40 skills for Reasonix, Codex, and Kimi Code — 32 upstream skills from mattpocock/skills, 1 vendored third-party skill, plus 7 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
 
 ## Project
 
@@ -15,6 +15,7 @@ rust-script deploy.rs pack                    # Build tarball into dist/
 rust-script deploy.rs distill-artifacts       # Build Distill CLI for release platforms
 rust-script deploy.rs release                 # Pack + push to GitHub Releases
 rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
+rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot (tag/branch/commit)
 rust-script scripts/check.rs                  # Verify upstream + vendor skill hashes
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
@@ -31,10 +32,11 @@ No build step — skills are consumed directly from the source tree by the agent
 
 ```
 skills/
-├── upstream/          # vendored mattpocock/skills (29 installed, see .skill-lock.json)
+├── upstream/          # vendored mattpocock/skills (32 installed, see .skill-lock.json)
 │   ├── engineering/   # codebase-design, diagnosing-bugs, domain-modeling, tdd, triage, …
 │   ├── productivity/  # grilling, handoff, teach, writing-for-agents, …
-│   └── misc/          # git-guardrails-claude-code, scaffold-exercises, …
+│   ├── misc/          # git-guardrails-claude-code, scaffold-exercises, …
+│   └── in-progress/   # allowlisted beta skills: implement-spec, loop-me, retro
 ├── vendor/            # third-party vendored skills (see .vendor-lock.json)
 │   └── show-me/       # visual explanations: diagrams, code-shape sketches, HTML artifacts
 ├── autopilot/         # 7 custom autopilot skills
@@ -63,7 +65,7 @@ docs/
 
 ## Install model
 
-- **Runtime-agnostic skills** (upstream 29 + vendor 1 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
+- **Runtime-agnostic skills** (upstream 32 + vendor 1 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
 - **Runtime-coupled skills** (the 5 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
 - `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
 

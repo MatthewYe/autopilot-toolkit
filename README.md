@@ -1,8 +1,8 @@
 # autopilot-toolkit
 
-37 skills for Reasonix, Codex, and Kimi Code — 29 upstream engineering/productivity skills, 1 vendored third-party skill, and 7 autopilot workflow skills. Self-contained tarball distribution with one-command install.
+40 skills for Reasonix, Codex, and Kimi Code — 32 upstream skills, 1 vendored third-party skill, and 7 autopilot workflow skills. Self-contained tarball distribution with one-command install.
 
-Upstream v1.1 renamed `/to-prd` to `/to-spec`, replaced `/to-issues` with `/to-tickets`, and added `/code-review`, `/research`, and `/wayfinder`. The vendored upstream snapshot is tracked by `.skill-lock.json` and synced via `scripts/sync-upstream.rs`.
+Upstream v1.1 renamed `/to-prd` to `/to-spec`, replaced `/to-issues` with `/to-tickets`, and added `/code-review`, `/research`, and `/wayfinder`. The vendored upstream snapshot is tracked by `.skill-lock.json` and synced via `scripts/sync-upstream.rs <ref>` — a release tag, branch, or commit SHA, always explicit. Three beta skills from upstream's `in-progress/` bucket (`implement-spec`, `loop-me`, `retro`) ship through an allowlist in that script; nothing else from `in-progress/` is picked up, and a ref that does not contain an allowlisted skill fails the sync instead of dropping it.
 
 Third-party skills live under `skills/vendor/` and are tracked separately by `.vendor-lock.json`, so an upstream sync never touches them.
 

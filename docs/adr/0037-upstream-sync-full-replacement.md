@@ -1,5 +1,9 @@
 # ADR 0037: Upstream Sync via Full Replacement with Automation Script
 
+> Superseded for ref selection by
+> [ADR 0043](0043-upstream-sync-explicit-ref-and-in-progress-allowlist.md). Full
+> replacement, orphan removal, and the `check.rs` gate remain in force.
+
 ## Context
 
 The vendored upstream `skills/upstream/` (mattpocock/skills v1.0.1) must be updated to v1.1.0, which renamed `to-prd` to `to-spec`, replaced `to-issues` with `to-tickets`, added new skills (`code-review`, `research`, `wayfinder`), and modified existing ones (TDD became reference-oriented, grilling gained a confirmation gate). Future upstream releases will require this again.

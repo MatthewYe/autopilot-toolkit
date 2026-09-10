@@ -8,14 +8,21 @@
 //! shared = { path = "../crates/shared" }
 //! ```
 //!
-//! Sync the vendored upstream (skills/upstream/) to a tagged release of
+//! Sync the vendored upstream (skills/upstream/) to a pinned ref of
 //! mattpocock/skills. Replaces the entire upstream tree, recomputes all
 //! skillFolderHash values, drops orphan entries, and adds new skills.
 //!
-//! Usage:
-//!   rust-script scripts/sync-upstream.rs [TAG]
+//! Upstream keeps beta skills in `skills/in-progress/`, outside the plugin,
+//! with no stability guarantee. IN_PROGRESS_ALLOWLIST names the ones this
+//! toolkit ships anyway; they are tracked in `.skill-lock.json` like any
+//! other upstream skill. A ref that does not contain an allowlisted skill
+//! fails the sync before the tree or the lock is touched.
 //!
-//! Default tag: v1.1.0
+//! Usage:
+//!   rust-script scripts/sync-upstream.rs <REF>
+//!
+//! REF is required: a release tag, branch, or commit SHA. There is no
+//! default, because a ref that predates an allowlisted skill would orphan it.
 
 use std::collections::BTreeMap;
 use std::env;
@@ -35,7 +42,55 @@ const PLUGIN_NAME: &str = "mattpocock-skills";
 /// that contain shippable skills. Order matters for sorting.
 const BUCKET_DIRS: &[&str] = &["engineering", "productivity", "misc"];
 
+/// Beta upstream skills this toolkit ships on purpose.
+///
+/// Upstream's `in-progress/` bucket is excluded from the plugin and can
+/// change or disappear without warning, so nothing is picked up from it
+/// implicitly: a skill ships only when its name is listed here. Remove a
+/// name once upstream graduates it into a stable bucket (the stable entry
+/// wins either way) or drops it (the lock entry becomes an orphan).
+const IN_PROGRESS_ALLOWLIST: &[&str] = &["implement-spec", "loop-me", "retro"];
+
 type SkillMap = BTreeMap<String, serde_json::Value>;
+
+/// Build one `.skill-lock.json` entry for a skill directory.
+fn skill_entry(dir: &Path, skill_path: &str) -> Result<serde_json::Value, String> {
+    let hash = git_utils::compute_tree_hash(dir)?;
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "source".to_string(),
+        serde_json::Value::String("mattpocock/skills".to_string()),
+    );
+    obj.insert(
+        "sourceType".to_string(),
+        serde_json::Value::String("github".to_string()),
+    );
+    obj.insert(
+        "sourceUrl".to_string(),
+        serde_json::Value::String(UPSTREAM_REPO.to_string()),
+    );
+    obj.insert(
+        "skillPath".to_string(),
+        serde_json::Value::String(skill_path.to_string()),
+    );
+    obj.insert(
+        "skillFolderHash".to_string(),
+        serde_json::Value::String(hash),
+    );
+    obj.insert(
+        "pluginName".to_string(),
+        serde_json::Value::String(PLUGIN_NAME.to_string()),
+    );
+    obj.insert(
+        "installedAt".to_string(),
+        serde_json::Value::String(now.clone()),
+    );
+    obj.insert("updatedAt".to_string(), serde_json::Value::String(now));
+
+    Ok(serde_json::Value::Object(obj))
+}
 
 /// Walk the cloned upstream tree to discover all SKILL.md files and build a
 /// map of skill name → metadata entry (with computed hash).
@@ -80,43 +135,45 @@ fn discover_skills(upstream_root: &Path) -> Result<SkillMap, String> {
                 continue;
             }
 
-            let hash = git_utils::compute_tree_hash(&path)?;
             let skill_path = format!("skills/{}/{}/SKILL.md", bucket, name);
-            let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-            let mut obj = serde_json::Map::new();
-            obj.insert(
-                "source".to_string(),
-                serde_json::Value::String("mattpocock/skills".to_string()),
-            );
-            obj.insert(
-                "sourceType".to_string(),
-                serde_json::Value::String("github".to_string()),
-            );
-            obj.insert(
-                "sourceUrl".to_string(),
-                serde_json::Value::String(UPSTREAM_REPO.to_string()),
-            );
-            obj.insert(
-                "skillPath".to_string(),
-                serde_json::Value::String(skill_path),
-            );
-            obj.insert(
-                "skillFolderHash".to_string(),
-                serde_json::Value::String(hash),
-            );
-            obj.insert(
-                "pluginName".to_string(),
-                serde_json::Value::String(PLUGIN_NAME.to_string()),
-            );
-            obj.insert(
-                "installedAt".to_string(),
-                serde_json::Value::String(now.clone()),
-            );
-            obj.insert("updatedAt".to_string(), serde_json::Value::String(now));
-
-            map.insert(name, serde_json::Value::Object(obj));
+            map.insert(name, skill_entry(&path, &skill_path)?);
         }
+    }
+
+    // ── In-progress allowlist ──────────────────────────────────────────
+    //
+    // A name that graduated into a stable bucket is already in `map`, and the
+    // stable entry wins. A name that vanished upstream fails the sync, so an
+    // allowlisted skill can never be dropped from the lock by accident.
+    let in_progress_dir = skills_dir.join("in-progress");
+    for name in IN_PROGRESS_ALLOWLIST {
+        let dir = in_progress_dir.join(name);
+        let has_in_progress_copy = dir.join("SKILL.md").is_file();
+
+        if map.contains_key(*name) {
+            let state = if has_in_progress_copy {
+                "also exists in a stable bucket"
+            } else {
+                "graduated to a stable bucket"
+            };
+            println!(
+                "  in-progress allowlist: {} {}, keeping the stable entry",
+                name, state
+            );
+            continue;
+        }
+
+        if !has_in_progress_copy {
+            return Err(format!(
+                "allowlisted in-progress skill '{}' is missing at this ref; sync a ref that \
+                 contains it, or remove it from IN_PROGRESS_ALLOWLIST if upstream dropped it",
+                name
+            ));
+        }
+
+        let skill_path = format!("skills/in-progress/{}/SKILL.md", name);
+        map.insert(name.to_string(), skill_entry(&dir, &skill_path)?);
+        println!("  in-progress allowlist: shipping {}", name);
     }
 
     Ok(map)
@@ -149,12 +206,19 @@ fn merge_lock_file(installed_ats: &BTreeMap<String, String>, new_skills: &SkillM
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
+fn usage() -> ! {
+    eprintln!("Usage: rust-script scripts/sync-upstream.rs <REF>");
+    eprintln!();
+    eprintln!("REF is a required mattpocock/skills release tag, branch, or commit SHA.");
+    eprintln!("There is no default: a ref that predates an allowlisted skill would orphan it.");
+    process::exit(1);
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let tag = if args.len() > 1 {
-        args[1].clone()
-    } else {
-        "v1.1.0".to_string()
+    let tag = match args.get(1) {
+        Some(tag) if !tag.trim().is_empty() => tag.clone(),
+        _ => usage(),
     };
 
     // Derive project root
@@ -166,26 +230,49 @@ fn main() {
     println!("=== Sync upstream to {} ===", tag);
     println!("Project root: {}", project_root.display());
 
-    // ── 1. Clone upstream at tag ───────────────────────────────────────
+    // ── 1. Fetch upstream at the pinned ref ────────────────────────────
+    //
+    // `git clone --branch` accepts branches and tags only. Init + fetch +
+    // checkout also accepts a commit SHA, which is how the in-progress
+    // allowlist is pinned to a main commit that has no release tag yet.
     let n = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
     let clone_dir =
         std::env::temp_dir().join(format!("sync-upstream-clone-{}-{}", process::id(), n));
+    fs::create_dir_all(&clone_dir).expect("cannot create temp clone dir");
 
-    println!("\nCloning {} ({}):", UPSTREAM_REPO, tag);
-    let clone_output = Command::new("git")
-        .args(["clone", "--quiet", "--branch", &tag, "--depth", "1"])
-        .arg(UPSTREAM_REPO)
-        .arg(&clone_dir)
-        .output()
-        .expect("git clone failed");
-
-    if !clone_output.status.success() {
-        let stderr = String::from_utf8_lossy(&clone_output.stderr);
-        eprintln!("ERROR: git clone failed: {}", stderr);
-        let _ = fs::remove_dir_all(&clone_dir);
-        process::exit(1);
+    println!("\nFetching {} ({}):", UPSTREAM_REPO, tag);
+    let steps: Vec<Vec<&str>> = vec![
+        vec!["init", "--quiet"],
+        vec!["remote", "add", "origin", UPSTREAM_REPO],
+        vec!["fetch", "--quiet", "--depth", "1", "origin", tag.as_str()],
+        vec!["checkout", "--quiet", "FETCH_HEAD"],
+    ];
+    for step in &steps {
+        let output = Command::new("git")
+            .args(step)
+            .current_dir(&clone_dir)
+            .output()
+            .expect("git failed to start");
+        if !output.status.success() {
+            eprintln!(
+                "ERROR: git {} failed: {}",
+                step.join(" "),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            let _ = fs::remove_dir_all(&clone_dir);
+            process::exit(1);
+        }
     }
-    println!("  cloned to {}", clone_dir.display());
+    let resolved = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&clone_dir)
+        .output()
+        .expect("git rev-parse failed");
+    println!(
+        "  fetched to {} (commit {})",
+        clone_dir.display(),
+        String::from_utf8_lossy(&resolved.stdout).trim()
+    );
 
     // ── 2. Discover skills from cloned upstream ────────────────────────
     println!("\nDiscovering skills in upstream...");
