@@ -1,11 +1,11 @@
 # Autopilot Toolkit
 
-A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 37 skills — 29 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 7 autopilot (custom, living in `skills/autopilot/`). 32 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 5 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
+A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 40 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 7 autopilot (custom, living in `skills/autopilot/`). 35 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 5 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
 
 ## Language
 
 **Toolkit skill**:
-One of the 37 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream), a `.vendor-lock.json` entry (vendor), or a directory under `skills/autopilot/` (autopilot).
+One of the 40 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream), a `.vendor-lock.json` entry (vendor), or a directory under `skills/autopilot/` (autopilot).
 _Avoid_: project skill, owned skill
 
 **Expected set**:
@@ -25,7 +25,7 @@ _Avoid_: third-party skill, external skill
 _Avoid_: vendor manifest, vendor registry
 
 **Runtime-agnostic skill**:
-A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Kimi Code, Claude Code, etc.). 32 of 37 toolkit skills fall in this category.
+A skill whose body contains only methodology instructions — no references to runtime-specific tools (`run_skill`, `complete_step`), dispatch mechanisms, or CLI commands. Works on any Agent Skills-compliant agent (Reasonix, Codex, Kimi Code, Claude Code, etc.). 35 of 40 toolkit skills fall in this category.
 _Avoid_: universal skill, portable skill
 
 **Runtime-coupled skill**:
@@ -182,11 +182,15 @@ An optional free-text annotation on an AC (`Seam: <boundary>`) that tells the im
 _Avoid_: test boundary, mock point, interface cut
 
 **Upstream snapshot**:
-The vendored copy of `mattpocock/skills` under `skills/upstream/`. A full directory tree (excluding `.git/`) from a specific upstream release tag, with integrity tracked by per-skill git tree hashes in `.skill-lock.json`. Vendor skills are deliberately outside this subtree so the upstream replacement never touches them.
+The vendored copy of `mattpocock/skills` under `skills/upstream/`. A full directory tree (excluding `.git/`) from one pinned upstream ref — a release tag, branch, or commit, always supplied explicitly to the sync — with integrity tracked by per-skill git tree hashes in `.skill-lock.json`. Skills under `in-progress/` ship only when named in the in-progress allowlist. Vendor skills are deliberately outside this subtree so the upstream replacement never touches them.
 _Avoid_: upstream vendor, skills submodule
 
+**In-progress allowlist**:
+`IN_PROGRESS_ALLOWLIST` in `scripts/sync-upstream.rs` — the names of upstream beta skills under `skills/in-progress/` that ship anyway, tracked in `.skill-lock.json` like any other upstream skill. Membership is explicit: an unlisted in-progress skill is never picked up. A name that graduates into a stable bucket resolves itself on the next sync; a name missing at the synced ref fails the sync before anything is replaced, so a stale ref cannot orphan it.
+_Avoid_: beta skills, unreleased skills
+
 **Upstream replacement**:
-The sync operation that deletes the current `skills/upstream/` and copies in a newer upstream tag's content, then recomputes all `skillFolderHash` values. Performed by `scripts/sync-upstream.rs`.
+The sync operation that deletes the current `skills/upstream/` and copies in a newer upstream ref's content, then recomputes all `skillFolderHash` values. Performed by `scripts/sync-upstream.rs`, which requires an explicit ref and has no default.
 _Avoid_: upstream update, skills refresh
 
 **Review axis** (or review dimension):
