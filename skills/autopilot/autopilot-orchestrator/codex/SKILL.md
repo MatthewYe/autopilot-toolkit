@@ -5,7 +5,18 @@ description: "Codex autopilot loop: scan -> implement -> review -> retry via spa
 
 Before anything else, read `~/.agents/principles/karpathy.md`. Apply Principle 1 "Think Before Analyzing" variant plus Principles 2 and 4.
 
-Execute the autopilot orchestrator workflow below. The implementer and reviewer are Codex custom agents, installed as `~/.codex/agents/*.toml`, and already contain their own methodology. Dispatch them directly by name.
+Execute the autopilot orchestrator workflow below. The implementer and reviewer are Codex custom agents, installed as `~/.codex/agents/*.toml`, and already contain their own methodology. Dispatch them through the fallback ladder below.
+
+## Sub-agent dispatch model
+
+### Dispatch budget
+
+Spend one spawn attempt per role, then fall back to direct work for that role for the rest of the run. This bounds the time a broken sub-agent path can cost.
+
+1. The first attempt spawns the registered custom agent by name (`autopilot-implementer` / `autopilot-reviewer`). When the spawn tool reports the agent type is unavailable, spend the attempt on the generic worker form instead: spawn `worker` with a prompt opening "You are acting as the Codex custom agent `<name>`. FIRST, read `~/.codex/agents/<name>.toml` completely and follow its developer_instructions exactly.", then append the role task description.
+2. The attempt failed when the spawn returns an empty payload, the report header (`IMPLEMENTER_REPORT:` / `REVIEWER_REPORT:`) is missing, or one wait cycle times out.
+3. After a failed attempt, stop spawning that role and continue locally: do the implementer work in the orchestrator, or run the reviewer checklist as a direct self-review. No second spawn for the same role, and no full-history spawn from the orchestrator context — a full-history agent inherits the orchestrator role and can spawn children or stall.
+4. Record the fallback where the run is visible: `DIRECT_IMPLEMENTER: true` / `DIRECT_REVIEW: true` plus the tool limitation in the per-issue comment; for Phase 2 dispatches, in the closing report's structured section.
 
 ## Issue 来源识别
 
@@ -158,12 +169,13 @@ Before sorting or dispatching local candidates, group files with identical full 
 1. List open issues with label `ready-for-agent`, up to 50.
 2. Filter out entries with label `spec` or legacy `prd`.
 3. For remaining entries, read the body and apply content-based spec detection. Exclude specs and record them as skipped.
-4. Sort implementable GitHub matches by issue number.
+4. For remaining entries, read the blocked-by list (`blockedBy` / `issue_dependencies_summary.blocked_by`; fallback `gh api repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by`). Exclude candidates with any open blocker from the dispatch queue and report them as deferred with the open blocker numbers.
+5. Sort implementable GitHub matches by issue number.
 
 ### Select
 
 1. Merge local and GitHub implementable candidates, preferring local candidates first.
-2. Report all found implementable issues and any skipped specs.
+2. Report all found implementable issues, skipped specs, and deferred blocked issues.
 3. If no implementable issue remains, enter "Phase 2: 全局 Meta-Review".
 4. Choose the first candidate and run the matching target initialization flow above.
 
@@ -293,8 +305,8 @@ Wait for the implementer result and parse `IMPLEMENTER_REPORT:`.
 
 Empty result handling:
 
-1. If the result has no `IMPLEMENTER_REPORT:` header, retry the same implementer task once.
-2. If the second result is also empty or missing the header, mark `needs-info`, add the raw result to the issue comment, and stop this issue.
+1. Apply the "Dispatch budget" fallback: perform the implementer work directly in the orchestrator.
+2. Record `DIRECT_IMPLEMENTER: true` plus the raw result in the issue comment, skip implementer-report parsing, and continue to reviewer dispatch.
 
 Parse tolerance:
 
@@ -348,7 +360,7 @@ The reviewer task description must include:
 
 Wait for the reviewer result and parse `REVIEWER_REPORT:`.
 
-If the result has no `REVIEWER_REPORT:` header, mark `needs-info`, add the raw result, and stop this issue.
+If the result has no `REVIEWER_REPORT:` header, apply the "Dispatch budget" fallback: run the reviewer checklist as a direct self-review, record `DIRECT_REVIEW: true` plus the raw result, and use the self-review as this round's `REVIEWER_REPORT`.
 
 ### Parse SUGGESTION_RESOLUTIONS
 
@@ -401,6 +413,14 @@ Parse `VERDICT:` from `REVIEWER_REPORT`.
 - `BLOCKED`: mark `needs-info`, comment with reviewer conclusion, then return to scanning.
 
 Missing or unknown verdict: mark `needs-info`, comment with the raw reviewer result, and stop this issue.
+
+### Post-merge checkpoint (GitHub mode)
+
+After each merged PR in this run:
+
+1. Read the issue state; treat the PR's `Closes #N` as a claim, not proof.
+2. When the issue is still open, close it with `state_reason: completed`.
+3. Pull `main`, then re-read the blocked-by list of issues that depended on the merged issue and confirm they are now dispatchable.
 
 ### Update Suggestion 状态
 
@@ -459,7 +479,7 @@ Start two independent reviews:
 spawn agent autopilot-reviewer with task: "Perform global meta-review over the whole codebase against ADRs, specs, and resolved issue contracts. Report Critical, Important, Suggestion, and VERDICT."
 ```
 
-Wait for the reviewer result while completing the self-review.
+Wait for the reviewer result while completing the self-review. If the reviewer spawn fails per the dispatch budget, record `DIRECT_REVIEW: true` and continue with the self-review as the sole source.
 
 ### Merge Reports
 
@@ -505,3 +525,14 @@ After Phase 2 repairs, produce the cross-issue suggestion acceptance report desc
 3. Group suggestions by `pending`, `rejected`, and `resolved`.
 4. Output with header `FINAL_ACCEPTANCE_REPORT:`.
 5. Verify that resolved entries have `resolved_in_issue`, rejected entries have `rejected_reason`, pending entries are not incorrectly marked resolved, counts match, and no entry has empty `content`.
+
+## Closing report
+
+The final user-facing message opens with a `## Plain summary` section, followed by the structured sections: meta-review result, gates, `FINAL_ACCEPTANCE_REPORT:`, self-verification, and workspace state.
+
+### Plain summary
+
+- 6–10 short sentences of plain prose, one idea per sentence.
+- State, in order: what changed, what passed, what remains, and the next decision for the user.
+- Use the target repo's `CONTEXT.md` ubiquitous language; a reader who never watched the run must follow it.
+- Keep internal names out of this section — phase names, `FINAL_ACCEPTANCE_REPORT`, `suggestions.json`, `DIRECT_REVIEW`. They belong in the structured sections below it.
