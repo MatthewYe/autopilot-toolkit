@@ -368,6 +368,8 @@ mod tests {
         __release_builds_packs_and_publishes_once_in_order();
         __release_skip_distill_build_publishes_without_building();
         __pack_fails_when_distill_artifact_set_is_incomplete();
+        __pack_fails_when_expected_skill_is_missing();
+        __pack_fails_when_lock_file_is_malformed();
         __build_creates_dist_dir_if_missing();
         __build_exits_nonzero_when_not_in_git_repo();
         __sync_still_works_after_build_changes();
@@ -522,6 +524,13 @@ mod tests {
         let skills_dir = extract_dir.join("skills");
         assert!(skills_dir.is_dir(), "skills/ should exist");
 
+        // ── one enumeration: manifest names == staged skill directories ──
+        let mut staged_skill_dirs: Vec<String> = fs::read_dir(&skills_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        staged_skill_dirs.sort();
+
         // ── AC 4: principles/ exists ──
         assert!(
             extract_dir.join("principles").is_dir(),
@@ -537,6 +546,13 @@ mod tests {
         assert_eq!(
             manifest.version, git_hash,
             "manifest.version should match git hash"
+        );
+
+        let mut manifest_skill_names: Vec<String> = manifest.skills.keys().cloned().collect();
+        manifest_skill_names.sort();
+        assert_eq!(
+            manifest_skill_names, staged_skill_dirs,
+            "manifest.json skill names must equal the staged skill directories"
         );
 
         // Check autopilot skills are present and correctly classified
@@ -1436,6 +1452,74 @@ fi
         assert!(
             !skills.join("distill").exists(),
             "dev should not create the old distill skill symlink"
+        );
+    }
+
+    fn __pack_fails_when_expected_skill_is_missing() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+        write_mock_distill_artifacts(&project);
+
+        // A lock entry whose directory does not exist must fail the pack.
+        // Deliberate change: pack no longer warns and skips the entry.
+        fs::write(
+            project.join(".vendor-lock.json"),
+            r#"{
+                "version": 1,
+                "skills": {
+                    "missing-vendor-skill": {
+                        "skillPath": "plugins/missing-vendor-skill/skills/missing-vendor-skill/SKILL.md",
+                        "skillFolderHash": "deadbeef",
+                        "vendorPath": "skills/vendor/missing-vendor-skill",
+                        "installedAt": "2026-01-01T00:00:00.000Z"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_ne!(
+            code, 0,
+            "pack should fail when an expected skill directory is missing, stdout: {}, stderr: {}",
+            out, err
+        );
+        assert!(
+            err.contains("missing-vendor-skill"),
+            "pack error should name the missing skill, stderr: {}",
+            err
+        );
+        assert!(
+            !project.join("dist/autopilot-toolkit.tar.gz").exists(),
+            "pack must not produce a tarball when an expected skill is missing"
+        );
+    }
+
+    fn __pack_fails_when_lock_file_is_malformed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+        write_mock_distill_artifacts(&project);
+
+        fs::write(project.join(".skill-lock.json"), "{ not valid json").unwrap();
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_ne!(
+            code, 0,
+            "pack should fail on a malformed lock file, stdout: {}, stderr: {}",
+            out, err
+        );
+        assert!(
+            err.contains(".skill-lock.json"),
+            "pack error should name the malformed lock file, stderr: {}",
+            err
+        );
+        assert!(
+            !project.join("dist/autopilot-toolkit.tar.gz").exists(),
+            "pack must not produce a tarball when the lock file is malformed"
         );
     }
 }
