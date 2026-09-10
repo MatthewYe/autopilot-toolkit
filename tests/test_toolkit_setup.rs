@@ -4,6 +4,7 @@
 //! tempfile = "3"
 //! anyhow = "1"
 //! serde_json = "1"
+//! skill-index = { path = "../crates/skill-index" }
 //! ```
 //!
 //! Integration tests for deploy.rs toolkit-setup orchestration flow.
@@ -1136,6 +1137,16 @@ fn run_toolkit_setup_verify(ctx: &TestContext, expected: &[(String, PathBuf)]) -
     report.join("\n")
 }
 
+/// Position of a Skill source in the deterministic Expected-set order.
+fn source_rank(source: &str) -> u8 {
+    match source {
+        "autopilot" => 0,
+        "vendor" => 1,
+        "upstream" => 2,
+        other => panic!("unknown Skill source {other:?}"),
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1144,6 +1155,52 @@ mod tests {
 
     fn install_script() -> PathBuf {
         install_script_path()
+    }
+
+    /// The repo's own source tree enumerates to a complete, deterministically
+    /// ordered Expected set — no failed entries, no duplicate names.
+    #[test]
+    fn expected_set_resolves_from_the_repo_tree() {
+        let entries = skill_index::discover_skills(&project_root())
+            .expect("enumerate the Expected set from the repo tree");
+
+        assert!(
+            !entries.is_empty(),
+            "the repo tree must own at least one skill"
+        );
+
+        let failed: Vec<String> = entries
+            .iter()
+            .filter_map(|entry| match &entry.resolution {
+                skill_index::ResolutionStatus::Missing { reason } => {
+                    Some(format!("{}: {reason}", entry.name))
+                }
+                skill_index::ResolutionStatus::Resolved => None,
+            })
+            .collect();
+        assert!(
+            failed.is_empty(),
+            "every entry must resolve in the repo tree:\n{failed:#?}"
+        );
+
+        // Deterministic order: autopilot, then vendor, then upstream,
+        // name-sorted within each group.
+        let order: Vec<(u8, &str)> = entries
+            .iter()
+            .map(|entry| (source_rank(&entry.source), entry.name.as_str()))
+            .collect();
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            order, sorted,
+            "entries must be in deterministic source-then-name order"
+        );
+
+        let mut names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        names.sort_unstable();
+        let mut deduped = names.clone();
+        deduped.dedup();
+        assert_eq!(names, deduped, "duplicate skill names in the Expected set");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
