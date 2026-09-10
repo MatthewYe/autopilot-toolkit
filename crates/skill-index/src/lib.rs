@@ -6,7 +6,6 @@
 //!
 //! Public API:
 //! - `discover_skills(project_root)` → `Result<Vec<ExpectedSetEntry>>`
-//! - `discover_vendor_skill_dirs(project_root)` → lock-driven vendor directories
 //! - `classify_skill(skill_dir)` → `(SkillType, Vec<String>, bool)`
 //! - `generate_manifest(skills, version)` → `Manifest`
 
@@ -106,32 +105,6 @@ pub fn classify_skill(skill_dir: &Path) -> (SkillType, Vec<String>, bool) {
         SkillType::Coupled
     };
     (skill_type, variants, codex_agent)
-}
-
-// ── discover_vendor_skill_dirs ──────────────────────────────────────────────
-
-/// Resolve vendor skill directories from `.vendor-lock.json`.
-///
-/// The vendor lock is the source of truth for which vendor skills belong to
-/// the toolkit: a directory without a lock entry is an orphan and is ignored.
-/// A missing vendor lock yields an empty list (no vendor skills installed).
-pub fn discover_vendor_skill_dirs(
-    project_root: &Path,
-) -> Result<Vec<(String, PathBuf)>, anyhow::Error> {
-    if !project_root.join(shared::VENDOR_LOCK_FILE).is_file() {
-        return Ok(Vec::new());
-    }
-
-    let lock = shared::load_vendor_lock_at(project_root).map_err(|e| anyhow::anyhow!(e))?;
-    let mut entries: Vec<(String, PathBuf)> = Vec::new();
-    for skill in &lock.skills {
-        let dir = project_root.join(skill.vendor_dir());
-        if dir.is_dir() {
-            entries.push((skill.name.clone(), dir));
-        }
-    }
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(entries)
 }
 
 // ── discover_skills ─────────────────────────────────────────────────────────
@@ -389,59 +362,6 @@ mod tests {
         assert!(!codex_agent);
     }
 
-    #[test]
-    fn discover_vendor_skill_dirs_is_lock_driven() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-
-        std::fs::create_dir_all(root.join("skills/vendor/show-me")).unwrap();
-        std::fs::write(
-            root.join("skills/vendor/show-me/SKILL.md"),
-            "---\nname: show-me\ndescription: test\n---\n",
-        )
-        .unwrap();
-
-        // Orphan directory without a lock entry — must be ignored.
-        std::fs::create_dir_all(root.join("skills/vendor/orphan")).unwrap();
-        std::fs::write(
-            root.join("skills/vendor/orphan/SKILL.md"),
-            "---\nname: orphan\ndescription: test\n---\n",
-        )
-        .unwrap();
-
-        std::fs::write(
-            root.join(".vendor-lock.json"),
-            r#"{
-                "version": 1,
-                "skills": {
-                    "show-me": {
-                        "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
-                        "skillFolderHash": "abc123",
-                        "vendorPath": "skills/vendor/show-me"
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        let entries = discover_vendor_skill_dirs(root).unwrap();
-        assert_eq!(entries.len(), 1, "only locked vendor skills are discovered");
-        assert_eq!(entries[0].0, "show-me");
-        assert!(entries[0].1.ends_with("skills/vendor/show-me"));
-    }
-
-    #[test]
-    fn discover_vendor_skill_dirs_missing_lock_is_empty() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(tmp.path().join("skills/vendor/show-me")).unwrap();
-
-        let entries = discover_vendor_skill_dirs(tmp.path()).unwrap();
-        assert!(
-            entries.is_empty(),
-            "a missing vendor lock must yield no vendor skills"
-        );
-    }
-
     // ── Expected-set enumeration fixtures ───────────────────────────────
 
     fn write_skill_md(dir: &Path) {
@@ -540,6 +460,23 @@ mod tests {
             tdd.source_dir,
             root.join("skills/upstream/skills/engineering/tdd")
         );
+    }
+
+    #[test]
+    fn vendor_enumeration_is_lock_driven() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        write_skill_md(&root.join("skills/vendor/show-me"));
+        // Orphan directory without a lock entry — must be ignored.
+        write_skill_md(&root.join("skills/vendor/orphan"));
+        write_vendor_lock(root, &[("show-me", "skills/vendor/show-me")]);
+
+        let entries = discover_skills(root).unwrap();
+        assert_eq!(entries.len(), 1, "only locked vendor skills are discovered");
+        assert_eq!(entries[0].name, "show-me");
+        assert_eq!(entries[0].source, "vendor");
+        assert_eq!(entries[0].source_dir, root.join("skills/vendor/show-me"));
     }
 
     #[test]
