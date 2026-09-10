@@ -28,7 +28,9 @@ pub enum SkillType {
 pub enum ResolutionStatus {
     /// The source directory exists.
     Resolved,
-    /// The provenance points at a directory that does not exist.
+    /// The failed-entry state (CONTEXT.md): the provenance points at a
+    /// directory that does not exist. The entry is still returned, with its
+    /// reason.
     Missing { reason: String },
 }
 
