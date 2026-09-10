@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use skill_index::{classify_skill, discover_vendor_skill_dirs, SkillType};
+use skill_index::{discover_skills, ResolutionStatus, SkillType};
 
 use super::{stage_coupled_skill, sync_path, SyncKind};
 
@@ -20,72 +20,29 @@ pub fn dev_all(
 ) -> Result<(), anyhow::Error> {
     println!("==> Syncing all skills from source tree...");
 
-    let autopilot_dir = project_root.join("skills").join("autopilot");
+    let entries = discover_skills(project_root)?;
+
     let mut count = 0u32;
-    if autopilot_dir.is_dir() {
-        for entry in std::fs::read_dir(&autopilot_dir)? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            let src_dir = entry.path();
-
-            let (skill_type, codex_agent) =
-                sync_source_skill(&name, &src_dir, project_root, shared_skills_dir)?;
-            if skill_type == SkillType::Coupled {
-                remove_project_symlink(&reasonix_skills_dir.join(&name), project_root)?;
-                remove_project_symlink(&codex_skills_dir.join(&name), project_root)?;
-
-                if codex_agent {
-                    let agent_src = src_dir.join("codex").join("agent.toml");
-                    sync_path(
-                        &agent_src,
-                        &codex_agents_dir.join(format!("{}.toml", name)),
-                        SyncKind::File,
-                    )?;
-                    count += 1;
-                }
-            }
-            count += 1;
+    for entry in &entries {
+        if let ResolutionStatus::Missing { reason } = &entry.resolution {
+            eprintln!(
+                "WARNING: {} skill '{}' source dir missing, skipping: {}",
+                entry.source, entry.name, reason
+            );
+            continue;
         }
-    }
 
-    // ── Vendor skills (lock-driven) ──
-    for (name, src_dir) in discover_vendor_skill_dirs(project_root)? {
-        sync_source_skill(&name, &src_dir, project_root, shared_skills_dir)?;
+        // The summary counter preserves the historical arithmetic: one per
+        // entry, plus one more for a coupled entry that ships a codex agent.
+        count += sync_expected_entry(
+            entry,
+            project_root,
+            shared_skills_dir,
+            reasonix_skills_dir,
+            codex_skills_dir,
+            codex_agents_dir,
+        )?;
         count += 1;
-    }
-
-    // ── Upstream skills ──
-    let lock_path = project_root.join(".skill-lock.json");
-    if lock_path.is_file() {
-        match shared::load_skill_lock() {
-            Ok(lock) => {
-                for skill in &lock.skills {
-                    let src_parent = Path::new(&skill.skill_path).parent().unwrap_or(Path::new(""));
-                    let src_dir = project_root
-                        .join("skills")
-                        .join("upstream")
-                        .join(src_parent);
-                    if src_dir.is_dir() {
-                        sync_path(&src_dir, &shared_skills_dir.join(&skill.name), SyncKind::Dir)?;
-                        count += 1;
-                    } else {
-                        eprintln!(
-                            "WARNING: upstream skill '{}' source dir missing, skipping",
-                            skill.name
-                        );
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "WARNING: failed to load .skill-lock.json for upstream dev: {}",
-                    e
-                );
-            }
-        }
     }
 
     println!("==> Done: {} symlinks created/verified.", count);
@@ -144,26 +101,45 @@ pub fn dev_clean(
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-/// Sync one source skill into the shared skills directory.
+/// Provision one resolved Expected-set entry and return its counter weight.
 ///
 /// Runtime-coupled skills are staged into the router layout first; agnostic
-/// skills are symlinked directly from the source tree. Returns the skill type
-/// and whether the skill also ships a Codex `agent.toml`.
-fn sync_source_skill(
-    name: &str,
-    src_dir: &Path,
+/// and upstream skills are symlinked directly from the source tree. Returns 1
+/// when the entry also ships a Codex `agent.toml` (linked here), 0 otherwise.
+fn sync_expected_entry(
+    entry: &skill_index::ExpectedSetEntry,
     project_root: &Path,
     shared_skills_dir: &Path,
-) -> Result<(SkillType, bool), anyhow::Error> {
-    let (skill_type, _variants, codex_agent) = classify_skill(src_dir);
-    if skill_type == SkillType::Coupled {
+    reasonix_skills_dir: &Path,
+    codex_skills_dir: &Path,
+    codex_agents_dir: &Path,
+) -> Result<u32, anyhow::Error> {
+    let name = &entry.name;
+    let src_dir = &entry.source_dir;
+    let mut extra = 0;
+
+    if entry.skill_type == SkillType::Coupled {
         let dev_staging = project_root.join("dist").join("dev-skills").join(name);
         stage_coupled_skill(src_dir, &dev_staging)?;
         sync_path(&dev_staging, &shared_skills_dir.join(name), SyncKind::Dir)?;
+
+        remove_project_symlink(&reasonix_skills_dir.join(name), project_root)?;
+        remove_project_symlink(&codex_skills_dir.join(name), project_root)?;
+
+        if entry.codex_agent {
+            let agent_src = src_dir.join("codex").join("agent.toml");
+            sync_path(
+                &agent_src,
+                &codex_agents_dir.join(format!("{}.toml", name)),
+                SyncKind::File,
+            )?;
+            extra += 1;
+        }
     } else {
         sync_path(src_dir, &shared_skills_dir.join(name), SyncKind::Dir)?;
     }
-    Ok((skill_type, codex_agent))
+
+    Ok(extra)
 }
 
 fn remove_project_symlink(path: &Path, project_root: &Path) -> Result<(), anyhow::Error> {
