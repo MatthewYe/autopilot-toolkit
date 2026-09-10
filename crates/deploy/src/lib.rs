@@ -189,7 +189,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     std::fs::create_dir_all(dst)?;
 
     let top_level_skill = src.join("SKILL.md");
-    let fallback_variant = ["codex", "kimi", "reasonix"]
+    let fallback_variant = skill_index::RUNTIME_VARIANTS
         .iter()
         .map(|variant| src.join(variant))
         .find(|variant_dir| variant_dir.join("SKILL.md").is_file());
@@ -223,7 +223,7 @@ This installed skill has one discoverable entry point so runtimes do not index d
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
             let name = entry.file_name();
-            if ["codex", "kimi", "reasonix"]
+            if skill_index::RUNTIME_VARIANTS
                 .iter()
                 .any(|variant| name == *variant)
             {
@@ -251,7 +251,7 @@ This installed skill has one discoverable entry point so runtimes do not index d
         )?;
     }
 
-    for variant in &["codex", "kimi", "reasonix"] {
+    for variant in skill_index::RUNTIME_VARIANTS.iter() {
         let variant_src = src.join(variant);
         if variant_src.is_dir() {
             copy_instruction_tree(&variant_src, &runtime_root.join(variant))?;
