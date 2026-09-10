@@ -20,7 +20,7 @@ use skill_index::{discover_skills, ExpectedSetEntry, ResolutionStatus, SkillType
 pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── one Expected-set enumeration drives staging and manifest ──
     let entries = discover_skills(project_root)?;
-    fail_on_missing_entries(&entries)?;
+    reject_failed_entries(&entries)?;
 
     let version = get_version(project_root)?;
     let dist_dir = project_root.join("dist");
@@ -164,13 +164,13 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Refuse to pack while any Expected-set entry failed to resolve.
+/// Refuse to pack while the Expected set contains failed entries (CONTEXT.md).
 ///
 /// `pack` is strict where `dev` is lenient: a tarball that silently omits a
 /// locked skill would ship a manifest that disagrees with the sources, so the
-/// pack fails and names every unresolved skill instead.
-fn fail_on_missing_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::Error> {
-    let missing: Vec<String> = entries
+/// pack fails and names every failed entry instead.
+fn reject_failed_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::Error> {
+    let failed: Vec<String> = entries
         .iter()
         .filter_map(|entry| match &entry.resolution {
             ResolutionStatus::Missing { reason } => Some(format!(
@@ -183,12 +183,12 @@ fn fail_on_missing_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::E
             ResolutionStatus::Resolved => None,
         })
         .collect();
-    if missing.is_empty() {
+    if failed.is_empty() {
         return Ok(());
     }
     anyhow::bail!(
         "cannot pack: expected skill(s) missing:\n  {}",
-        missing.join("\n  ")
+        failed.join("\n  ")
     )
 }
 
