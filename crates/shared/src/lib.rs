@@ -3,8 +3,8 @@
 //! Provides:
 //! - `project_root()` — unified project root derivation
 //! - `SkillLock` / `LockedSkill` — strong types for `.skill-lock.json` and `.vendor-lock.json`
-//! - `load_skill_lock()` — single parse entrypoint for `.skill-lock.json`
-//! - `load_vendor_lock()` — single parse entrypoint for `.vendor-lock.json`
+//! - `load_skill_lock_at()` / `load_vendor_lock_at()` — parse entrypoints for a given project root
+//! - `load_skill_lock()` / `load_vendor_lock()` — ambient-root conveniences (test-only in this repo)
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -142,8 +142,9 @@ pub fn load_skill_lock() -> Result<SkillLock, String> {
 
 /// Read and parse `.skill-lock.json` from a specific directory.
 ///
-/// Prefer `load_skill_lock()` in production code; this variant is useful
-/// for tests that operate on synthetic project roots.
+/// This is the production entrypoint: consumers pass the project root
+/// explicitly. The ambient-root `load_skill_lock()` is a convenience used
+/// by tests that rely on `project_root()`.
 pub fn load_skill_lock_at(root: &Path) -> Result<SkillLock, String> {
     load_lock_at(root, SKILL_LOCK_FILE)
 }
@@ -159,8 +160,9 @@ pub fn load_vendor_lock() -> Result<SkillLock, String> {
 
 /// Read and parse `.vendor-lock.json` from a specific directory.
 ///
-/// Prefer `load_vendor_lock()` in production code; this variant is useful
-/// for tests that operate on synthetic project roots.
+/// This is the production entrypoint: consumers pass the project root
+/// explicitly. The ambient-root `load_vendor_lock()` is a convenience used
+/// by tests that rely on `project_root()`.
 pub fn load_vendor_lock_at(root: &Path) -> Result<SkillLock, String> {
     load_lock_at(root, VENDOR_LOCK_FILE)
 }
