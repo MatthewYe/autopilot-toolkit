@@ -12,6 +12,10 @@ _Avoid_: project skill, owned skill
 The authoritative list of toolkit skills, derived at runtime by reading `.skill-lock.json` (upstream) and `.vendor-lock.json` (vendor), and scanning `skills/autopilot/*/SKILL.md` (autopilot). No separate manifest — the sources are the SSOT.
 _Avoid_: skill inventory, skill manifest
 
+**Expected-set entry**:
+One skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entry whose provenance points at a missing directory is a failed entry.
+_Avoid_: skill record, discovery result, skill item
+
 **Skill source**:
 The origin of a toolkit skill — `upstream` (mattpocock/skills, synced via `.skill-lock.json`), `vendor` (third-party, pinned in `.vendor-lock.json` under `skills/vendor/`), or `autopilot` (local, under `skills/autopilot/`).
 _Avoid_: skill type, skill category
