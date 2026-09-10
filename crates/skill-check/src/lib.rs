@@ -2,8 +2,8 @@
 //! `.skill-lock.json` and `.vendor-lock.json` match the actual skill
 //! directories on disk.
 //!
-//! Migrated from `scripts/check.rs`.  Uses `shared::load_skill_lock()` and
-//! `shared::load_vendor_lock()` for parsing and `shared::SkillLock` /
+//! Migrated from `scripts/check.rs`.  Uses `shared::load_skill_lock_at()` and
+//! `shared::load_vendor_lock_at()` for parsing and `shared::SkillLock` /
 //! `shared::LockedSkill` as the source-of-truth types.
 //!
 //! Public API:
@@ -76,10 +76,10 @@ fn check_tree_hash(
 
 /// Check all skills against their lockfile hashes.
 ///
-/// Uses `shared::load_skill_lock()` for `.skill-lock.json` and
-/// `shared::load_vendor_lock()` for `.vendor-lock.json`, then computes git
-/// tree hashes for each skill directory and compares them against the
-/// expected values.
+/// Uses `shared::load_skill_lock_at(project_root)` for `.skill-lock.json` and
+/// `shared::load_vendor_lock_at(project_root)` for `.vendor-lock.json`, then
+/// computes git tree hashes for each skill directory and compares them
+/// against the expected values.
 pub fn check_skills(project_root: &Path) -> Result<CheckReport, String> {
     let lock = shared::load_skill_lock_at(project_root)?;
 

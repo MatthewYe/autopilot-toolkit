@@ -101,7 +101,7 @@ pub fn dev_clean(
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-/// Provision one resolved Expected-set entry and return its counter weight.
+/// Provision one resolved Expected-set entry.
 ///
 /// Runtime-coupled skills are staged into the router layout first; agnostic
 /// and upstream skills are symlinked directly from the source tree. Returns 1
