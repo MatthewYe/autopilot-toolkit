@@ -19,7 +19,7 @@ rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapsh
 rust-script scripts/check.rs                  # Verify upstream + vendor skill hashes
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
-cargo test                                    # validation library unit tests
+cargo test                                    # unit + integration tests across the tooling crates
 rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
@@ -33,6 +33,10 @@ mtime — it does not notice changes in path dependencies (`crates/*`, upstream
 rust-script#122). After editing anything under `crates/`, run
 `bash scripts/refresh-rs-cache.sh` before the suites, or pass `-f` when running a
 script directly. `--test` runs always invoke cargo and are unaffected.
+
+Sandboxed sessions: when `rust-script` fails with `Operation not permitted`, run it via
+`bash scripts/sandboxed-rust-script.sh <same args>` — it redirects HOME/CARGO_HOME into a
+writable temp dir and runs cargo offline.
 
 ## Architecture
 
@@ -52,13 +56,20 @@ skills/
 │   │   ├── kimi/
 │   │   └── references/          # shared reference docs
 │   ├── autopilot-implementer/    # TDD-driven implementation agent (same variant layout)
-│   ├── autopilot-reviewer/       # four-axis review (behavior, TDD, code, plan)
+│   ├── autopilot-reviewer/       # five-axis review (behavior, TDD, code, plan, upstream code-review)
 │   ├── autopilot-distill/        # Distill requirement-to-issues workflow
 │   ├── audit-autopilot/          # post-hoc fidelity audit of agent execution
 │   ├── toolkit-setup/            # install/update orchestration (agnostic)
 │   └── zoom-out/                 # higher-level perspective (agnostic)
 deploy.rs             # deploy tool (dev symlink + pack/release) (--target reasonix|codex, --shared → ~/.agents/skills/)
-crates/validation/     # frontmatter validation library (strict YAML + field checks)
+crates/skill-index/    # Expected-set enumeration, classification, manifest generation
+crates/shared/         # lock parsing (upstream + vendor) and lock path mapping
+crates/deploy/         # dev symlinks, tarball pack/release, coupled-skill staging
+crates/validation/     # frontmatter parsing + validation library (strict YAML + field checks)
+crates/validation-runner/ # validation run over the Expected set + report
+crates/skill-check/    # upstream + vendor skill hash verification (scripts/check.rs)
+crates/git-utils/      # git tree hashing for skill folders
+crates/distill-cli/    # precompiled Distill CLI (offline runner)
 validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
 docs/

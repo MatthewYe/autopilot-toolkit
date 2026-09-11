@@ -164,7 +164,7 @@ pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
         anyhow::bail!("SKILL.md frontmatter opening delimiter must be followed by a newline");
     }
     if stripped.contains("\n---") {
-        Ok(stripped.splitn(2, "\n---").next().unwrap())
+        Ok(stripped.split("\n---").next().unwrap())
     } else {
         anyhow::bail!("SKILL.md has no closing frontmatter delimiter")
     }
