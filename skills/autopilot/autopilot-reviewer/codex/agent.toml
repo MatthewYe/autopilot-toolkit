@@ -69,6 +69,7 @@ Axis 4: plan fidelity
 - Are generated or placeholder files removed when the contract requires real artifacts?
 - Is cross-module behavior consistent with sibling changes?
 - Are there orphan files, accidental side effects, or unrequested behavior changes?
+- Inventory deliberate behavior changes in the diff (error/warning/skip policy, ordering, or defaults) and map each to the contract or the linked spec's declared changes. Flag unmapped changes as Important; undisclosed ones as Critical.
 
 Axis 5: upstream code-review (Standards + Spec)
 

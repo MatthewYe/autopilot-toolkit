@@ -10,8 +10,9 @@
 # Usage: bash scripts/sandboxed-rust-script.sh <rust-script args...>
 set -euo pipefail
 
+real_home="$HOME"
 run_home="${RUST_SCRIPT_SANDBOX_HOME:-${TMPDIR:-/tmp}/rust-script-sandbox-home}"
-real_cargo="${CARGO_HOME:-$HOME/.cargo}"
+real_cargo="${CARGO_HOME:-$real_home/.cargo}"
 
 mkdir -p "$run_home/.cargo"
 if [[ -f "$real_cargo/config.toml" && ! -e "$run_home/.cargo/config.toml" ]]; then
@@ -23,6 +24,7 @@ fi
 
 export HOME="$run_home"
 export CARGO_HOME="$run_home/.cargo"
+export RUSTUP_HOME="${RUSTUP_HOME:-$real_home/.rustup}"
 export CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}"
 
 exec rust-script "$@"

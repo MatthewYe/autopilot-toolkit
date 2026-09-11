@@ -124,7 +124,8 @@ Before reporting DONE or UNVERIFIED:
 4. Check that tests exercise behavior, not implementation details.
 5. Check mock usage against the boundary rule.
 6. Check that CHANGED_FILES lists every contract-relevant path, including pre-existing paths touched by the contract but not edited in this run.
-7. If you find an issue, fix it and re-run the relevant verification before reporting.
+7. Enumerate deliberate behavior changes (error/warning/skip policy, ordering, or defaults) and confirm each maps to the contract or the linked spec's declared changes.
+8. If you find an issue, fix it and re-run the relevant verification before reporting.
 
 ## IMPLEMENTER_REPORT Output
 
@@ -140,6 +141,9 @@ SUGGESTION_RESOLUTIONS:
 SELF_REVIEW:
 - Finding: <issue> -> fixed
 - No issues
+BEHAVIOR_CHANGES:
+- <deliberate behavior change (error/warning/skip policy, ordering, default)> -> <contract or spec reference>
+- If there are none, write "None"
 CHANGED_FILES:
 - path/to/file (what changed)
 - path/to/file (pre-existing) - contract-relevant but not edited in this run
