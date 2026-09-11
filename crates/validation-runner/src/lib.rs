@@ -2,7 +2,8 @@
 //!
 //! Migrated from `validation/run.rs`.  Consumes `skill_index::discover_skills()`
 //! — the Expected-set enumerator — for every skill source; failed entries are
-//! reported as FAIL rather than silently dropped.
+//! reported as FAIL rather than silently dropped, including resolved entries
+//! whose skill file is missing.
 //!
 //! Public API:
 //! - `run_validation(project_root)` → `Result<ValidationReport>`
@@ -40,14 +41,16 @@ macro_rules! wln {
 #[derive(Debug, Clone)]
 pub struct Skill {
     pub name: String,
-    /// Relative path from project root to the SKILL.md file.
+    /// Relative path from project root to the SKILL.md file — the expected
+    /// location even when the file is missing.
     pub relative_path: String,
     /// "upstream", "vendor", or "autopilot".
     pub source: String,
     /// Runtime variant: None for runtime-agnostic, Some("reasonix") etc.
     pub variant: Option<String>,
-    /// Why the Expected-set entry failed to resolve, if it did.  A failed
-    /// entry fails validation immediately, without touching the filesystem.
+    /// Why this entry fails validation, if it does — an Expected-set
+    /// resolution failure, or a missing skill file for a resolved entry.
+    /// A failed entry fails validation immediately, without reading content.
     pub failed_reason: Option<String>,
 }
 
@@ -68,9 +71,13 @@ pub struct ValidationReport {
 
 /// Expand the Expected set into flat `Skill` entries with concrete file paths.
 ///
-/// Failed entries keep their identity and carry the resolution failure as
+/// Failed entries keep their identity and carry the failure as
 /// `failed_reason`, so validation reports them as FAIL instead of dropping
-/// them.
+/// them.  Every Expected-set entry yields at least one `Skill`: a resolved
+/// entry whose skill file is missing becomes a failed entry naming that file.
+/// The one exemption is a codex variant that ships an `agent.toml`
+/// custom-agent definition instead of a `SKILL.md` (reported as INFO by
+/// [`check_codex_status`]); it yields no variant entry and no failure.
 pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
     let entries = skill_index::discover_skills(project_root)?;
     let mut skills: Vec<Skill> = Vec::new();
@@ -92,32 +99,49 @@ pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
                 });
             }
             skill_index::ResolutionStatus::Resolved => {
-                if entry.source_dir.join("SKILL.md").is_file() {
-                    skills.push(Skill {
-                        name: entry.name.clone(),
-                        relative_path: skill_relative_path(relative_dir, None),
-                        source: entry.source.clone(),
-                        variant: None,
-                        failed_reason: None,
-                    });
-                }
+                skills.push(entry_skill(
+                    &entry,
+                    relative_dir,
+                    None,
+                    &entry.source_dir.join("SKILL.md"),
+                ));
                 for variant in &entry.variants {
                     let variant_skill = entry.source_dir.join(variant).join("SKILL.md");
-                    if variant_skill.is_file() {
-                        skills.push(Skill {
-                            name: entry.name.clone(),
-                            relative_path: skill_relative_path(relative_dir, Some(variant)),
-                            source: entry.source.clone(),
-                            variant: Some(variant.clone()),
-                            failed_reason: None,
-                        });
+                    if variant == "codex" && entry.codex_agent && !variant_skill.is_file() {
+                        continue;
                     }
+                    skills.push(entry_skill(
+                        &entry,
+                        relative_dir,
+                        Some(variant),
+                        &variant_skill,
+                    ));
                 }
             }
         }
     }
 
     Ok(skills)
+}
+
+/// Build the `Skill` for one Expected-set entry's skill file.
+///
+/// A missing file yields the failed-entry shape: the entry keeps its identity
+/// and the reason names the file that should have been there.
+fn entry_skill(
+    entry: &skill_index::ExpectedSetEntry,
+    relative_dir: &Path,
+    variant: Option<&str>,
+    skill_file: &Path,
+) -> Skill {
+    Skill {
+        name: entry.name.clone(),
+        relative_path: skill_relative_path(relative_dir, variant),
+        source: entry.source.clone(),
+        variant: variant.map(|v| v.to_string()),
+        failed_reason: (!skill_file.is_file())
+            .then(|| format!("skill file not found: {}", skill_file.display())),
+    }
 }
 
 /// Project-relative path to a skill's SKILL.md, with an optional variant
@@ -807,8 +831,13 @@ mod tests {
     fn write_valid_autopilot_skill(root: &Path) {
         let skill_dir = root.join("skills/autopilot/fixture-skill");
         fs::create_dir_all(&skill_dir).unwrap();
+        write_skill_md(&skill_dir);
+    }
+
+    /// Write a valid SKILL.md into an existing skill directory.
+    fn write_skill_md(dir: &Path) {
         fs::write(
-            skill_dir.join("SKILL.md"),
+            dir.join("SKILL.md"),
             "---\nname: fixture-skill\ndescription: fixture\n---\n",
         )
         .unwrap();
@@ -893,6 +922,190 @@ mod tests {
         );
     }
 
+    // ── Entry-state matrix (one resolved entry per Skill source) ────────
+
+    /// The states a single Expected-set entry can be in.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum EntryState {
+        Present,
+        MissingDirectory,
+        MissingSkillMd,
+        MalformedSkillPath,
+    }
+
+    /// Write a `.vendor-lock.json` pinning one fixture skill at the
+    /// conventional vendor location.
+    fn write_vendor_lock(root: &Path) {
+        fs::write(
+            root.join(".vendor-lock.json"),
+            r#"{
+                "version": 1,
+                "skills": {
+                    "fixture-skill": {
+                        "sourceType": "github",
+                        "skillPath": "plugins/fixture-skill/SKILL.md",
+                        "skillFolderHash": "abc123",
+                        "vendorPath": "skills/vendor/fixture-skill"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+    }
+
+    /// Build a one-entry fixture for `source` in `state` and run the full
+    /// validation pipeline over it.
+    ///
+    /// States that cannot occur for a source are rejected by construction:
+    /// autopilot entries come from a directory scan (their resolution never
+    /// fails), and vendor entries resolve through `vendorPath` (a malformed
+    /// `skillPath` cannot orphan them).
+    fn matrix_case(source: &str, state: EntryState) -> (tempfile::TempDir, ValidationReport) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        match source {
+            "autopilot" => {
+                assert!(
+                    matches!(state, EntryState::Present | EntryState::MissingSkillMd),
+                    "autopilot cannot be in state {state:?}"
+                );
+                let dir = root.join("skills/autopilot/fixture-skill");
+                fs::create_dir_all(&dir).unwrap();
+                if state == EntryState::Present {
+                    write_skill_md(&dir);
+                }
+            }
+            "upstream" => {
+                let skill_path = if state == EntryState::MalformedSkillPath {
+                    "skills/engineering/fixture-skill"
+                } else {
+                    "skills/engineering/fixture-skill/SKILL.md"
+                };
+                write_skill_lock(
+                    root,
+                    &format!(
+                        r#"{{
+                            "fixture-skill": {{
+                                "sourceType": "github",
+                                "skillPath": "{skill_path}",
+                                "skillFolderHash": "abc123"
+                            }}
+                        }}"#
+                    ),
+                );
+                let dir = root.join("skills/upstream/skills/engineering/fixture-skill");
+                if matches!(state, EntryState::Present | EntryState::MissingSkillMd) {
+                    fs::create_dir_all(&dir).unwrap();
+                }
+                if state == EntryState::Present {
+                    write_skill_md(&dir);
+                }
+            }
+            "vendor" => {
+                assert!(
+                    state != EntryState::MalformedSkillPath,
+                    "vendor entries resolve through vendorPath"
+                );
+                write_vendor_lock(root);
+                let dir = root.join("skills/vendor/fixture-skill");
+                if matches!(state, EntryState::Present | EntryState::MissingSkillMd) {
+                    fs::create_dir_all(&dir).unwrap();
+                }
+                if state == EntryState::Present {
+                    write_skill_md(&dir);
+                }
+            }
+            other => panic!("unknown Skill source: {other}"),
+        }
+        let report = run_validation(root).expect("run_validation should succeed");
+        (tmp, report)
+    }
+
+    #[test]
+    fn matrix_present_entries_pass_for_every_source() {
+        for source in ["autopilot", "upstream", "vendor"] {
+            let (_tmp, report) = matrix_case(source, EntryState::Present);
+            assert!(
+                !report.has_failures,
+                "{source}: a present entry must pass, got:\n{}",
+                report.report
+            );
+            assert!(
+                report.report.contains("[PASS] fixture-skill"),
+                "{source}: a present entry must be reported as PASS, got:\n{}",
+                report.report
+            );
+        }
+    }
+
+    #[test]
+    fn matrix_missing_directory_fails_for_lock_driven_sources() {
+        for source in ["upstream", "vendor"] {
+            let (_tmp, report) = matrix_case(source, EntryState::MissingDirectory);
+            assert!(
+                report.has_failures,
+                "{source}: a missing directory must fail, got:\n{}",
+                report.report
+            );
+            assert!(
+                report.report.contains("[FAIL] fixture-skill"),
+                "{source}: the failed entry must keep its identity, got:\n{}",
+                report.report
+            );
+            assert!(
+                report
+                    .report
+                    .contains(&format!("{source} skill directory not found")),
+                "{source}: the failure must name the missing directory, got:\n{}",
+                report.report
+            );
+        }
+    }
+
+    #[test]
+    fn matrix_missing_skill_md_fails_for_every_source() {
+        for (source, missing_file) in [
+            ("autopilot", "skills/autopilot/fixture-skill/SKILL.md"),
+            (
+                "upstream",
+                "skills/upstream/skills/engineering/fixture-skill/SKILL.md",
+            ),
+            ("vendor", "skills/vendor/fixture-skill/SKILL.md"),
+        ] {
+            let (_tmp, report) = matrix_case(source, EntryState::MissingSkillMd);
+            assert!(
+                report.has_failures,
+                "{source}: a resolved entry without SKILL.md must fail, got:\n{}",
+                report.report
+            );
+            assert!(
+                report.report.contains("[FAIL] fixture-skill"),
+                "{source}: the failed entry must keep its identity, got:\n{}",
+                report.report
+            );
+            assert!(
+                report.report.contains(missing_file),
+                "{source}: the failure must name the missing file {missing_file}, got:\n{}",
+                report.report
+            );
+        }
+    }
+
+    #[test]
+    fn matrix_malformed_skill_path_fails_for_upstream() {
+        let (_tmp, report) = matrix_case("upstream", EntryState::MalformedSkillPath);
+        assert!(
+            report.has_failures,
+            "a malformed skillPath must fail, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("malformed skillPath"),
+            "the failure must name the malformed skillPath, got:\n{}",
+            report.report
+        );
+    }
+
     // ── Variant expansion tests (temp fixtures) ─────────────────────────
 
     /// Build a temp fixture with one autopilot skill carrying the given
@@ -936,9 +1149,11 @@ mod tests {
     }
 
     #[test]
-    fn variant_directories_without_skill_md_are_ignored() {
+    fn codex_variant_with_agent_toml_yields_no_skill_entry() {
         // classify_skill only returns variants whose directories exist.
-        // The expansion step further checks for SKILL.md existence.
+        // A codex variant may carry an agent.toml custom-agent definition
+        // instead of a SKILL.md, so it is the one variant shape that is not
+        // expected to carry a skill file.
         let tmp = tempfile::tempdir().unwrap();
         let codex_dir = tmp.path().join("skills/autopilot/fixture-skill/codex");
         fs::create_dir_all(&codex_dir).unwrap();
@@ -950,13 +1165,97 @@ mod tests {
         // codex dir exists, so it's in variants
         assert!(variants.contains(&"codex".to_string()));
 
-        // When expanding, the SKILL.md gate applies: a variant directory with
-        // only agent.toml does not produce a Skill entry.
+        // When expanding, the agent.toml-only codex variant produces no entry
+        // (check_codex_status reports it as INFO), but the missing root
+        // fallback SKILL.md is a named failure — the entry must not vanish.
         let skills = expand_skills(tmp.path()).expect("expand_skills should succeed");
         assert!(
-            skills.is_empty(),
-            "a variant without SKILL.md must not produce entries, got: {:?}",
+            !skills.iter().any(|s| s.variant.as_deref() == Some("codex")),
+            "an agent.toml-only codex variant must not produce a Skill entry, got: {:?}",
             skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
+        );
+        let failed: Vec<&Skill> = skills
+            .iter()
+            .filter(|s| s.failed_reason.is_some())
+            .collect();
+        assert_eq!(
+            failed.len(),
+            1,
+            "the missing root SKILL.md must yield exactly one failed entry, got: {:?}",
+            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
+        );
+        assert!(
+            failed[0]
+                .failed_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("skills/autopilot/fixture-skill/SKILL.md")),
+            "the failed entry must name the missing root skill file, got: {:?}",
+            failed[0].failed_reason
+        );
+    }
+
+    #[test]
+    fn variant_without_skill_md_fails_instead_of_being_dropped() {
+        // A variant directory that carries no SKILL.md and no agent.toml
+        // alternative is an incomplete variant, not a silently ignored one.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let skill_dir = root.join("skills/autopilot/fixture-skill");
+        fs::create_dir_all(skill_dir.join("reasonix")).unwrap();
+        write_skill_md(&skill_dir);
+
+        let report = run_validation(root).expect("run_validation should succeed");
+        assert!(
+            report.has_failures,
+            "a variant without SKILL.md must fail validation, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[PASS] fixture-skill\n"),
+            "the root fallback keeps passing, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[FAIL] fixture-skill (reasonix)"),
+            "the failure must name the variant, got:\n{}",
+            report.report
+        );
+        assert!(
+            report
+                .report
+                .contains("skills/autopilot/fixture-skill/reasonix/SKILL.md"),
+            "the failure must name the missing variant file, got:\n{}",
+            report.report
+        );
+    }
+
+    #[test]
+    fn codex_agent_toml_variant_keeps_validation_green() {
+        // The repo's own install model: a codex variant may ship an
+        // agent.toml instead of a SKILL.md. That stays INFO, not FAIL.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let skill_dir = root.join("skills/autopilot/fixture-skill");
+        fs::create_dir_all(skill_dir.join("codex")).unwrap();
+        write_skill_md(&skill_dir);
+        fs::write(
+            skill_dir.join("codex").join("agent.toml"),
+            "name = \"fixture\"\n",
+        )
+        .unwrap();
+
+        let report = run_validation(root).expect("run_validation should succeed");
+        assert!(
+            !report.has_failures,
+            "an agent.toml-only codex variant must not fail validation, got:\n{}",
+            report.report
+        );
+        assert!(
+            report
+                .report
+                .contains("[INFO] fixture-skill: no codex/SKILL.md (uses agent.toml instead)"),
+            "the codex variant stays informational, got:\n{}",
+            report.report
         );
     }
 
