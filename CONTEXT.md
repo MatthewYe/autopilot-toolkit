@@ -16,6 +16,10 @@ _Avoid_: skill inventory, skill manifest
 One skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entry whose provenance points at a missing directory is a failed entry.
 _Avoid_: skill record, discovery result, skill item
 
+**Skill file**:
+One source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A variant that ships an `agent.toml` instead of a `SKILL.md` is not missing a skill file — the agent definition is its artifact. An entry is a failed entry when any skill file it owns is missing.
+_Avoid_: skill content, entry content, file target
+
 **Skill source**:
 The origin of a toolkit skill — `upstream` (mattpocock/skills, synced via `.skill-lock.json`), `vendor` (third-party, pinned in `.vendor-lock.json` under `skills/vendor/`), or `autopilot` (local, under `skills/autopilot/`).
 _Avoid_: skill type, skill category

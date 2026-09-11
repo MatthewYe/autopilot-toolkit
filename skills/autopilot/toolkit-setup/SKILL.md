@@ -34,20 +34,26 @@ logic manually.
    rust-script "$PROJECT_ROOT/deploy.rs" link-principles "$PROJECT_ROOT/principles"
    ```
 
-4. Derive the expected skill names from `.skill-lock.json` (upstream),
-   `.vendor-lock.json` (vendor), and `skills/autopilot/*/` (autopilot); do not
-   hardcode the list. Vendor directories without a `.vendor-lock.json` entry
-   are orphans — report them, do not install them.
-5. Verify every expected shared entry is a valid directory or symlink.
-6. For every source skill that has any of `codex/`, `kimi/`, or `reasonix/`,
-   verify:
+4. Enumerate the Expected set through the toolkit's own enumerator
+   (`skill-index`'s `discover_skills`, reaching it via `deploy.rs` output or a
+   small `rust-script` probe). Read each entry's facts from that enumeration —
+   its Skill source, its Skill files and their kinds, and any missing skill
+   file — instead of re-deriving names or instruction files from the lock
+   files and a directory scan. Do not hardcode the list. Vendor directories
+   without a `.vendor-lock.json` entry are orphans — report them, do not
+   install them.
+5. Verify every enumerated entry resolves all its Skill files, and that every
+   expected shared entry is a valid directory or symlink.
+6. For every Skill file whose kind is an agent definition (`agent.toml`),
+   check the codex agent link rather than an instruction file. For every entry
+   that owns runtime variant skill files, verify:
    - the installed tree contains exactly one file named `SKILL.md`;
    - `runtime/default/INSTRUCTIONS.md` exists;
-   - each source runtime `SKILL.md` has a corresponding installed
-     `runtime/<runtime>/INSTRUCTIONS.md`;
+   - each enumerated variant skill file has a corresponding installed
+     `runtime/<variant>/INSTRUCTIONS.md`;
    - no same-name entry exists in the Codex or Reasonix exclusive skill
      directory.
-7. If `codex/agent.toml` exists, verify the corresponding
+7. For every enumerated agent definition, verify the corresponding
    `~/.codex/agents/<skill>.toml` link.
 8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to
    `$PROJECT_ROOT/principles`.

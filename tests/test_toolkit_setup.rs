@@ -37,6 +37,8 @@ fn project_root() -> PathBuf {
     panic!("Cannot find project root (deploy.rs not found)");
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────
+
 /// Position of a Skill source in the deterministic Expected-set order.
 fn source_rank(source: &str) -> u8 {
     match source {
@@ -47,16 +49,15 @@ fn source_rank(source: &str) -> u8 {
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// The repo's own source tree enumerates to a complete, deterministically
-    /// ordered Expected set — no failed entries, no duplicate names.
+    /// ordered Expected set: every entry resolves every Skill file it owns,
+    /// and no entry is a failed entry (ADR-0045).
     #[test]
-    fn expected_set_resolves_from_the_repo_tree() {
+    fn repo_tree_resolves_every_skill_file() {
         let entries = skill_index::discover_skills(&project_root())
             .expect("enumerate the Expected set from the repo tree");
 
@@ -67,20 +68,30 @@ mod tests {
 
         let failed: Vec<String> = entries
             .iter()
-            .filter_map(|entry| match &entry.resolution {
-                skill_index::ResolutionStatus::Missing { reason } => {
-                    Some(format!("{}: {reason}", entry.name))
-                }
-                skill_index::ResolutionStatus::Resolved => None,
+            .filter(|entry| entry.is_failed())
+            .map(|entry| {
+                let missing: Vec<String> = entry
+                    .skill_files
+                    .iter()
+                    .filter_map(|file| match &file.resolution {
+                        skill_index::ResolutionStatus::Missing { reason } => Some(format!(
+                            "{} ({:?}): {reason}",
+                            file.path.display(),
+                            file.variant
+                        )),
+                        skill_index::ResolutionStatus::Resolved => None,
+                    })
+                    .collect();
+                format!("{}: {}", entry.name, missing.join("; "))
             })
             .collect();
         assert!(
             failed.is_empty(),
-            "every entry must resolve in the repo tree:\n{failed:#?}"
+            "every entry must resolve all its Skill files in the repo tree:\n{failed:#?}"
         );
 
-        // Deterministic order: autopilot, then vendor, then upstream,
-        // name-sorted within each group.
+        // Entry order: autopilot, then vendor, then upstream; name-sorted
+        // within each group.
         let order: Vec<(u8, &str)> = entries
             .iter()
             .map(|entry| (source_rank(&entry.source), entry.name.as_str()))
@@ -91,6 +102,36 @@ mod tests {
             order, sorted,
             "entries must be in deterministic source-then-name order"
         );
+
+        // Skill-file order: root fallback first, then variants in runtime order.
+        let runtime_rank = |variant: &str| {
+            skill_index::RUNTIME_VARIANTS
+                .iter()
+                .position(|known| *known == variant)
+                .unwrap_or_else(|| panic!("unknown runtime variant {variant}"))
+        };
+        for entry in &entries {
+            assert_eq!(
+                entry.skill_files.first().and_then(|f| f.variant.as_deref()),
+                None,
+                "entry '{}' must list its root fallback skill file first",
+                entry.name
+            );
+            let ranks: Vec<usize> = entry
+                .skill_files
+                .iter()
+                .skip(1)
+                .filter_map(|file| file.variant.as_deref())
+                .map(runtime_rank)
+                .collect();
+            let mut sorted = ranks.clone();
+            sorted.sort_unstable();
+            assert_eq!(
+                ranks, sorted,
+                "entry '{}' must list variants in runtime order",
+                entry.name
+            );
+        }
 
         let mut names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
         names.sort_unstable();
