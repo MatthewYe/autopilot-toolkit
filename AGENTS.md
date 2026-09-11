@@ -50,13 +50,20 @@ skills/
 │   │   ├── kimi/
 │   │   └── references/          # shared reference docs
 │   ├── autopilot-implementer/    # TDD-driven implementation agent (same variant layout)
-│   ├── autopilot-reviewer/       # four-axis review (behavior, TDD, code, plan)
+│   ├── autopilot-reviewer/       # five-axis review (behavior, TDD, code, plan, upstream code-review)
 │   ├── autopilot-distill/        # Distill requirement-to-issues workflow
 │   ├── audit-autopilot/          # post-hoc fidelity audit of agent execution
 │   ├── toolkit-setup/            # install/update orchestration (agnostic)
 │   └── zoom-out/                 # higher-level perspective (agnostic)
 deploy.rs             # deploy tool (dev symlink + pack/release) (--target reasonix|codex, --shared → ~/.agents/skills/)
-crates/validation/     # frontmatter validation library (strict YAML + field checks)
+crates/skill-index/    # Expected-set enumeration, classification, manifest generation
+crates/shared/         # lock parsing (upstream + vendor) and lock path mapping
+crates/deploy/         # dev symlinks, tarball pack/release, coupled-skill staging
+crates/validation/     # frontmatter parsing + validation library (strict YAML + field checks)
+crates/validation-runner/ # validation run over the Expected set + report
+crates/skill-check/    # upstream + vendor skill hash verification (scripts/check.rs)
+crates/git-utils/      # git tree hashing for skill folders
+crates/distill-cli/    # precompiled Distill CLI (offline runner)
 validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
 docs/
