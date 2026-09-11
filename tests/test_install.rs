@@ -46,6 +46,10 @@ fn run_deploy(
     assert!(script.exists(), "deploy.rs not found at {:?}", script);
 
     let mut cmd = Command::new("rust-script");
+    // `-f` forces a cargo run so path-dependency changes (`crates/*`) are
+    // picked up: rust-script's binary cache never invalidates on them
+    // (upstream rust-script#122). See also test_build.rs.
+    cmd.arg("-f");
     cmd.arg(&script);
     for a in args {
         cmd.arg(a);
