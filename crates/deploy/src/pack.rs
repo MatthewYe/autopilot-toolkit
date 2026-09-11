@@ -168,26 +168,34 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
 ///
 /// `pack` is strict where `dev` is lenient: a tarball that silently omits a
 /// locked skill would ship a manifest that disagrees with the sources, so the
-/// pack fails and names every failed entry instead.
+/// pack fails and names every missing Skill file (ADR-0045).
 fn reject_failed_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::Error> {
     let failed: Vec<String> = entries
         .iter()
-        .filter_map(|entry| match &entry.resolution {
-            ResolutionStatus::Missing { reason } => Some(format!(
-                "'{}' ({} skill at {}: {})",
-                entry.name,
-                entry.source,
-                entry.source_dir.display(),
-                reason
-            )),
-            ResolutionStatus::Resolved => None,
+        .flat_map(|entry| {
+            entry
+                .skill_files
+                .iter()
+                .filter_map(move |file| match &file.resolution {
+                    ResolutionStatus::Missing { reason } => Some(format!(
+                        "'{}' ({} skill, {}): {}",
+                        entry.name,
+                        entry.source,
+                        file.variant
+                            .as_deref()
+                            .map(|variant| format!("variant {variant}"))
+                            .unwrap_or_else(|| "root skill file".to_string()),
+                        reason
+                    )),
+                    ResolutionStatus::Resolved => None,
+                })
         })
         .collect();
     if failed.is_empty() {
         return Ok(());
     }
     anyhow::bail!(
-        "cannot pack: expected skill(s) missing:\n  {}",
+        "cannot pack: expected skill file(s) missing:\n  {}",
         failed.join("\n  ")
     )
 }
@@ -385,6 +393,31 @@ mod tests {
         assert!(
             msg.contains(".skill-lock.json"),
             "error must name the malformed lock file: {msg}"
+        );
+    }
+
+    #[test]
+    fn pack_fails_when_a_skill_directory_lacks_its_root_skill_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_minimal_project(root);
+        // Directory exists, root SKILL.md deleted: the #118 state must be
+        // caught at the release gate, not shipped.
+        std::fs::remove_file(root.join("skills/autopilot/alpha/SKILL.md")).unwrap();
+
+        let err = pack_command(root).expect_err("pack must fail on a missing skill file");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("alpha"),
+            "error must name the skill whose file is missing: {msg}"
+        );
+        assert!(
+            msg.contains("SKILL.md"),
+            "error must name the missing file: {msg}"
+        );
+        assert!(
+            !root.join("dist/autopilot-toolkit.tar.gz").exists(),
+            "pack must not produce a tarball when a skill file is missing"
         );
     }
 

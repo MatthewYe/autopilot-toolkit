@@ -84,6 +84,14 @@ fn setup_mock_project_for_distill(root: &Path) {
     fs::copy(install_script(), root.join("deploy.rs")).unwrap();
 
     let distill_skill = root.join("skills/autopilot/autopilot-distill");
+    // The root fallback SKILL.md belongs to every coupled skill (ADR-0036);
+    // pack fails without it (ADR-0045).
+    fs::create_dir_all(&distill_skill).unwrap();
+    fs::write(
+        distill_skill.join("SKILL.md"),
+        "---\nname: autopilot-distill\ndescription: Distill router\n---\n",
+    )
+    .unwrap();
     for variant in &["codex", "kimi", "reasonix"] {
         let dir = distill_skill.join(variant);
         fs::create_dir_all(&dir).unwrap();
