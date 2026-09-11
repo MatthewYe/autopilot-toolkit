@@ -23,14 +23,14 @@ pub enum SkillType {
     Coupled,
 }
 
-/// Whether an Expected-set entry's source directory resolved.
+/// Whether a Skill file (or a source directory) resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolutionStatus {
-    /// The source directory exists.
+    /// The file exists.
     Resolved,
-    /// The failed-entry state (CONTEXT.md): the provenance points at a
-    /// directory that does not exist. The entry is still returned, with its
-    /// reason.
+    /// The failed-entry state (CONTEXT.md): the provenance points at a file
+    /// (or a directory) that does not exist. The entry is still returned,
+    /// with its reason.
     Missing { reason: String },
 }
 
@@ -78,7 +78,7 @@ pub struct ExpectedSetEntry {
     /// entry this is the expected location that was not found.
     pub source_dir: PathBuf,
     /// The Skill files this entry owns, in deterministic order: the root
-    /// fallback first, then each runtime variant in runtime order.
+    /// fallback first, then variants in `RUNTIME_VARIANTS` order.
     pub skill_files: Vec<SkillFile>,
 }
 
@@ -294,7 +294,7 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
 }
 
 /// Enumerate the Skill files a source directory owns: the root fallback first,
-/// then each runtime variant in runtime order (ADR-0045).
+/// then each runtime variant in `RUNTIME_VARIANTS` order (ADR-0045).
 ///
 /// A variant that ships an `agent.toml` instead of a `SKILL.md` is an
 /// [`SkillFileKind::AgentDefinition`]; a variant directory carrying neither is
@@ -302,12 +302,19 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
 fn skill_files_for(source_dir: &Path, variants: &[String]) -> Vec<SkillFile> {
     let root = source_dir.join("SKILL.md");
     let mut files = vec![skill_file(None, root.clone(), SkillFileKind::Skill, &root)];
-    for variant in variants {
-        let variant_dir = source_dir.join(variant);
+    // `variants` is name-sorted (part of the entry contract); the Skill-file
+    // list follows the canonical runtime order instead (ADR-0045).
+    let owned: Vec<String> = RUNTIME_VARIANTS
+        .iter()
+        .filter(|variant| variants.iter().any(|known| known == *variant))
+        .map(|variant| variant.to_string())
+        .collect();
+    for variant in &owned {
+        let variant_dir = source_dir.join(variant.as_str());
         let skill = variant_dir.join("SKILL.md");
         if skill.is_file() {
             files.push(skill_file(
-                Some(variant.clone()),
+                Some(variant.to_string()),
                 skill.clone(),
                 SkillFileKind::Skill,
                 &skill,
@@ -317,14 +324,14 @@ fn skill_files_for(source_dir: &Path, variants: &[String]) -> Vec<SkillFile> {
         let agent = variant_dir.join("agent.toml");
         if agent.is_file() {
             files.push(skill_file(
-                Some(variant.clone()),
+                Some(variant.to_string()),
                 agent.clone(),
                 SkillFileKind::AgentDefinition,
                 &agent,
             ));
         } else {
             files.push(SkillFile {
-                variant: Some(variant.clone()),
+                variant: Some(variant.to_string()),
                 path: skill.clone(),
                 kind: SkillFileKind::Skill,
                 resolution: ResolutionStatus::Missing {

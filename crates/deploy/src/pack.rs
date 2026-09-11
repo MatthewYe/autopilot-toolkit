@@ -14,9 +14,9 @@ use skill_index::{discover_skills, ExpectedSetEntry, ResolutionStatus, SkillType
 
 /// Build a self-contained tarball into `dist/`.
 ///
-/// A lock entry whose source directory is missing fails the pack (unlike
-/// `dev`, which warns and skips): the tarball would otherwise silently
-/// omit an expected skill.
+/// An expected skill file that is missing fails the pack (unlike `dev`, which
+/// warns and skips): the tarball would otherwise silently omit an expected
+/// skill.
 pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── one Expected-set enumeration drives staging and manifest ──
     let entries = discover_skills(project_root)?;

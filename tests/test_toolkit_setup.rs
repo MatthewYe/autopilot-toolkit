@@ -39,6 +39,16 @@ fn project_root() -> PathBuf {
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
+/// Position of a Skill source in the deterministic Expected-set order.
+fn source_rank(source: &str) -> u8 {
+    match source {
+        "autopilot" => 0,
+        "vendor" => 1,
+        "upstream" => 2,
+        other => panic!("unknown Skill source {other:?}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,6 +88,19 @@ mod tests {
         assert!(
             failed.is_empty(),
             "every entry must resolve all its Skill files in the repo tree:\n{failed:#?}"
+        );
+
+        // Entry order: autopilot, then vendor, then upstream; name-sorted
+        // within each group.
+        let order: Vec<(u8, &str)> = entries
+            .iter()
+            .map(|entry| (source_rank(&entry.source), entry.name.as_str()))
+            .collect();
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            order, sorted,
+            "entries must be in deterministic source-then-name order"
         );
 
         // Skill-file order: root fallback first, then variants in runtime order.

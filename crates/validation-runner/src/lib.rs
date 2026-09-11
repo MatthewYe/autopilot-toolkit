@@ -954,9 +954,9 @@ mod tests {
     /// validation pipeline over it.
     ///
     /// States that cannot occur for a source are rejected by construction:
-    /// autopilot entries come from a directory scan (their resolution never
-    /// fails), and vendor entries resolve through `vendorPath` (a malformed
-    /// `skillPath` cannot orphan them).
+    /// autopilot entries come from a directory scan (their directory is
+    /// always present), and vendor entries resolve through `vendorPath` (a
+    /// malformed `skillPath` cannot orphan them).
     fn matrix_case(source: &str, state: EntryState) -> (tempfile::TempDir, ValidationReport) {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -1146,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_variant_with_agent_toml_yields_no_skill_entry() {
+    fn codex_variant_with_agent_toml_is_an_agent_definition() {
         // A codex variant that ships an agent.toml is an agent definition,
         // not a skill file under validation; the missing root SKILL.md is
         // still a named failure.
