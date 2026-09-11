@@ -485,6 +485,11 @@ fn find_subagent_missing_allowed_tools(
 /// **Data-driven**: uses the filesystem to determine whether a missing codex
 /// SKILL.md is because the skill uses agent.toml instead (codex/agent.toml
 /// exists) or is simply a placeholder directory (no agent.toml).
+///
+/// The placeholder line only surfaces for callers that pass a `skills` list
+/// which does not carry the skill's codex variant: through [`expand_skills`]
+/// such a directory is already a failed entry, so validation FAILs it instead
+/// of reporting INFO.
 pub fn check_codex_status(project_root: &Path, skills: &[Skill]) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let autopilot_dir = project_root.join("skills/autopilot");
@@ -1260,6 +1265,42 @@ mod tests {
     }
 
     #[test]
+    fn codex_variant_without_skill_md_or_agent_toml_fails_validation() {
+        // A codex directory carrying neither SKILL.md nor agent.toml is an
+        // incomplete variant, not a placeholder that passes: the pipeline
+        // FAILs it by name, and no placeholder INFO line is emitted for it.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let skill_dir = root.join("skills/autopilot/fixture-skill");
+        fs::create_dir_all(skill_dir.join("codex")).unwrap();
+        write_skill_md(&skill_dir);
+
+        let report = run_validation(root).expect("run_validation should succeed");
+        assert!(
+            report.has_failures,
+            "a codex variant without SKILL.md or agent.toml must fail, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[FAIL] fixture-skill (codex)"),
+            "the failure must name the codex variant, got:\n{}",
+            report.report
+        );
+        assert!(
+            report
+                .report
+                .contains("skills/autopilot/fixture-skill/codex/SKILL.md"),
+            "the failure must name the missing codex skill file, got:\n{}",
+            report.report
+        );
+        let skills = expand_skills(root).expect("expand_skills should succeed");
+        assert!(
+            check_codex_status(root, &skills).is_empty(),
+            "the pipeline reports the codex directory as FAIL, not as a placeholder INFO line"
+        );
+    }
+
+    #[test]
     fn discovers_reasonix_variants_for_coupled_skills() {
         let root = repo_root();
         let skills = expand_skills(root).expect("expand_skills should succeed");
@@ -1400,7 +1441,10 @@ mod tests {
 
         let skill_dir = root.join("skills/autopilot/placeholder-skill");
         fs::create_dir_all(skill_dir.join("codex")).unwrap();
-        // No agent.toml, no SKILL.md — just an empty codex dir
+        // No agent.toml, no SKILL.md — just an empty codex dir.  An empty
+        // skills list still reaches this line; through the validation
+        // pipeline the same directory FAILs (see
+        // codex_variant_without_skill_md_or_agent_toml_fails_validation).
 
         let skills: Vec<Skill> = vec![];
         let status = check_codex_status(root, &skills);
