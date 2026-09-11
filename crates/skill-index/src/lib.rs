@@ -5,8 +5,7 @@
 //! manifest.json used by the tarball install pipeline.
 //!
 //! Public API:
-//! - `discover_skills(project_root)` → `Result<Vec<DiscoveredSkill>>`
-//! - `discover_vendor_skill_dirs(project_root)` → lock-driven vendor directories
+//! - `discover_skills(project_root)` → `Result<Vec<ExpectedSetEntry>>`
 //! - `classify_skill(skill_dir)` → `(SkillType, Vec<String>, bool)`
 //! - `generate_manifest(skills, version)` → `Manifest`
 
@@ -24,9 +23,20 @@ pub enum SkillType {
     Coupled,
 }
 
-/// A skill discovered from the source tree.
+/// Whether an Expected-set entry's source directory resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolutionStatus {
+    /// The source directory exists.
+    Resolved,
+    /// The failed-entry state (CONTEXT.md): the provenance points at a
+    /// directory that does not exist. The entry is still returned, with its
+    /// reason.
+    Missing { reason: String },
+}
+
+/// One Expected-set entry: a skill the toolkit owns.
 #[derive(Debug, Clone)]
-pub struct DiscoveredSkill {
+pub struct ExpectedSetEntry {
     pub name: String,
     /// "autopilot", "upstream", or "vendor".
     pub source: String,
@@ -36,6 +46,11 @@ pub struct DiscoveredSkill {
     pub variants: Vec<String>,
     /// Whether a codex/agent.toml file exists (only meaningful for coupled skills).
     pub codex_agent: bool,
+    /// The skill's source directory, joined to the project root. For a failed
+    /// entry this is the expected location that was not found.
+    pub source_dir: PathBuf,
+    /// Whether `source_dir` exists.
+    pub resolution: ResolutionStatus,
 }
 
 /// A single skill entry in manifest.json.
@@ -63,7 +78,10 @@ pub struct Manifest {
 // ── Runtime variant names ───────────────────────────────────────────────────
 
 /// The known runtime variant directory names.
-const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "reasonix"];
+///
+/// Single definition of the runtime variant list; consumers (deploy)
+/// reference this const instead of hardcoding their own copies.
+pub const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "reasonix"];
 
 // ── classify_skill ──────────────────────────────────────────────────────────
 
@@ -91,43 +109,23 @@ pub fn classify_skill(skill_dir: &Path) -> (SkillType, Vec<String>, bool) {
     (skill_type, variants, codex_agent)
 }
 
-// ── discover_vendor_skill_dirs ──────────────────────────────────────────────
-
-/// Resolve vendor skill directories from `.vendor-lock.json`.
-///
-/// The vendor lock is the source of truth for which vendor skills belong to
-/// the toolkit: a directory without a lock entry is an orphan and is ignored.
-/// A missing vendor lock yields an empty list (no vendor skills installed).
-pub fn discover_vendor_skill_dirs(
-    project_root: &Path,
-) -> Result<Vec<(String, PathBuf)>, anyhow::Error> {
-    if !project_root.join(shared::VENDOR_LOCK_FILE).is_file() {
-        return Ok(Vec::new());
-    }
-
-    let lock = shared::load_vendor_lock_at(project_root).map_err(|e| anyhow::anyhow!(e))?;
-    let mut entries: Vec<(String, PathBuf)> = Vec::new();
-    for skill in &lock.skills {
-        let dir = project_root.join(skill.vendor_dir());
-        if dir.is_dir() {
-            entries.push((skill.name.clone(), dir));
-        }
-    }
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(entries)
-}
-
 // ── discover_skills ─────────────────────────────────────────────────────────
 
-/// Discover all skills from the source tree.
+/// Discover the Expected set from the source tree.
 ///
 /// Scans `skills/autopilot/` for autopilot (custom) skills, reads
 /// `.vendor-lock.json` for third-party vendored skills, and reads
 /// `.skill-lock.json` for upstream (vendored) skills.
-pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyhow::Error> {
-    let mut skills: Vec<DiscoveredSkill> = Vec::new();
+///
+/// Entries are returned in deterministic order — autopilot, then vendor, then
+/// upstream, name-sorted within each group. A lock entry whose directory is
+/// missing yields a failed entry (still returned, not omitted). A missing
+/// lock file means the tree has no locked skills; a malformed lock file is an
+/// error.
+pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, anyhow::Error> {
+    let mut entries: Vec<ExpectedSetEntry> = Vec::new();
 
-    // ── Autopilot skills ──
+    // ── Autopilot skills (directory scan; always resolved) ──
     let autopilot_dir = project_root.join("skills").join("autopilot");
     if autopilot_dir.is_dir() {
         for entry in std::fs::read_dir(&autopilot_dir)? {
@@ -136,80 +134,146 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<DiscoveredSkill>, anyh
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
-            let src_dir = entry.path();
-
-            let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
-            skills.push(DiscoveredSkill {
-                name,
-                source: "autopilot".to_string(),
-                skill_type,
-                variants,
-                codex_agent,
-            });
+            entries.push(resolved_entry(name, "autopilot", entry.path()));
         }
     }
 
     // ── Vendor skills (lock-driven: provenance is mandatory) ──
-    for (name, src_dir) in discover_vendor_skill_dirs(project_root)? {
-        let (skill_type, variants, codex_agent) = classify_skill(&src_dir);
-        skills.push(DiscoveredSkill {
-            name,
-            source: "vendor".to_string(),
-            skill_type,
-            variants,
-            codex_agent,
-        });
-    }
-
-    // ── Upstream skills (from .skill-lock.json) ──
-    // Delegate parsing to the shared crate for a single source of truth.
-    match shared::load_skill_lock() {
-        Ok(lock) => {
-            for skill in &lock.skills {
-                // Check that the source directory exists before adding to the index
-                let src_parent = Path::new(&skill.skill_path)
-                    .parent()
-                    .unwrap_or(Path::new(""));
-                let src_dir = project_root
-                    .join("skills")
-                    .join("upstream")
-                    .join(src_parent);
-                if !src_dir.is_dir() {
-                    continue;
-                }
-                skills.push(DiscoveredSkill {
-                    name: skill.name.clone(),
-                    source: "upstream".to_string(),
-                    skill_type: SkillType::Agnostic,
-                    variants: vec![],
-                    codex_agent: false,
-                });
-            }
-        }
-        Err(e) => {
-            // Treat a missing lock file as non-fatal (upstream skills simply omitted).
-            // Parse / IO errors are surfaced.
-            let lock_path = project_root.join(".skill-lock.json");
-            if !lock_path.is_file() {
-                // lock file absent — no upstream skills to discover
+    let vendor_lock_path = project_root.join(shared::VENDOR_LOCK_FILE);
+    if vendor_lock_path.is_file() {
+        let lock = shared::load_vendor_lock_at(project_root)
+            .map_err(|e| anyhow::anyhow!("failed to parse {}: {e}", shared::VENDOR_LOCK_FILE))?;
+        for skill in &lock.skills {
+            let src_dir = project_root.join(skill.vendor_dir());
+            if src_dir.is_dir() {
+                entries.push(resolved_entry(skill.name.clone(), "vendor", src_dir));
             } else {
-                return Err(anyhow::anyhow!("failed to parse .skill-lock.json: {e}"));
+                let reason = format!("vendor skill directory not found: {}", src_dir.display());
+                entries.push(failed_entry(skill.name.clone(), "vendor", src_dir, reason));
             }
         }
     }
 
-    // Sort by name for deterministic output
-    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    // ── Upstream skills (lock-driven) ──
+    let upstream_lock_path = project_root.join(shared::SKILL_LOCK_FILE);
+    if upstream_lock_path.is_file() {
+        let lock = shared::load_skill_lock_at(project_root)
+            .map_err(|e| anyhow::anyhow!("failed to parse {}: {e}", shared::SKILL_LOCK_FILE))?;
+        for skill in &lock.skills {
+            match skill.upstream_dir_rel() {
+                Some(rel) => {
+                    let src_dir = project_root.join(rel);
+                    if src_dir.is_dir() {
+                        // Upstream skills are runtime-agnostic by policy.
+                        entries.push(ExpectedSetEntry {
+                            name: skill.name.clone(),
+                            source: "upstream".to_string(),
+                            skill_type: SkillType::Agnostic,
+                            variants: vec![],
+                            codex_agent: false,
+                            source_dir: src_dir,
+                            resolution: ResolutionStatus::Resolved,
+                        });
+                    } else {
+                        let reason =
+                            format!("upstream skill directory not found: {}", src_dir.display());
+                        entries.push(failed_entry(
+                            skill.name.clone(),
+                            "upstream",
+                            src_dir,
+                            reason,
+                        ));
+                    }
+                }
+                None => {
+                    // A malformed skillPath resolves to no directory; the entry
+                    // is still returned as a failed entry, anchored at the
+                    // upstream source root.
+                    let reason = format!(
+                        "malformed skillPath {:?}: expected a path ending in /SKILL.md",
+                        skill.skill_path
+                    );
+                    entries.push(failed_entry(
+                        skill.name.clone(),
+                        "upstream",
+                        project_root.join("skills").join("upstream"),
+                        reason,
+                    ));
+                }
+            }
+        }
+    }
 
-    Ok(skills)
+    // Deterministic order: autopilot, then vendor, then upstream; name-sorted
+    // within each group.
+    entries.sort_by(|a, b| {
+        source_rank(&a.source)
+            .cmp(&source_rank(&b.source))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(entries)
+}
+
+// ── Entry construction helpers ──────────────────────────────────────────────
+
+/// Rank sources for the deterministic Expected-set order.
+fn source_rank(source: &str) -> u8 {
+    match source {
+        "autopilot" => 0,
+        "vendor" => 1,
+        "upstream" => 2,
+        _ => 3,
+    }
+}
+
+/// Build a resolved entry by classifying the skill's source directory.
+fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSetEntry {
+    let (skill_type, variants, codex_agent) = classify_skill(&source_dir);
+    ExpectedSetEntry {
+        name,
+        source: source.to_string(),
+        skill_type,
+        variants,
+        codex_agent,
+        source_dir,
+        resolution: ResolutionStatus::Resolved,
+    }
+}
+
+/// Build a failed entry for provenance that points at a missing directory.
+///
+/// A missing directory cannot be classified, so the type metadata defaults to
+/// agnostic with no variants.
+fn failed_entry(
+    name: String,
+    source: &str,
+    source_dir: PathBuf,
+    reason: String,
+) -> ExpectedSetEntry {
+    ExpectedSetEntry {
+        name,
+        source: source.to_string(),
+        skill_type: SkillType::Agnostic,
+        variants: vec![],
+        codex_agent: false,
+        source_dir,
+        resolution: ResolutionStatus::Missing { reason },
+    }
 }
 
 // ── generate_manifest ───────────────────────────────────────────────────────
 
 /// Generate a manifest.json document from discovered skills.
-pub fn generate_manifest(skills: &[DiscoveredSkill], version: &str) -> Manifest {
+///
+/// Failed entries are skipped: they have no shipped skill directory, so they
+/// must not invent manifest entries.
+pub fn generate_manifest(skills: &[ExpectedSetEntry], version: &str) -> Manifest {
     let mut map = BTreeMap::new();
     for skill in skills {
+        if !matches!(skill.resolution, ResolutionStatus::Resolved) {
+            continue;
+        }
         let skill_type_str = match skill.skill_type {
             SkillType::Agnostic if skill.source == "upstream" => "upstream",
             SkillType::Agnostic if skill.source == "vendor" => "vendor",
@@ -300,97 +364,291 @@ mod tests {
         assert!(!codex_agent);
     }
 
-    #[test]
-    fn discover_vendor_skill_dirs_is_lock_driven() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
+    // ── Expected-set enumeration fixtures ───────────────────────────────
 
-        std::fs::create_dir_all(root.join("skills/vendor/show-me")).unwrap();
+    fn write_skill_md(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
         std::fs::write(
-            root.join("skills/vendor/show-me/SKILL.md"),
-            "---\nname: show-me\ndescription: test\n---\n",
+            dir.join("SKILL.md"),
+            "---\nname: test\ndescription: test\n---\n",
         )
         .unwrap();
+    }
 
-        // Orphan directory without a lock entry — must be ignored.
-        std::fs::create_dir_all(root.join("skills/vendor/orphan")).unwrap();
+    fn write_upstream_lock(root: &Path, entries: &[(&str, &str)]) {
+        let skills = entries
+            .iter()
+            .map(|(name, path)| {
+                format!(
+                    r#""{name}": {{"sourceType": "github", "skillPath": "{path}", "skillFolderHash": "abc123"}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         std::fs::write(
-            root.join("skills/vendor/orphan/SKILL.md"),
-            "---\nname: orphan\ndescription: test\n---\n",
+            root.join(".skill-lock.json"),
+            format!(r#"{{"version": 4, "skills": {{{skills}}}, "dismissed": {{}}}}"#),
         )
         .unwrap();
+    }
 
+    fn write_vendor_lock(root: &Path, entries: &[(&str, &str)]) {
+        let skills = entries
+            .iter()
+            .map(|(name, vendor_path)| {
+                format!(
+                    r#""{name}": {{"sourceType": "github", "skillPath": "plugins/{name}/skills/{name}/SKILL.md", "skillFolderHash": "abc123", "vendorPath": "{vendor_path}"}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         std::fs::write(
             root.join(".vendor-lock.json"),
-            r#"{
-                "version": 1,
-                "skills": {
-                    "show-me": {
-                        "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
-                        "skillFolderHash": "abc123",
-                        "vendorPath": "skills/vendor/show-me"
-                    }
-                }
-            }"#,
+            format!(r#"{{"version": 1, "skills": {{{skills}}}}}"#),
         )
         .unwrap();
-
-        let entries = discover_vendor_skill_dirs(root).unwrap();
-        assert_eq!(entries.len(), 1, "only locked vendor skills are discovered");
-        assert_eq!(entries[0].0, "show-me");
-        assert!(entries[0].1.ends_with("skills/vendor/show-me"));
     }
 
     #[test]
-    fn discover_vendor_skill_dirs_missing_lock_is_empty() {
+    fn expected_set_entries_carry_resolved_dirs_and_status() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(tmp.path().join("skills/vendor/show-me")).unwrap();
+        let root = tmp.path();
 
-        let entries = discover_vendor_skill_dirs(tmp.path()).unwrap();
-        assert!(
-            entries.is_empty(),
-            "a missing vendor lock must yield no vendor skills"
+        // Autopilot: one agnostic skill, one coupled skill with a codex agent.
+        write_skill_md(&root.join("skills/autopilot/alpha"));
+        write_skill_md(&root.join("skills/autopilot/beta"));
+        write_skill_md(&root.join("skills/autopilot/beta/reasonix"));
+        std::fs::create_dir_all(root.join("skills/autopilot/beta/codex")).unwrap();
+        std::fs::write(
+            root.join("skills/autopilot/beta/codex/agent.toml"),
+            "[agent]\nname = \"beta\"\n",
+        )
+        .unwrap();
+
+        // Vendor + upstream locks.
+        write_skill_md(&root.join("skills/vendor/show-me"));
+        write_vendor_lock(root, &[("show-me", "skills/vendor/show-me")]);
+        write_skill_md(&root.join("skills/upstream/skills/engineering/tdd"));
+        write_upstream_lock(root, &[("tdd", "skills/engineering/tdd/SKILL.md")]);
+
+        let entries = discover_skills(root).unwrap();
+        assert_eq!(entries.len(), 4);
+
+        let alpha = entries.iter().find(|e| e.name == "alpha").unwrap();
+        assert_eq!(alpha.source, "autopilot");
+        assert_eq!(alpha.skill_type, SkillType::Agnostic);
+        assert!(alpha.variants.is_empty());
+        assert!(!alpha.codex_agent);
+        assert_eq!(alpha.resolution, ResolutionStatus::Resolved);
+        assert_eq!(alpha.source_dir, root.join("skills/autopilot/alpha"));
+
+        let beta = entries.iter().find(|e| e.name == "beta").unwrap();
+        assert_eq!(beta.skill_type, SkillType::Coupled);
+        assert_eq!(beta.variants, vec!["codex", "reasonix"]);
+        assert!(beta.codex_agent);
+        assert_eq!(beta.source_dir, root.join("skills/autopilot/beta"));
+
+        let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
+        assert_eq!(show_me.source, "vendor");
+        assert_eq!(show_me.skill_type, SkillType::Agnostic);
+        assert_eq!(show_me.resolution, ResolutionStatus::Resolved);
+        assert_eq!(show_me.source_dir, root.join("skills/vendor/show-me"));
+
+        let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
+        assert_eq!(tdd.source, "upstream");
+        assert_eq!(tdd.skill_type, SkillType::Agnostic);
+        assert_eq!(tdd.resolution, ResolutionStatus::Resolved);
+        assert_eq!(
+            tdd.source_dir,
+            root.join("skills/upstream/skills/engineering/tdd")
         );
+    }
+
+    #[test]
+    fn vendor_enumeration_is_lock_driven() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        write_skill_md(&root.join("skills/vendor/show-me"));
+        // Orphan directory without a lock entry — must be ignored.
+        write_skill_md(&root.join("skills/vendor/orphan"));
+        write_vendor_lock(root, &[("show-me", "skills/vendor/show-me")]);
+
+        let entries = discover_skills(root).unwrap();
+        assert_eq!(entries.len(), 1, "only locked vendor skills are discovered");
+        assert_eq!(entries[0].name, "show-me");
+        assert_eq!(entries[0].source, "vendor");
+        assert_eq!(entries[0].source_dir, root.join("skills/vendor/show-me"));
+    }
+
+    #[test]
+    fn missing_vendor_directory_yields_failed_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_vendor_lock(root, &[("ghost", "skills/vendor/ghost")]);
+
+        let entries = discover_skills(root).unwrap();
+        let ghost = entries
+            .iter()
+            .find(|e| e.name == "ghost")
+            .expect("a failed entry must still be returned");
+        assert_eq!(ghost.source, "vendor");
+        assert_eq!(ghost.source_dir, root.join("skills/vendor/ghost"));
+        match &ghost.resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("ghost"),
+                "reason should name the missing location, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a failed entry"),
+        }
+    }
+
+    #[test]
+    fn missing_upstream_directory_yields_failed_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_upstream_lock(root, &[("gone", "skills/engineering/gone/SKILL.md")]);
+
+        let entries = discover_skills(root).unwrap();
+        let gone = entries
+            .iter()
+            .find(|e| e.name == "gone")
+            .expect("a failed entry must still be returned");
+        assert_eq!(gone.source, "upstream");
+        assert_eq!(
+            gone.source_dir,
+            root.join("skills/upstream/skills/engineering/gone")
+        );
+        match &gone.resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("gone"),
+                "reason should name the missing location, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a failed entry"),
+        }
+    }
+
+    #[test]
+    fn missing_locks_yield_no_locked_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_skill_md(&root.join("skills/autopilot/alpha"));
+
+        let entries = discover_skills(root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source, "autopilot");
+    }
+
+    #[test]
+    fn malformed_upstream_lock_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join(".skill-lock.json"), "{ not json").unwrap();
+
+        let err = discover_skills(root).unwrap_err().to_string();
+        assert!(err.contains(".skill-lock.json"), "got: {err}");
+    }
+
+    #[test]
+    fn malformed_vendor_lock_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join(".vendor-lock.json"), "{ not json").unwrap();
+
+        let err = discover_skills(root).unwrap_err().to_string();
+        assert!(err.contains(".vendor-lock.json"), "got: {err}");
+    }
+
+    #[test]
+    fn expected_set_order_is_deterministic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Created in an order that differs from the required output order.
+        write_skill_md(&root.join("skills/autopilot/zeta"));
+        write_skill_md(&root.join("skills/autopilot/alpha"));
+        write_skill_md(&root.join("skills/vendor/vendor-z"));
+        write_skill_md(&root.join("skills/vendor/vendor-a"));
+        write_skill_md(&root.join("skills/upstream/skills/upstream-b"));
+        write_skill_md(&root.join("skills/upstream/skills/upstream-a"));
+        write_vendor_lock(
+            root,
+            &[
+                ("vendor-z", "skills/vendor/vendor-z"),
+                ("vendor-a", "skills/vendor/vendor-a"),
+            ],
+        );
+        write_upstream_lock(
+            root,
+            &[
+                ("upstream-b", "skills/upstream-b/SKILL.md"),
+                ("upstream-a", "skills/upstream-a/SKILL.md"),
+            ],
+        );
+
+        let names: Vec<String> = discover_skills(root)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "alpha",
+                "zeta",
+                "vendor-a",
+                "vendor-z",
+                "upstream-a",
+                "upstream-b"
+            ],
+            "order must be autopilot, vendor, upstream — name-sorted within each group"
+        );
+    }
+
+    fn entry(
+        name: &str,
+        source: &str,
+        skill_type: SkillType,
+        variants: &[&str],
+        codex_agent: bool,
+    ) -> ExpectedSetEntry {
+        ExpectedSetEntry {
+            name: name.to_string(),
+            source: source.to_string(),
+            skill_type,
+            variants: variants.iter().map(|v| v.to_string()).collect(),
+            codex_agent,
+            source_dir: PathBuf::from(format!("/fixture/{name}")),
+            resolution: ResolutionStatus::Resolved,
+        }
     }
 
     #[test]
     fn generate_manifest_includes_all_skills() {
         let skills = vec![
-            DiscoveredSkill {
-                name: "toolkit-setup".into(),
-                source: "autopilot".into(),
-                skill_type: SkillType::Agnostic,
-                variants: vec![],
-                codex_agent: false,
-            },
-            DiscoveredSkill {
-                name: "autopilot-orchestrator".into(),
-                source: "autopilot".into(),
-                skill_type: SkillType::Coupled,
-                variants: vec!["codex".into(), "kimi".into(), "reasonix".into()],
-                codex_agent: false,
-            },
-            DiscoveredSkill {
-                name: "autopilot-implementer".into(),
-                source: "autopilot".into(),
-                skill_type: SkillType::Coupled,
-                variants: vec!["kimi".into(), "reasonix".into()],
-                codex_agent: true,
-            },
-            DiscoveredSkill {
-                name: "tdd".into(),
-                source: "upstream".into(),
-                skill_type: SkillType::Agnostic,
-                variants: vec![],
-                codex_agent: false,
-            },
-            DiscoveredSkill {
-                name: "show-me".into(),
-                source: "vendor".into(),
-                skill_type: SkillType::Agnostic,
-                variants: vec![],
-                codex_agent: false,
-            },
+            entry(
+                "toolkit-setup",
+                "autopilot",
+                SkillType::Agnostic,
+                &[],
+                false,
+            ),
+            entry(
+                "autopilot-orchestrator",
+                "autopilot",
+                SkillType::Coupled,
+                &["codex", "kimi", "reasonix"],
+                false,
+            ),
+            entry(
+                "autopilot-implementer",
+                "autopilot",
+                SkillType::Coupled,
+                &["kimi", "reasonix"],
+                true,
+            ),
+            entry("tdd", "upstream", SkillType::Agnostic, &[], false),
+            entry("show-me", "vendor", SkillType::Agnostic, &[], false),
         ];
         let manifest = generate_manifest(&skills, "abc123");
         assert_eq!(manifest.version, "abc123");
@@ -415,6 +673,31 @@ mod tests {
         let impler = &manifest.skills["autopilot-implementer"];
         assert_eq!(impler.skill_type, "coupled");
         assert!(impler.codex_agent);
+    }
+
+    #[test]
+    fn generate_manifest_skips_failed_entries() {
+        let skills = vec![
+            entry("kept", "autopilot", SkillType::Agnostic, &[], false),
+            ExpectedSetEntry {
+                name: "ghost".to_string(),
+                source: "vendor".to_string(),
+                skill_type: SkillType::Agnostic,
+                variants: vec![],
+                codex_agent: false,
+                source_dir: PathBuf::from("/missing/ghost"),
+                resolution: ResolutionStatus::Missing {
+                    reason: "directory not found: /missing/ghost".to_string(),
+                },
+            },
+        ];
+        let manifest = generate_manifest(&skills, "v1");
+        assert_eq!(manifest.skills.len(), 1);
+        assert!(manifest.skills.contains_key("kept"));
+        assert!(
+            !manifest.skills.contains_key("ghost"),
+            "failed entries must not invent manifest entries"
+        );
     }
 
     #[test]

@@ -2,8 +2,8 @@
 //! `.skill-lock.json` and `.vendor-lock.json` match the actual skill
 //! directories on disk.
 //!
-//! Migrated from `scripts/check.rs`.  Uses `shared::load_skill_lock()` and
-//! `shared::load_vendor_lock()` for parsing and `shared::SkillLock` /
+//! Migrated from `scripts/check.rs`.  Uses `shared::load_skill_lock_at()` and
+//! `shared::load_vendor_lock_at()` for parsing and `shared::SkillLock` /
 //! `shared::LockedSkill` as the source-of-truth types.
 //!
 //! Public API:
@@ -35,30 +35,6 @@ pub struct CheckReport {
     pub updated_vendor: BTreeMap<String, String>,
     /// Whether any github-source skill was found.
     pub found_github: bool,
-}
-
-// ── Path helpers ───────────────────────────────────────────────────────────
-
-/// Derive the skill folder path from its skillPath entry.
-/// skillPath e.g. "skills/engineering/diagnosing-bugs/SKILL.md"
-/// Returns the folder path relative to project root, e.g.
-/// "skills/upstream/skills/engineering/diagnosing-bugs"
-pub fn skill_folder_from_path(skill_path: &str) -> Option<String> {
-    if !skill_path.ends_with("/SKILL.md") {
-        return None;
-    }
-    let folder_rel = skill_path.strip_suffix("/SKILL.md")?;
-    Some(format!("skills/upstream/{}", folder_rel))
-}
-
-/// For non-github skills, the folder is just skillPath minus /SKILL.md
-/// (no "skills/upstream/" prefix).
-pub fn skill_folder_from_path_local(skill_path: &str) -> Option<String> {
-    if !skill_path.ends_with("/SKILL.md") {
-        return None;
-    }
-    let folder_rel = skill_path.strip_suffix("/SKILL.md")?;
-    Some(folder_rel.to_string())
 }
 
 /// Compare one skill directory's git tree hash against its lock entry.
@@ -100,10 +76,10 @@ fn check_tree_hash(
 
 /// Check all skills against their lockfile hashes.
 ///
-/// Uses `shared::load_skill_lock()` for `.skill-lock.json` and
-/// `shared::load_vendor_lock()` for `.vendor-lock.json`, then computes git
-/// tree hashes for each skill directory and compares them against the
-/// expected values.
+/// Uses `shared::load_skill_lock_at(project_root)` for `.skill-lock.json` and
+/// `shared::load_vendor_lock_at(project_root)` for `.vendor-lock.json`, then
+/// computes git tree hashes for each skill directory and compares them
+/// against the expected values.
 pub fn check_skills(project_root: &Path) -> Result<CheckReport, String> {
     let lock = shared::load_skill_lock_at(project_root)?;
 
@@ -119,15 +95,12 @@ pub fn check_skills(project_root: &Path) -> Result<CheckReport, String> {
         }
         found_github = true;
 
-        let folder_rel = match skill_folder_from_path(&skill.skill_path) {
+        let folder_rel = match skill.upstream_dir_rel() {
             Some(f) => f,
             None => {
                 results.push((
                     skill.name.clone(),
-                    CheckResult::Skip(format!(
-                        "unexpected skillPath format: {}",
-                        skill.skill_path
-                    )),
+                    CheckResult::Skip(format!("unexpected skillPath format: {}", skill.skill_path)),
                 ));
                 continue;
             }
@@ -152,7 +125,7 @@ pub fn check_skills(project_root: &Path) -> Result<CheckReport, String> {
             continue;
         }
 
-        let folder_rel = match skill_folder_from_path_local(&skill.skill_path) {
+        let folder_rel = match skill.skill_dir_rel() {
             Some(f) => f,
             None => continue,
         };
@@ -374,36 +347,6 @@ mod tests {
         fs::write(dir.join("SKILL.md"), content).expect("write SKILL.md");
     }
 
-    // ── skill_folder_from_path ───────────────────────────────────────────
-
-    #[test]
-    fn skill_folder_from_valid_path() {
-        let result = skill_folder_from_path("skills/engineering/diagnosing-bugs/SKILL.md");
-        assert_eq!(
-            result,
-            Some("skills/upstream/skills/engineering/diagnosing-bugs".to_string())
-        );
-    }
-
-    #[test]
-    fn skill_folder_from_path_without_skill_md() {
-        let result = skill_folder_from_path("skills/engineering/diagnosing-bugs/README.md");
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn skill_folder_from_path_empty() {
-        assert_eq!(skill_folder_from_path(""), None);
-    }
-
-    // ── skill_folder_from_path_local ─────────────────────────────────────
-
-    #[test]
-    fn skill_folder_local_from_valid_path() {
-        let result = skill_folder_from_path_local("skills/autopilot/my-skill/SKILL.md");
-        assert_eq!(result, Some("skills/autopilot/my-skill".to_string()));
-    }
-
     // ── check_skills (using real lockfile) ───────────────────────────────
 
     #[test]
@@ -604,7 +547,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
 
         write_vendor_lockfile(
@@ -662,7 +609,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
         write_vendor_lockfile(
             root,
@@ -691,7 +642,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
         write_vendor_lockfile(
             root,
@@ -737,10 +692,7 @@ mod tests {
             name == "show-me"
                 && matches!(result, CheckResult::Fail(msg) if msg.contains("PROVENANCE.md"))
         });
-        assert!(
-            has_fail,
-            "missing PROVENANCE.md must fail the vendor check"
-        );
+        assert!(has_fail, "missing PROVENANCE.md must fail the vendor check");
     }
 
     #[test]
@@ -749,7 +701,11 @@ mod tests {
         let root = tmp.path();
 
         create_skill_dir(root, "skills/vendor/show-me", "# Show Me\n");
-        fs::write(root.join("skills/vendor/show-me/PROVENANCE.md"), "# Provenance\n").unwrap();
+        fs::write(
+            root.join("skills/vendor/show-me/PROVENANCE.md"),
+            "# Provenance\n",
+        )
+        .unwrap();
         write_lockfile(root, &serde_json::json!({}));
         write_vendor_lockfile(
             root,

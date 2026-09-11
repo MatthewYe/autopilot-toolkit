@@ -3,8 +3,8 @@
 //! Provides:
 //! - `project_root()` — unified project root derivation
 //! - `SkillLock` / `LockedSkill` — strong types for `.skill-lock.json` and `.vendor-lock.json`
-//! - `load_skill_lock()` — single parse entrypoint for `.skill-lock.json`
-//! - `load_vendor_lock()` — single parse entrypoint for `.vendor-lock.json`
+//! - `load_skill_lock_at()` / `load_vendor_lock_at()` — parse entrypoints for a given project root
+//! - `load_skill_lock()` / `load_vendor_lock()` — ambient-root conveniences (test-only in this repo)
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -60,6 +60,37 @@ impl LockedSkill {
             .clone()
             .unwrap_or_else(|| format!("skills/vendor/{}", self.name))
     }
+
+    /// The skill's directory inside its upstream checkout, relative to the
+    /// lock file's path base (e.g. `skills/engineering/tdd`).
+    ///
+    /// `None` when `skill_path` does not end in `/SKILL.md`.
+    pub fn skill_dir_rel(&self) -> Option<String> {
+        self.skill_path
+            .strip_suffix("/SKILL.md")
+            .map(|rel| rel.to_string())
+    }
+
+    /// Project-root-relative directory of an upstream skill
+    /// (e.g. `skills/upstream/skills/engineering/tdd`).
+    ///
+    /// `None` when `skill_path` does not end in `/SKILL.md`.
+    pub fn upstream_dir_rel(&self) -> Option<String> {
+        self.skill_dir_rel()
+            .map(|rel| format!("skills/upstream/{rel}"))
+    }
+
+    /// Project-root-relative path of an upstream skill's SKILL.md file
+    /// (e.g. `skills/upstream/skills/engineering/tdd/SKILL.md`).
+    pub fn upstream_file_rel(&self) -> String {
+        format!("skills/upstream/{}", self.skill_path)
+    }
+
+    /// Project-root-relative path of a vendor skill's SKILL.md file
+    /// (e.g. `skills/vendor/show-me/SKILL.md`).
+    pub fn vendor_file_rel(&self) -> String {
+        format!("{}/SKILL.md", self.vendor_dir())
+    }
 }
 
 /// Top-level structure of `.skill-lock.json`.
@@ -111,8 +142,9 @@ pub fn load_skill_lock() -> Result<SkillLock, String> {
 
 /// Read and parse `.skill-lock.json` from a specific directory.
 ///
-/// Prefer `load_skill_lock()` in production code; this variant is useful
-/// for tests that operate on synthetic project roots.
+/// This is the production entrypoint: consumers pass the project root
+/// explicitly. The ambient-root `load_skill_lock()` is a convenience used
+/// by tests that rely on `project_root()`.
 pub fn load_skill_lock_at(root: &Path) -> Result<SkillLock, String> {
     load_lock_at(root, SKILL_LOCK_FILE)
 }
@@ -128,8 +160,9 @@ pub fn load_vendor_lock() -> Result<SkillLock, String> {
 
 /// Read and parse `.vendor-lock.json` from a specific directory.
 ///
-/// Prefer `load_vendor_lock()` in production code; this variant is useful
-/// for tests that operate on synthetic project roots.
+/// This is the production entrypoint: consumers pass the project root
+/// explicitly. The ambient-root `load_vendor_lock()` is a convenience used
+/// by tests that rely on `project_root()`.
 pub fn load_vendor_lock_at(root: &Path) -> Result<SkillLock, String> {
     load_lock_at(root, VENDOR_LOCK_FILE)
 }
@@ -321,6 +354,65 @@ mod tests {
         assert_eq!(lock.skills[0].name, "sample");
         assert_eq!(lock.skills[0].skill_path, "p.md");
         assert_eq!(lock.skills[0].skill_folder_hash, "abc123");
+    }
+
+    // ── lock path mapping ────────────────────────────────────────────────
+
+    fn locked_skill(name: &str, skill_path: &str, vendor_path: Option<&str>) -> LockedSkill {
+        LockedSkill {
+            name: name.to_string(),
+            source_type: "github".to_string(),
+            skill_path: skill_path.to_string(),
+            skill_folder_hash: "abc123".to_string(),
+            vendor_path: vendor_path.map(|p| p.to_string()),
+            installed_at: None,
+        }
+    }
+
+    #[test]
+    fn upstream_mapping_resolves_file_and_directory() {
+        let skill = locked_skill("tdd", "skills/engineering/tdd/SKILL.md", None);
+        assert_eq!(
+            skill.skill_dir_rel().as_deref(),
+            Some("skills/engineering/tdd")
+        );
+        assert_eq!(
+            skill.upstream_dir_rel().as_deref(),
+            Some("skills/upstream/skills/engineering/tdd")
+        );
+        assert_eq!(
+            skill.upstream_file_rel(),
+            "skills/upstream/skills/engineering/tdd/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn upstream_mapping_rejects_paths_without_skill_md() {
+        let skill = locked_skill("tdd", "skills/engineering/tdd/README.md", None);
+        assert_eq!(skill.skill_dir_rel(), None);
+        assert_eq!(skill.upstream_dir_rel(), None);
+        assert_eq!(
+            skill.upstream_file_rel(),
+            "skills/upstream/skills/engineering/tdd/README.md"
+        );
+    }
+
+    #[test]
+    fn vendor_mapping_resolves_file_and_directory() {
+        let skill = locked_skill(
+            "show-me",
+            "plugins/show-me/skills/show-me/SKILL.md",
+            Some("skills/vendor/show-me"),
+        );
+        assert_eq!(skill.vendor_dir(), "skills/vendor/show-me");
+        assert_eq!(skill.vendor_file_rel(), "skills/vendor/show-me/SKILL.md");
+    }
+
+    #[test]
+    fn vendor_mapping_falls_back_to_conventional_directory() {
+        let skill = locked_skill("show-me", "plugins/show-me/SKILL.md", None);
+        assert_eq!(skill.vendor_dir(), "skills/vendor/show-me");
+        assert_eq!(skill.vendor_file_rel(), "skills/vendor/show-me/SKILL.md");
     }
 
     // ── load_skill_lock ──────────────────────────────────────────────────

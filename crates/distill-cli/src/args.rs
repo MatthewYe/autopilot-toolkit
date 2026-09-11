@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use crate::util::{parse_revision, require_non_empty, require_run_id};
 
+// Mirrors `skill_index::RUNTIME_VARIANTS` — the accepted `--runtime` values.
+// Kept local so the shipped CLI takes no skill-index dependency.
 pub(crate) const SUPPORTED_RUNTIMES: [&str; 3] = ["codex", "kimi", "reasonix"];
 
 pub(crate) struct StartArgs {

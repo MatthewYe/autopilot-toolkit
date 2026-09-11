@@ -1,7 +1,8 @@
 //! Validation runner — discovers skills, validates frontmatter, and generates reports.
 //!
-//! Migrated from `validation/run.rs`.  Uses `skill_index::discover_skills()` for
-//! skill discovery and `shared::load_skill_lock()` for upstream skill paths.
+//! Migrated from `validation/run.rs`.  Consumes `skill_index::discover_skills()`
+//! — the Expected-set enumerator — for every skill source; failed entries are
+//! reported as FAIL rather than silently dropped.
 //!
 //! Public API:
 //! - `run_validation(project_root)` → `Result<ValidationReport>`
@@ -13,7 +14,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::Utc;
 use validation::{parse_frontmatter, validate_skill_with_variant, SkillVariant, ValidationResult};
@@ -34,7 +35,7 @@ macro_rules! wln {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-/// A skill ready for validation — flattened from `DiscoveredSkill` with a
+/// A skill ready for validation — flattened from an Expected-set entry with a
 /// concrete file path.
 #[derive(Debug, Clone)]
 pub struct Skill {
@@ -45,6 +46,9 @@ pub struct Skill {
     pub source: String,
     /// Runtime variant: None for runtime-agnostic, Some("reasonix") etc.
     pub variant: Option<String>,
+    /// Why the Expected-set entry failed to resolve, if it did.  A failed
+    /// entry fails validation immediately, without touching the filesystem.
+    pub failed_reason: Option<String>,
 }
 
 /// The result of validating a single skill.
@@ -60,138 +64,91 @@ pub struct ValidationReport {
     pub has_failures: bool,
 }
 
-// ── Skill expansion: DiscoveredSkill → Vec<Skill> ───────────────────────────
+// ── Skill expansion: Expected-set entries → Vec<Skill> ─────────────────────
 
-/// Expand `DiscoveredSkill` entries into flat `Skill` entries with concrete
-/// file paths.  Uses `shared::load_skill_lock()` for upstream path resolution.
+/// Expand the Expected set into flat `Skill` entries with concrete file paths.
+///
+/// Failed entries keep their identity and carry the resolution failure as
+/// `failed_reason`, so validation reports them as FAIL instead of dropping
+/// them.
 pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
-    let discovered = skill_index::discover_skills(project_root)?;
-    let lock = shared::load_skill_lock().ok();
-
+    let entries = skill_index::discover_skills(project_root)?;
     let mut skills: Vec<Skill> = Vec::new();
 
-    // ── Upstream skills ──
-    for d in &discovered {
-        if d.source != "upstream" {
-            continue;
-        }
-        let path = lock
-            .as_ref()
-            .and_then(|l| l.skills.iter().find(|s| s.name == d.name))
-            .map(|s| format!("skills/upstream/{}", s.skill_path));
-        if let Some(relative_path) = path {
-            let full_path = project_root.join(&relative_path);
-            if full_path.is_file() {
+    for entry in entries {
+        let relative_dir = entry
+            .source_dir
+            .strip_prefix(project_root)
+            .unwrap_or(&entry.source_dir);
+
+        match &entry.resolution {
+            skill_index::ResolutionStatus::Missing { reason } => {
                 skills.push(Skill {
-                    name: d.name.clone(),
-                    relative_path,
-                    source: "upstream".to_string(),
+                    name: entry.name.clone(),
+                    relative_path: skill_relative_path(relative_dir, None),
+                    source: entry.source.clone(),
                     variant: None,
+                    failed_reason: Some(reason.clone()),
                 });
             }
+            skill_index::ResolutionStatus::Resolved => {
+                if entry.source_dir.join("SKILL.md").is_file() {
+                    skills.push(Skill {
+                        name: entry.name.clone(),
+                        relative_path: skill_relative_path(relative_dir, None),
+                        source: entry.source.clone(),
+                        variant: None,
+                        failed_reason: None,
+                    });
+                }
+                for variant in &entry.variants {
+                    let variant_skill = entry.source_dir.join(variant).join("SKILL.md");
+                    if variant_skill.is_file() {
+                        skills.push(Skill {
+                            name: entry.name.clone(),
+                            relative_path: skill_relative_path(relative_dir, Some(variant)),
+                            source: entry.source.clone(),
+                            variant: Some(variant.clone()),
+                            failed_reason: None,
+                        });
+                    }
+                }
+            }
         }
-    }
-
-    // ── Autopilot skills ──
-    let autopilot_candidates: Vec<(String, PathBuf, Vec<String>)> = discovered
-        .iter()
-        .filter(|d| d.source == "autopilot")
-        .map(|d| {
-            (
-                d.name.clone(),
-                project_root.join(format!("skills/autopilot/{}", d.name)),
-                d.variants.clone(),
-            )
-        })
-        .collect();
-    for (name, relative_path, variant) in
-        collect_skill_entries(project_root, autopilot_candidates)
-    {
-        skills.push(Skill {
-            name,
-            relative_path,
-            source: "autopilot".to_string(),
-            variant,
-        });
-    }
-
-    // ── Vendor skills (lock-driven paths) ──
-    let vendor_variants: HashMap<&str, &Vec<String>> = discovered
-        .iter()
-        .filter(|d| d.source == "vendor")
-        .map(|d| (d.name.as_str(), &d.variants))
-        .collect();
-    let vendor_candidates: Vec<(String, PathBuf, Vec<String>)> =
-        skill_index::discover_vendor_skill_dirs(project_root)?
-            .into_iter()
-            .map(|(name, src_dir)| {
-                let variants = vendor_variants
-                    .get(name.as_str())
-                    .map(|variants| (*variants).clone())
-                    .unwrap_or_default();
-                (name, src_dir, variants)
-            })
-            .collect();
-    for (name, relative_path, variant) in
-        collect_skill_entries(project_root, vendor_candidates)
-    {
-        skills.push(Skill {
-            name,
-            relative_path,
-            source: "vendor".to_string(),
-            variant,
-        });
     }
 
     Ok(skills)
 }
 
-/// Collect `(name, relative_path, variant)` entries for a set of skill
-/// directories, including each skill's variant subdirectories.
-fn collect_skill_entries(
-    project_root: &Path,
-    candidates: Vec<(String, PathBuf, Vec<String>)>,
-) -> Vec<(String, String, Option<String>)> {
-    let mut entries = Vec::new();
-    for (name, src_dir, variants) in candidates {
-        let relative_dir = src_dir
-            .strip_prefix(project_root)
-            .unwrap_or(&src_dir)
-            .to_path_buf();
-        let root_skill = src_dir.join("SKILL.md");
-        if root_skill.is_file() {
-            entries.push((
-                name.clone(),
-                relative_dir.join("SKILL.md").to_string_lossy().to_string(),
-                None,
-            ));
-        }
-        for variant in &variants {
-            let variant_skill = src_dir.join(variant).join("SKILL.md");
-            if variant_skill.is_file() {
-                entries.push((
-                    name.clone(),
-                    relative_dir
-                        .join(variant)
-                        .join("SKILL.md")
-                        .to_string_lossy()
-                        .to_string(),
-                    Some(variant.clone()),
-                ));
-            }
-        }
-    }
-    entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
-    entries
+/// Project-relative path to a skill's SKILL.md, with an optional variant
+/// subdirectory.
+fn skill_relative_path(relative_dir: &Path, variant: Option<&str>) -> String {
+    let path = match variant {
+        Some(variant) => relative_dir.join(variant).join("SKILL.md"),
+        None => relative_dir.join("SKILL.md"),
+    };
+    path.to_string_lossy().to_string()
 }
 
 // ── Batch validation ───────────────────────────────────────────────────────
 
 /// Validate every skill in the list against its file content.
+///
+/// Failed Expected-set entries fail immediately with the entry's reason;
+/// everything else is read and validated from disk.
 pub fn validate_all(project_root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
     skills
         .iter()
         .map(|skill| {
+            if let Some(reason) = &skill.failed_reason {
+                return SkillResult {
+                    result: ValidationResult {
+                        passed: false,
+                        issues: vec![reason.clone()],
+                    },
+                    frontmatter: None,
+                };
+            }
             let full_path = project_root.join(&skill.relative_path);
             let content = match fs::read_to_string(&full_path) {
                 Ok(c) => c,
@@ -228,7 +185,11 @@ pub fn validate_all(project_root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
 // ── Report generation ──────────────────────────────────────────────────────
 
 /// Generate the full human-readable validation report.
-pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: Option<&Path>) -> String {
+pub fn generate_report(
+    skills: &[Skill],
+    results: &[SkillResult],
+    project_root: Option<&Path>,
+) -> String {
     let sep = "=".repeat(70);
     let date_str = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
 
@@ -287,7 +248,14 @@ pub fn generate_report(skills: &[Skill], results: &[SkillResult], project_root: 
         autopilot_fail
     );
     wln!(report);
-    write_skill_entries(&mut report, skills, results, "autopilot", false, project_root);
+    write_skill_entries(
+        &mut report,
+        skills,
+        results,
+        "autopilot",
+        false,
+        project_root,
+    );
 
     // ── Codex variant status ──
     if let Some(root) = project_root {
@@ -591,6 +559,7 @@ mod tests {
             relative_path: format!("skills/{}/{}/SKILL.md", source, name),
             source: source.to_string(),
             variant: None,
+            failed_reason: None,
         }
     }
 
@@ -720,6 +689,7 @@ mod tests {
             relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
             source: "autopilot".to_string(),
             variant: Some("reasonix".to_string()),
+            failed_reason: None,
         }];
         let results = vec![pass_result()];
         let report = generate_report(&skills, &results, None);
@@ -733,6 +703,7 @@ mod tests {
             relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
             source: "autopilot".to_string(),
             variant: Some("codex".to_string()),
+            failed_reason: None,
         }];
         let results = vec![pass_result()];
         let report = generate_report(&skills, &results, None);
@@ -747,18 +718,21 @@ mod tests {
                 relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
                 source: "autopilot".to_string(),
                 variant: Some("reasonix".to_string()),
+                failed_reason: None,
             },
             Skill {
                 name: "codex-skill".to_string(),
                 relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
                 source: "autopilot".to_string(),
                 variant: Some("codex".to_string()),
+                failed_reason: None,
             },
             Skill {
                 name: "kimi-skill".to_string(),
                 relative_path: "skills/autopilot/my-skill/kimi/SKILL.md".to_string(),
                 source: "autopilot".to_string(),
                 variant: Some("kimi".to_string()),
+                failed_reason: None,
             },
         ];
         let results = vec![pass_result(), pass_result(), pass_result()];
@@ -818,10 +792,112 @@ mod tests {
         }
     }
 
+    // ── Failed entries (Expected-set resolution failures) ───────────────
+
+    /// Write a temp fixture's `.skill-lock.json` from a raw skills map.
+    fn write_skill_lock(root: &Path, skills_json: &str) {
+        fs::write(
+            root.join(".skill-lock.json"),
+            format!("{{\"version\": 4, \"skills\": {}}}", skills_json),
+        )
+        .unwrap();
+    }
+
+    /// Add a valid autopilot skill so a fixture has one resolved entry.
+    fn write_valid_autopilot_skill(root: &Path) {
+        let skill_dir = root.join("skills/autopilot/fixture-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: fixture-skill\ndescription: fixture\n---\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn run_validation_fails_when_expected_entry_directory_is_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_valid_autopilot_skill(root);
+        write_skill_lock(
+            root,
+            r#"{
+                "ghost-skill": {
+                    "sourceType": "github",
+                    "skillPath": "skills/engineering/ghost-skill/SKILL.md",
+                    "skillFolderHash": "abc123"
+                }
+            }"#,
+        );
+
+        let report = run_validation(root).expect("run_validation should succeed");
+        assert!(
+            report.has_failures,
+            "an expected skill whose directory is missing must fail validation, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[FAIL] ghost-skill"),
+            "report must carry a [FAIL] entry for the missing skill, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("upstream skill directory not found"),
+            "the failed entry's reason must be reported as an issue, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[PASS] fixture-skill"),
+            "resolved entries keep passing, got:\n{}",
+            report.report
+        );
+    }
+
+    #[test]
+    fn run_validation_errors_on_malformed_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_valid_autopilot_skill(root);
+        fs::write(root.join(".skill-lock.json"), "{ not valid json").unwrap();
+
+        let err = run_validation(root)
+            .err()
+            .expect("a malformed lock must be a hard error");
+        assert!(
+            err.to_string().contains(".skill-lock.json"),
+            "the error should name the malformed lock file, got: {err}"
+        );
+    }
+
+    #[test]
+    fn run_validation_without_lock_has_no_upstream_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_valid_autopilot_skill(root);
+
+        let report = run_validation(root).expect("run_validation should succeed");
+        assert!(
+            !report.has_failures,
+            "a missing lock means no upstream skills, not a failure, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("Upstream Skills (0)"),
+            "no lock must yield zero upstream skills, got:\n{}",
+            report.report
+        );
+        assert!(
+            report.report.contains("[PASS] fixture-skill"),
+            "the resolved autopilot skill still passes, got:\n{}",
+            report.report
+        );
+    }
+
     // ── Variant expansion tests (temp fixtures) ─────────────────────────
 
     /// Build a temp fixture with one autopilot skill carrying the given
-    /// variant directories and a root SKILL.md.
+    /// variant directories and a root SKILL.md, then expand it through the
+    /// public interface.
     fn expand_with_variants(variant_dirs: &[&str]) -> Vec<Skill> {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -844,30 +920,7 @@ mod tests {
             .unwrap();
         }
 
-        // We can't use expand_skills because it calls skill_index::discover_skills
-        // which calls shared::load_skill_lock which finds the real repo's lock.
-        // Instead, test classification directly.
-        let (_skill_type, variants, _codex_agent) = skill_index::classify_skill(&skill_dir);
-
-        // Build expected skills manually
-        let mut skills = Vec::new();
-        // Root
-        skills.push(Skill {
-            name: "fixture-skill".to_string(),
-            relative_path: "skills/autopilot/fixture-skill/SKILL.md".to_string(),
-            source: "autopilot".to_string(),
-            variant: None,
-        });
-        for v in &variants {
-            skills.push(Skill {
-                name: "fixture-skill".to_string(),
-                relative_path: format!("skills/autopilot/fixture-skill/{}/SKILL.md", v),
-                source: "autopilot".to_string(),
-                variant: Some(v.clone()),
-            });
-        }
-        skills.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.variant.cmp(&b.variant)));
-        skills
+        expand_skills(root).expect("expand_skills should succeed")
     }
 
     #[test]
@@ -897,8 +950,14 @@ mod tests {
         // codex dir exists, so it's in variants
         assert!(variants.contains(&"codex".to_string()));
 
-        // But when expanding, we check for SKILL.md — agent.toml alone won't create a Skill entry
-        // (Verified in the expansion logic: variant_path.is_file() check)
+        // When expanding, the SKILL.md gate applies: a variant directory with
+        // only agent.toml does not produce a Skill entry.
+        let skills = expand_skills(tmp.path()).expect("expand_skills should succeed");
+        assert!(
+            skills.is_empty(),
+            "a variant without SKILL.md must not produce entries, got: {:?}",
+            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1027,7 +1086,9 @@ mod tests {
         // Should report "uses agent.toml" because agent.toml exists
         // (data-driven: based on filesystem, not hardcoded name)
         assert!(
-            status.iter().any(|l| l.contains("test-skill") && l.contains("agent.toml")),
+            status
+                .iter()
+                .any(|l| l.contains("test-skill") && l.contains("agent.toml")),
             "should detect agent.toml for a skill with any name, got: {:?}",
             status
         );
