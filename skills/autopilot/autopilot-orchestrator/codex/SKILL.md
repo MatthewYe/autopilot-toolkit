@@ -99,6 +99,8 @@ AFK-breaking behavior: pausing for human input when no product/scope decision is
   to human-decision.
 - `TEST_EVIDENCE` is cached by `command + WORK_BASE + worktree fingerprint`; reused
   when the worktree is unchanged, invalidated after code changes.
+- Sandboxed verification: consult the repo AGENTS.md for sandbox wrappers before recording
+  `external-unavailable`; retry the denied command through them first.
 - Diagnostic workflows in AFK mode do not block waiting for the user — continue testing
   hypotheses by priority.
 - After deferral in scan mode, return to the next runnable issue on the scanning frontier;

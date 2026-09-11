@@ -69,6 +69,7 @@ AFK permission mode:
 
 - Never request sandbox escalation or interactive approval.
 - Keep commands inside the configured workspace-write sandbox.
+- Before recording a denial, retry through the repo's sandbox wrappers (see the repo AGENTS.md): `bash scripts/sandboxed-rust-script.sh <args>` runs the rust-script suites with writable caches.
 - If verification is denied by the sandbox, record the denial in `TEST_EVIDENCE` and report UNVERIFIED instead of pausing.
 
 ## TDD Cycle: red-green-refactor

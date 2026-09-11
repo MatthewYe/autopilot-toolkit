@@ -28,6 +28,10 @@ rust-script --test tests/test_check.rs
 
 No build step — skills are consumed directly from the source tree by the agent runtime.
 
+Sandboxed sessions: when `rust-script` fails with `Operation not permitted`, run it via
+`bash scripts/sandboxed-rust-script.sh <same args>` — it redirects HOME/CARGO_HOME into a
+writable temp dir and runs cargo offline.
+
 ## Architecture
 
 ```
