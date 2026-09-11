@@ -101,6 +101,10 @@ AFK-breaking behavior: pausing for human input when no product/scope decision is
   when the worktree is unchanged, invalidated after code changes.
 - Sandboxed verification: consult the repo AGENTS.md for sandbox wrappers before recording
   `external-unavailable`; retry the denied command through them first.
+- Worker isolation: prefer `git worktree` for per-issue work when `.git` is writable. When the
+  sandbox blocks `.git` writes (index.lock EPERM), fall back to full clones in the OS temp dir,
+  share one `CARGO_TARGET_DIR` across workers so builds reuse a single target cache, and note
+  the isolation mode in the per-issue comment.
 - Diagnostic workflows in AFK mode do not block waiting for the user — continue testing
   hypotheses by priority.
 - After deferral in scan mode, return to the next runnable issue on the scanning frontier;
