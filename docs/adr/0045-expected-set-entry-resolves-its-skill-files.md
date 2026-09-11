@@ -64,7 +64,10 @@ and it existed only because the function re-derived facts the enumerator now own
 
 - Deliberate behavior changes: `check_codex_status` no longer emits the
   placeholder-directory INFO line; entry-level `resolution` and its reason strings
-  leave the `ExpectedSetEntry` interface.
+  leave the `ExpectedSetEntry` interface; an `agent.toml` variant is reported as a
+  resolved agent definition instead of being parsed as frontmatter; and packaging
+  now fails on a skill whose directory exists but whose root `SKILL.md` is absent
+  (a state the old directory-level check could not see).
 - Everything else keeps its behavior: `dev` policy, `pack` strictness, tarball
   layout, validation verdicts for present, missing-directory, missing-`SKILL.md`,
   and malformed-`skillPath` entries.

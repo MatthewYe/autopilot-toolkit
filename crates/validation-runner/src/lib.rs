@@ -532,7 +532,6 @@ mod tests {
             variants: vec![],
             codex_agent: false,
             source_dir: PathBuf::from(&relative_dir),
-            resolution: skill_index::ResolutionStatus::Resolved,
             skill_files: vec![skill_index::SkillFile {
                 variant: None,
                 path: PathBuf::from(format!("{relative_dir}/SKILL.md")),

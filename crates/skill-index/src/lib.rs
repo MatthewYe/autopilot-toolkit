@@ -77,10 +77,6 @@ pub struct ExpectedSetEntry {
     /// The skill's source directory, joined to the project root. For a failed
     /// entry this is the expected location that was not found.
     pub source_dir: PathBuf,
-    /// Whether `source_dir` exists. Retained for consumers that apply
-    /// directory-level strictness; the skill-file list is authoritative for
-    /// "which files does this entry own".
-    pub resolution: ResolutionStatus,
     /// The Skill files this entry owns, in deterministic order: the root
     /// fallback first, then each runtime variant in runtime order.
     pub skill_files: Vec<SkillFile>,
@@ -222,7 +218,6 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
                             variants: vec![],
                             codex_agent: false,
                             source_dir: src_dir,
-                            resolution: ResolutionStatus::Resolved,
                             skill_files: vec![skill_file(
                                 None,
                                 skill_md.clone(),
@@ -294,7 +289,6 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
         variants,
         codex_agent,
         source_dir,
-        resolution: ResolutionStatus::Resolved,
         skill_files,
     }
 }
@@ -386,9 +380,6 @@ fn failed_entry(
         variants: vec![],
         codex_agent: false,
         source_dir,
-        resolution: ResolutionStatus::Missing {
-            reason: reason.clone(),
-        },
         skill_files: vec![SkillFile {
             variant: None,
             path: root_file,
@@ -407,7 +398,7 @@ fn failed_entry(
 pub fn generate_manifest(skills: &[ExpectedSetEntry], version: &str) -> Manifest {
     let mut map = BTreeMap::new();
     for skill in skills {
-        if !matches!(skill.resolution, ResolutionStatus::Resolved) {
+        if skill.is_failed() {
             continue;
         }
         let skill_type_str = match skill.skill_type {
@@ -575,7 +566,7 @@ mod tests {
         assert_eq!(alpha.skill_type, SkillType::Agnostic);
         assert!(alpha.variants.is_empty());
         assert!(!alpha.codex_agent);
-        assert_eq!(alpha.resolution, ResolutionStatus::Resolved);
+        assert!(!alpha.is_failed());
         assert_eq!(alpha.source_dir, root.join("skills/autopilot/alpha"));
 
         let beta = entries.iter().find(|e| e.name == "beta").unwrap();
@@ -587,13 +578,13 @@ mod tests {
         let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
         assert_eq!(show_me.source, "vendor");
         assert_eq!(show_me.skill_type, SkillType::Agnostic);
-        assert_eq!(show_me.resolution, ResolutionStatus::Resolved);
+        assert!(!show_me.is_failed());
         assert_eq!(show_me.source_dir, root.join("skills/vendor/show-me"));
 
         let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
         assert_eq!(tdd.source, "upstream");
         assert_eq!(tdd.skill_type, SkillType::Agnostic);
-        assert_eq!(tdd.resolution, ResolutionStatus::Resolved);
+        assert!(!tdd.is_failed());
         assert_eq!(
             tdd.source_dir,
             root.join("skills/upstream/skills/engineering/tdd")
@@ -630,12 +621,13 @@ mod tests {
             .expect("a failed entry must still be returned");
         assert_eq!(ghost.source, "vendor");
         assert_eq!(ghost.source_dir, root.join("skills/vendor/ghost"));
-        match &ghost.resolution {
+        assert!(ghost.is_failed(), "expected a failed entry");
+        match &ghost.skill_file(None).unwrap().resolution {
             ResolutionStatus::Missing { reason } => assert!(
                 reason.contains("ghost"),
                 "reason should name the missing location, got: {reason}"
             ),
-            ResolutionStatus::Resolved => panic!("expected a failed entry"),
+            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
         }
     }
 
@@ -655,12 +647,13 @@ mod tests {
             gone.source_dir,
             root.join("skills/upstream/skills/engineering/gone")
         );
-        match &gone.resolution {
+        assert!(gone.is_failed(), "expected a failed entry");
+        match &gone.skill_file(None).unwrap().resolution {
             ResolutionStatus::Missing { reason } => assert!(
                 reason.contains("gone"),
                 "reason should name the missing location, got: {reason}"
             ),
-            ResolutionStatus::Resolved => panic!("expected a failed entry"),
+            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
         }
     }
 
@@ -965,7 +958,6 @@ mod tests {
             variants: variants.iter().map(|v| v.to_string()).collect(),
             codex_agent,
             source_dir,
-            resolution: ResolutionStatus::Resolved,
             skill_files,
         }
     }
@@ -1033,9 +1025,6 @@ mod tests {
                 variants: vec![],
                 codex_agent: false,
                 source_dir: PathBuf::from("/missing/ghost"),
-                resolution: ResolutionStatus::Missing {
-                    reason: "directory not found: /missing/ghost".to_string(),
-                },
                 skill_files: vec![SkillFile {
                     variant: None,
                     path: PathBuf::from("/missing/ghost/SKILL.md"),
