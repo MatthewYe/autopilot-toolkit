@@ -76,6 +76,9 @@ fn run_check(check_script: &Path, synthetic_project: &Path) -> (String, String, 
     );
 
     let output = Command::new("rust-script")
+        // `-f`: the cache ignores path-dependency changes (`crates/*`,
+        // upstream rust-script#122).
+        .arg("-f")
         .arg(check_script)
         .env("PROJECT_ROOT", synthetic_project)
         .output()

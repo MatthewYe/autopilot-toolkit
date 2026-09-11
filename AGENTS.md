@@ -28,6 +28,12 @@ rust-script --test tests/test_check.rs
 
 No build step — skills are consumed directly from the source tree by the agent runtime.
 
+Local test runs: `rust-script`'s compiled-binary cache only compares a script file's
+mtime — it does not notice changes in path dependencies (`crates/*`, upstream
+rust-script#122). After editing anything under `crates/`, run
+`bash scripts/refresh-rs-cache.sh` before the suites, or pass `-f` when running a
+script directly. `--test` runs always invoke cargo and are unaffected.
+
 Sandboxed sessions: when `rust-script` fails with `Operation not permitted`, run it via
 `bash scripts/sandboxed-rust-script.sh <same args>` — it redirects HOME/CARGO_HOME into a
 writable temp dir and runs cargo offline.

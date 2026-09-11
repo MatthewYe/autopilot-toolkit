@@ -381,6 +381,9 @@ fn main() {
     let check_path = project_root.join("scripts").join("check.rs");
     if check_path.exists() {
         let status = Command::new("rust-script")
+            // `-f`: the cache ignores path-dependency changes (`crates/*`,
+            // upstream rust-script#122).
+            .arg("-f")
             .arg(&check_path)
             .current_dir(&project_root)
             .status();
