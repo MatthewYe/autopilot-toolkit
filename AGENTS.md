@@ -19,7 +19,7 @@ rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapsh
 rust-script scripts/check.rs                  # Verify upstream + vendor skill hashes
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
-cargo test                                    # validation library unit tests
+cargo test                                    # unit + integration tests across the tooling crates
 rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
