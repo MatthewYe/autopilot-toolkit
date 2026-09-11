@@ -34,6 +34,34 @@ pub enum ResolutionStatus {
     Missing { reason: String },
 }
 
+/// What a Skill file is: a skill body or a custom-agent definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillFileKind {
+    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.
+    Skill,
+    /// An `agent.toml` custom-agent definition shipped instead of a
+    /// `SKILL.md` (see ADR 0036 / ADR 0045).
+    AgentDefinition,
+}
+
+/// One Skill file an Expected-set entry owns (CONTEXT.md).
+///
+/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a
+/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying
+/// neither is a missing `Skill` file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillFile {
+    /// The runtime variant directory this file lives under; `None` for the
+    /// root fallback.
+    pub variant: Option<String>,
+    /// Absolute path of the file this entry owns (the expected path, even for
+    /// a missing file).
+    pub path: PathBuf,
+    pub kind: SkillFileKind,
+    /// Whether the file exists on disk.
+    pub resolution: ResolutionStatus,
+}
+
 /// One Expected-set entry: a skill the toolkit owns.
 #[derive(Debug, Clone)]
 pub struct ExpectedSetEntry {
@@ -49,8 +77,29 @@ pub struct ExpectedSetEntry {
     /// The skill's source directory, joined to the project root. For a failed
     /// entry this is the expected location that was not found.
     pub source_dir: PathBuf,
-    /// Whether `source_dir` exists.
+    /// Whether `source_dir` exists. Retained for consumers that apply
+    /// directory-level strictness; the skill-file list is authoritative for
+    /// "which files does this entry own".
     pub resolution: ResolutionStatus,
+    /// The Skill files this entry owns, in deterministic order: the root
+    /// fallback first, then each runtime variant in runtime order.
+    pub skill_files: Vec<SkillFile>,
+}
+
+impl ExpectedSetEntry {
+    /// Whether any Skill file this entry owns is missing.
+    pub fn is_failed(&self) -> bool {
+        self.skill_files
+            .iter()
+            .any(|file| matches!(file.resolution, ResolutionStatus::Missing { .. }))
+    }
+
+    /// The Skill file for one variant; `None` addresses the root fallback.
+    pub fn skill_file(&self, variant: Option<&str>) -> Option<&SkillFile> {
+        self.skill_files
+            .iter()
+            .find(|file| file.variant.as_deref() == variant)
+    }
 }
 
 /// A single skill entry in manifest.json.
@@ -165,6 +214,7 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
                     let src_dir = project_root.join(rel);
                     if src_dir.is_dir() {
                         // Upstream skills are runtime-agnostic by policy.
+                        let skill_md = src_dir.join("SKILL.md");
                         entries.push(ExpectedSetEntry {
                             name: skill.name.clone(),
                             source: "upstream".to_string(),
@@ -173,6 +223,12 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
                             codex_agent: false,
                             source_dir: src_dir,
                             resolution: ResolutionStatus::Resolved,
+                            skill_files: vec![skill_file(
+                                None,
+                                skill_md.clone(),
+                                SkillFileKind::Skill,
+                                &skill_md,
+                            )],
                         });
                     } else {
                         let reason =
@@ -230,6 +286,7 @@ fn source_rank(source: &str) -> u8 {
 /// Build a resolved entry by classifying the skill's source directory.
 fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSetEntry {
     let (skill_type, variants, codex_agent) = classify_skill(&source_dir);
+    let skill_files = skill_files_for(&source_dir, &variants);
     ExpectedSetEntry {
         name,
         source: source.to_string(),
@@ -238,6 +295,76 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
         codex_agent,
         source_dir,
         resolution: ResolutionStatus::Resolved,
+        skill_files,
+    }
+}
+
+/// Enumerate the Skill files a source directory owns: the root fallback first,
+/// then each runtime variant in runtime order (ADR-0045).
+///
+/// A variant that ships an `agent.toml` instead of a `SKILL.md` is an
+/// [`SkillFileKind::AgentDefinition`]; a variant directory carrying neither is
+/// a missing `Skill` file.
+fn skill_files_for(source_dir: &Path, variants: &[String]) -> Vec<SkillFile> {
+    let root = source_dir.join("SKILL.md");
+    let mut files = vec![skill_file(None, root.clone(), SkillFileKind::Skill, &root)];
+    for variant in variants {
+        let variant_dir = source_dir.join(variant);
+        let skill = variant_dir.join("SKILL.md");
+        if skill.is_file() {
+            files.push(skill_file(
+                Some(variant.clone()),
+                skill.clone(),
+                SkillFileKind::Skill,
+                &skill,
+            ));
+            continue;
+        }
+        let agent = variant_dir.join("agent.toml");
+        if agent.is_file() {
+            files.push(skill_file(
+                Some(variant.clone()),
+                agent.clone(),
+                SkillFileKind::AgentDefinition,
+                &agent,
+            ));
+        } else {
+            files.push(SkillFile {
+                variant: Some(variant.clone()),
+                path: skill.clone(),
+                kind: SkillFileKind::Skill,
+                resolution: ResolutionStatus::Missing {
+                    reason: format!(
+                        "variant '{}' ships neither SKILL.md nor agent.toml: {}",
+                        variant,
+                        variant_dir.display()
+                    ),
+                },
+            });
+        }
+    }
+    files
+}
+
+/// Build one Skill file by checking the file on disk.
+fn skill_file(
+    variant: Option<String>,
+    path: PathBuf,
+    kind: SkillFileKind,
+    present: &Path,
+) -> SkillFile {
+    let resolution = if present.is_file() {
+        ResolutionStatus::Resolved
+    } else {
+        ResolutionStatus::Missing {
+            reason: format!("skill file not found: {}", present.display()),
+        }
+    };
+    SkillFile {
+        variant,
+        path,
+        kind,
+        resolution,
     }
 }
 
@@ -251,6 +378,7 @@ fn failed_entry(
     source_dir: PathBuf,
     reason: String,
 ) -> ExpectedSetEntry {
+    let root_file = source_dir.join("SKILL.md");
     ExpectedSetEntry {
         name,
         source: source.to_string(),
@@ -258,7 +386,15 @@ fn failed_entry(
         variants: vec![],
         codex_agent: false,
         source_dir,
-        resolution: ResolutionStatus::Missing { reason },
+        resolution: ResolutionStatus::Missing {
+            reason: reason.clone(),
+        },
+        skill_files: vec![SkillFile {
+            variant: None,
+            path: root_file,
+            kind: SkillFileKind::Skill,
+            resolution: ResolutionStatus::Missing { reason },
+        }],
     }
 }
 
@@ -605,6 +741,200 @@ mod tests {
         );
     }
 
+    // ── Skill files (ADR-0045) ──────────────────────────────────────────
+
+    #[test]
+    fn entry_skill_files_carry_kind_variant_and_resolution() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Agnostic autopilot skill: exactly one skill file, the root fallback.
+        write_skill_md(&root.join("skills/autopilot/alpha"));
+
+        // Coupled autopilot skill: root + a reasonix skill file + a codex
+        // variant that ships an agent definition instead.
+        let beta = root.join("skills/autopilot/beta");
+        write_skill_md(&beta);
+        write_skill_md(&beta.join("reasonix"));
+        std::fs::create_dir_all(beta.join("codex")).unwrap();
+        std::fs::write(beta.join("codex/agent.toml"), "[agent]\nname = \"beta\"\n").unwrap();
+
+        // Vendor and upstream skills carry their root skill file.
+        write_skill_md(&root.join("skills/vendor/show-me"));
+        write_vendor_lock(root, &[("show-me", "skills/vendor/show-me")]);
+        write_skill_md(&root.join("skills/upstream/skills/engineering/tdd"));
+        write_upstream_lock(root, &[("tdd", "skills/engineering/tdd/SKILL.md")]);
+
+        let entries = discover_skills(root).unwrap();
+
+        let alpha = entries.iter().find(|e| e.name == "alpha").unwrap();
+        assert_eq!(alpha.skill_files.len(), 1);
+        let alpha_root = alpha.skill_file(None).expect("root skill file");
+        assert_eq!(alpha_root.kind, SkillFileKind::Skill);
+        assert_eq!(alpha_root.resolution, ResolutionStatus::Resolved);
+        assert_eq!(
+            alpha_root.path,
+            root.join("skills/autopilot/alpha/SKILL.md")
+        );
+        assert!(!alpha.is_failed());
+
+        let beta_entry = entries.iter().find(|e| e.name == "beta").unwrap();
+        assert_eq!(
+            beta_entry.skill_files.len(),
+            3,
+            "root + reasonix + codex agent definition: {:?}",
+            beta_entry.skill_files
+        );
+        let codex_file = beta_entry.skill_file(Some("codex")).expect("codex file");
+        assert_eq!(codex_file.kind, SkillFileKind::AgentDefinition);
+        assert_eq!(
+            codex_file.path,
+            root.join("skills/autopilot/beta/codex/agent.toml")
+        );
+        assert_eq!(codex_file.resolution, ResolutionStatus::Resolved);
+        let reasonix_file = beta_entry
+            .skill_file(Some("reasonix"))
+            .expect("reasonix file");
+        assert_eq!(reasonix_file.kind, SkillFileKind::Skill);
+        assert_eq!(
+            reasonix_file.path,
+            root.join("skills/autopilot/beta/reasonix/SKILL.md")
+        );
+
+        let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
+        assert_eq!(show_me.skill_files.len(), 1);
+        assert_eq!(
+            show_me.skill_file(None).unwrap().path,
+            root.join("skills/vendor/show-me/SKILL.md")
+        );
+
+        let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
+        assert_eq!(tdd.skill_files.len(), 1);
+        assert_eq!(
+            tdd.skill_file(None).unwrap().path,
+            root.join("skills/upstream/skills/engineering/tdd/SKILL.md")
+        );
+    }
+
+    #[test]
+    fn skill_files_are_ordered_root_first_then_runtime_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let skill = root.join("skills/autopilot/omega");
+        write_skill_md(&skill);
+        for variant in RUNTIME_VARIANTS {
+            write_skill_md(&skill.join(variant));
+        }
+
+        let entries = discover_skills(root).unwrap();
+        let variants: Vec<Option<&str>> = entries[0]
+            .skill_files
+            .iter()
+            .map(|file| file.variant.as_deref())
+            .collect();
+
+        assert_eq!(
+            variants,
+            vec![None, Some("codex"), Some("kimi"), Some("reasonix")],
+            "root fallback first, then variants in runtime order"
+        );
+    }
+
+    #[test]
+    fn missing_source_directory_reports_a_missing_root_skill_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_vendor_lock(root, &[("ghost", "skills/vendor/ghost")]);
+
+        let entries = discover_skills(root).unwrap();
+        let ghost = entries
+            .iter()
+            .find(|e| e.name == "ghost")
+            .expect("a failed entry must still be returned");
+
+        assert_eq!(ghost.skill_files.len(), 1);
+        let root_file = ghost.skill_file(None).expect("root skill file");
+        assert_eq!(root_file.kind, SkillFileKind::Skill);
+        match &root_file.resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("ghost"),
+                "reason should name the missing location, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
+        }
+        assert!(ghost.is_failed());
+    }
+
+    #[test]
+    fn missing_root_skill_md_reports_a_missing_skill_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // The directory exists and is coupled, but the root fallback file is gone.
+        let broken = root.join("skills/autopilot/broken");
+        write_skill_md(&broken.join("reasonix"));
+        write_skill_md(&broken.join("codex"));
+
+        let entries = discover_skills(root).unwrap();
+        let entry = entries.iter().find(|e| e.name == "broken").unwrap();
+
+        match &entry.skill_file(None).expect("root skill file").resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("SKILL.md"),
+                "reason should name the missing file, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
+        }
+        // The variant files are still present and resolved.
+        assert_eq!(
+            entry.skill_file(Some("reasonix")).unwrap().resolution,
+            ResolutionStatus::Resolved
+        );
+        assert!(entry.is_failed());
+    }
+
+    #[test]
+    fn malformed_skill_path_reports_a_missing_root_skill_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_upstream_lock(root, &[("odd", "skills/engineering/odd/README.md")]);
+
+        let entries = discover_skills(root).unwrap();
+        let odd = entries.iter().find(|e| e.name == "odd").unwrap();
+
+        assert_eq!(odd.skill_files.len(), 1);
+        match &odd.skill_file(None).expect("root skill file").resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("README.md"),
+                "reason should name the malformed path, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
+        }
+    }
+
+    #[test]
+    fn variant_without_skill_file_reports_a_missing_skill_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let skill = root.join("skills/autopilot/placeholder");
+        write_skill_md(&skill);
+        // A variant directory with neither SKILL.md nor agent.toml.
+        std::fs::create_dir_all(skill.join("codex")).unwrap();
+
+        let entries = discover_skills(root).unwrap();
+        let entry = entries.iter().find(|e| e.name == "placeholder").unwrap();
+        let codex_file = entry.skill_file(Some("codex")).expect("codex file");
+        assert_eq!(codex_file.kind, SkillFileKind::Skill);
+        match &codex_file.resolution {
+            ResolutionStatus::Missing { reason } => assert!(
+                reason.contains("codex"),
+                "reason should name the placeholder directory, got: {reason}"
+            ),
+            ResolutionStatus::Resolved => panic!("expected a missing skill file"),
+        }
+        assert!(entry.is_failed());
+    }
+
     fn entry(
         name: &str,
         source: &str,
@@ -612,14 +942,31 @@ mod tests {
         variants: &[&str],
         codex_agent: bool,
     ) -> ExpectedSetEntry {
+        let source_dir = PathBuf::from(format!("/fixture/{name}"));
+        let skill_files: Vec<SkillFile> = std::iter::once(None)
+            .chain(variants.iter().map(|variant| Some(variant.to_string())))
+            .map(|variant| {
+                let dir = match &variant {
+                    Some(variant) => source_dir.join(variant),
+                    None => source_dir.clone(),
+                };
+                SkillFile {
+                    variant,
+                    path: dir.join("SKILL.md"),
+                    kind: SkillFileKind::Skill,
+                    resolution: ResolutionStatus::Resolved,
+                }
+            })
+            .collect();
         ExpectedSetEntry {
             name: name.to_string(),
             source: source.to_string(),
             skill_type,
             variants: variants.iter().map(|v| v.to_string()).collect(),
             codex_agent,
-            source_dir: PathBuf::from(format!("/fixture/{name}")),
+            source_dir,
             resolution: ResolutionStatus::Resolved,
+            skill_files,
         }
     }
 
@@ -689,6 +1036,14 @@ mod tests {
                 resolution: ResolutionStatus::Missing {
                     reason: "directory not found: /missing/ghost".to_string(),
                 },
+                skill_files: vec![SkillFile {
+                    variant: None,
+                    path: PathBuf::from("/missing/ghost/SKILL.md"),
+                    kind: SkillFileKind::Skill,
+                    resolution: ResolutionStatus::Missing {
+                        reason: "directory not found: /missing/ghost".to_string(),
+                    },
+                }],
             },
         ];
         let manifest = generate_manifest(&skills, "v1");
