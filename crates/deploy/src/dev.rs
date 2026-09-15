@@ -24,10 +24,14 @@ pub fn dev_all(
 
     let mut count = 0u32;
     for entry in &entries {
-        if let ResolutionStatus::Missing { reason } = &entry.resolution {
+        // A failed entry is one whose owned Skill files are not all present
+        // (ADR-0045) — not just a missing source directory.
+        if entry.is_failed() {
             eprintln!(
-                "WARNING: {} skill '{}' source dir missing, skipping: {}",
-                entry.source, entry.name, reason
+                "WARNING: {} skill '{}' is missing skill files, skipping: {}",
+                entry.source,
+                entry.name,
+                missing_skill_files(entry)
             );
             continue;
         }
@@ -47,6 +51,22 @@ pub fn dev_all(
 
     println!("==> Done: {} symlinks created/verified.", count);
     Ok(())
+}
+
+/// The missing Skill files of a failed entry, rendered for a warning.
+fn missing_skill_files(entry: &skill_index::ExpectedSetEntry) -> String {
+    entry
+        .skill_files
+        .iter()
+        .filter_map(|file| match &file.resolution {
+            ResolutionStatus::Missing { reason } => Some(match &file.variant {
+                Some(variant) => format!("{variant}: {reason}"),
+                None => reason.clone(),
+            }),
+            ResolutionStatus::Resolved => None,
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// Remove all dev symlinks that point back into the project tree.
@@ -367,6 +387,38 @@ mod tests {
         assert!(
             error.to_string().contains(".skill-lock.json"),
             "error should name the malformed lock: {error}"
+        );
+    }
+
+    #[test]
+    fn dev_warns_and_skips_an_entry_with_a_missing_skill_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("project");
+        write_fixture_project(&root);
+        // The fixture skill's directory exists but its root SKILL.md is gone
+        // (the #118 state): dev must skip it, not link it.
+        std::fs::remove_file(root.join("skills/autopilot/alpha/SKILL.md")).unwrap();
+        let dirs = dirs_under(tmp.path());
+
+        let result = dev_all(
+            &root,
+            &dirs.shared,
+            &dirs.reasonix,
+            &dirs.codex,
+            &dirs.codex_agents,
+        );
+        assert!(
+            result.is_ok(),
+            "a partial checkout stays usable: {:?}",
+            result
+        );
+        assert!(
+            !dirs.shared.join("alpha").exists(),
+            "an entry missing its skill file must not be provisioned"
+        );
+        assert!(
+            dirs.shared.join("beta").is_symlink(),
+            "resolved entries are still provisioned"
         );
     }
 }
