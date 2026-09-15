@@ -303,72 +303,77 @@ mod tests {
     }
 
     #[test]
-fn pack_stages_the_director_router_variant_and_contract() {
-    let tmp = tempfile::tempdir().unwrap();
-    let home = tmp.path().join("home");
-    let skills = home.join(".agents/skills");
-    let project = tmp.path().join("project");
-    fs::create_dir_all(&project).unwrap();
-    setup_mock_project(&project);
+    fn pack_stages_the_director_router_variant_and_contract() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let skills = home.join(".agents/skills");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project(&project);
 
-    let (out, err, code) = run_deploy(&["pack"], &home, Some(&skills), Some(&project));
-    assert_eq!(code, 0, "pack should exit 0, stderr: {}, stdout: {}", err, out);
+        let (out, err, code) = run_deploy(&["pack"], &home, Some(&skills), Some(&project));
+        assert_eq!(
+            code, 0,
+            "pack should exit 0, stderr: {}, stdout: {}",
+            err, out
+        );
 
-    let tarball = project.join("dist/autopilot-toolkit.tar.gz");
-    let listing = Command::new("tar")
-        .args(["-tzf", &tarball.to_string_lossy()])
-        .output()
-        .expect("tar listing should run");
-    let listing = String::from_utf8_lossy(&listing.stdout).to_string();
+        let tarball = project.join("dist/autopilot-toolkit.tar.gz");
+        let listing = Command::new("tar")
+            .args(["-tzf", &tarball.to_string_lossy()])
+            .output()
+            .expect("tar listing should run");
+        let listing = String::from_utf8_lossy(&listing.stdout).to_string();
 
-    // One discoverable entry point: no SKILL.md anywhere under the installed
-    // skill except the router.
-    let skill_md_count = listing
-        .lines()
-        .filter(|line| {
-            line.contains("autopilot-director")
-                && line.ends_with("SKILL.md")
-        })
-        .count();
-    assert_eq!(
-        skill_md_count, 1,
-        "coupled director skill must expose exactly one SKILL.md, listing:\n{listing}"
-    );
-    for rel in [
-        "./skills/autopilot-director/runtime/default/INSTRUCTIONS.md",
-        "./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md",
-        "./skills/autopilot-director/runtime/default/references/worker-contract.md",
-    ] {
+        // One discoverable entry point: no SKILL.md anywhere under the installed
+        // skill except the router.
+        let skill_md_count = listing
+            .lines()
+            .filter(|line| line.contains("autopilot-director") && line.ends_with("SKILL.md"))
+            .count();
+        assert_eq!(
+            skill_md_count, 1,
+            "coupled director skill must expose exactly one SKILL.md, listing:\n{listing}"
+        );
+        for rel in [
+            "./skills/autopilot-director/runtime/default/INSTRUCTIONS.md",
+            "./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md",
+            "./skills/autopilot-director/runtime/default/references/worker-contract.md",
+        ] {
+            assert!(
+                listing.contains(rel),
+                "tarball should carry {rel}, listing:\n{listing}"
+            );
+        }
+
+        let read = |member: &str| {
+            let output = Command::new("tar")
+                .args(["-xzOf", &tarball.to_string_lossy(), member])
+                .output()
+                .expect("tar extraction should run");
+            assert!(output.status.success(), "tar should extract {member}");
+            String::from_utf8_lossy(&output.stdout).to_string()
+        };
+        let router = read("./skills/autopilot-director/SKILL.md");
         assert!(
-            listing.contains(rel),
-            "tarball should carry {rel}, listing:\n{listing}"
+            router.contains("Runtime routing"),
+            "router should route runtimes"
+        );
+        let codex = read("./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md");
+        assert!(
+            codex.contains("director"),
+            "the Codex variant should drive the director CLI"
+        );
+        let contract =
+            read("./skills/autopilot-director/runtime/default/references/worker-contract.md");
+        assert!(
+            contract.contains("WORKER_REPORT") && contract.contains("tdd"),
+            "the worker contract should carry the envelope and the sole skill"
         );
     }
 
-    let read = |member: &str| {
-        let output = Command::new("tar")
-            .args(["-xzOf", &tarball.to_string_lossy(), member])
-            .output()
-            .expect("tar extraction should run");
-        assert!(output.status.success(), "tar should extract {member}");
-        String::from_utf8_lossy(&output.stdout).to_string()
-    };
-    let router = read("./skills/autopilot-director/SKILL.md");
-    assert!(router.contains("Runtime routing"), "router should route runtimes");
-    let codex = read("./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md");
-    assert!(
-        codex.contains("director"),
-        "the Codex variant should drive the director CLI"
-    );
-    let contract = read("./skills/autopilot-director/runtime/default/references/worker-contract.md");
-    assert!(
-        contract.contains("WORKER_REPORT") && contract.contains("tdd"),
-        "the worker contract should carry the envelope and the sole skill"
-    );
-}
-
     #[test]
-fn pack_creates_tarball() {
+    fn pack_creates_tarball() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let skills = home.join(".agents/skills");
