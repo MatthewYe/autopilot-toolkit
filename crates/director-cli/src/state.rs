@@ -363,6 +363,10 @@ pub(crate) struct RunState {
     pub(crate) branch: String,
     pub(crate) status: RunStatus,
     pub(crate) revision: u64,
+    /// The worktree this run was last written against. Absent in a state file
+    /// that predates schema 2 and until the first write records it.
+    #[serde(default)]
+    pub(crate) worktree: Option<storage::WorktreeFingerprint>,
     #[serde(default)]
     pub(crate) tickets: Vec<TicketState>,
     pub(crate) spec_gate: SpecGate,
@@ -378,6 +382,7 @@ impl RunState {
             branch,
             status: RunStatus::Init,
             revision: 0,
+            worktree: None,
             tickets: Vec::new(),
             spec_gate: SpecGate {
                 round_cap: storage::DEFAULT_ROUND_CAP,
@@ -411,7 +416,12 @@ pub(crate) fn read_state(worktree: &Path) -> Result<RunState, String> {
     deserialize_state(value)
 }
 
-pub(crate) fn write_state(worktree: &Path, state: &RunState) -> Result<(), String> {
+/// Write the state, re-capturing the worktree fingerprint first. Every write
+/// refreshes it: the Director makes boundary commits during a run, and a
+/// frozen capture would report those legitimate commits as drift.
+pub(crate) fn write_state(worktree: &Path, state: &mut RunState) -> Result<(), String> {
+    state.schema_version = CURRENT_SCHEMA_VERSION;
+    state.worktree = Some(storage::capture_fingerprint(worktree)?);
     let bytes = serde_json::to_vec_pretty(state).map_err(|err| format!("json error: {err}"))?;
     storage::atomic_write(&state_path(worktree), &bytes)
 }
@@ -422,34 +432,63 @@ pub(crate) fn deserialize_state(value: serde_json::Value) -> Result<RunState, St
         .map_err(|err| format!("state does not match the run state schema: {err}"))
 }
 
-/// Forward-only migration to [`CURRENT_SCHEMA_VERSION`]. Pre-release schema 0
-/// (no persisted specimen yet) differs from schema 1 by carrying neither the
-/// ticket ledger nor the spec gate; it is upgraded by re-deriving both from the
-/// run-level fields it does carry. Unknown versions stop closed.
+/// Forward-only migration to [`CURRENT_SCHEMA_VERSION`].
+///
+/// The chain is a list of single-step migrations applied in order, so every old
+/// state file reaches the current schema the same way and no step has to know
+/// about a version it was not written for. Unknown newer versions stop closed,
+/// and so does a state with no version at all.
 pub(crate) fn migrate_to_current(value: &mut serde_json::Value) -> Result<(), String> {
-    let from_schema = value
+    let mut version = value
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| "state is missing schema_version".to_string())?;
-    if from_schema == CURRENT_SCHEMA_VERSION {
-        return Ok(());
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(format!("unknown state schema {version}"));
     }
-    if from_schema != 0 {
-        return Err(format!("unknown state schema {from_schema}"));
-    }
-    if let Some(object) = value.as_object_mut() {
-        object.insert(
-            "schema_version".to_string(),
-            serde_json::Value::from(CURRENT_SCHEMA_VERSION),
-        );
-        object
-            .entry("tickets".to_string())
-            .or_insert_with(|| serde_json::Value::Array(Vec::new()));
-        object.entry("spec_gate".to_string()).or_insert_with(
-            || serde_json::json!({ "round_cap": storage::DEFAULT_ROUND_CAP, "rounds": [] }),
-        );
+    while version < CURRENT_SCHEMA_VERSION {
+        version = match version {
+            0 => migrate_v0_to_v1(value)?,
+            1 => migrate_v1_to_v2(value)?,
+            other => return Err(format!("no migration is defined from state schema {other}")),
+        };
     }
     Ok(())
+}
+
+/// Schema 0 → 1: the pre-release shape carried neither the ticket ledger nor
+/// the spec gate; both are re-derived from the run-level fields it does carry.
+fn migrate_v0_to_v1(value: &mut serde_json::Value) -> Result<u64, String> {
+    let object = object_mut(value)?;
+    object
+        .entry("tickets".to_string())
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+    object.entry("spec_gate".to_string()).or_insert_with(
+        || serde_json::json!({ "round_cap": storage::DEFAULT_ROUND_CAP, "rounds": [] }),
+    );
+    object.insert("schema_version".to_string(), serde_json::Value::from(1u64));
+    Ok(1)
+}
+
+/// Schema 1 → 2: the worktree fingerprint. A schema-1 state has no baseline —
+/// nothing was recorded to compare against — so the key is established as an
+/// explicit null, and the first write (or the first resume) records the live
+/// worktree.
+fn migrate_v1_to_v2(value: &mut serde_json::Value) -> Result<u64, String> {
+    let object = object_mut(value)?;
+    object
+        .entry("worktree".to_string())
+        .or_insert(serde_json::Value::Null);
+    object.insert("schema_version".to_string(), serde_json::Value::from(2u64));
+    Ok(2)
+}
+
+fn object_mut(
+    value: &mut serde_json::Value,
+) -> Result<&mut serde_json::Map<String, serde_json::Value>, String> {
+    value
+        .as_object_mut()
+        .ok_or_else(|| "state is not a JSON object".to_string())
 }
 
 /// Reject a second `init` against an existing run instead of silently
@@ -601,6 +640,95 @@ mod tests {
         assert_eq!(state.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(state.tickets.is_empty());
         assert_eq!(state.spec_gate.round_cap, storage::DEFAULT_ROUND_CAP);
+        assert_eq!(state.worktree, None);
+    }
+
+    /// The schema as ticket #131 shipped it: a ticket ledger, a spec gate, and
+    /// no worktree fingerprint. It has to keep loading — and has to come out at
+    /// the current version with its rounds intact.
+    fn schema_one_fixture() -> serde_json::Value {
+        serde_json::from_str(include_str!("../tests/fixtures/state-v1.json")).unwrap()
+    }
+
+    #[test]
+    fn schema_one_migrates_forward_through_the_chain() {
+        let mut value = schema_one_fixture();
+        assert_eq!(value["schema_version"], 1);
+        migrate_to_current(&mut value).unwrap();
+        assert_eq!(value["schema_version"], CURRENT_SCHEMA_VERSION);
+        assert!(value["worktree"].is_null());
+
+        let state = deserialize_state(value).unwrap();
+        assert_eq!(state.run_id, "spec-128");
+        assert_eq!(state.tickets.len(), 2);
+        assert_eq!(state.tickets[0].rounds.len(), 1);
+        assert_eq!(state.tickets[0].rounds[0].findings.len(), 2);
+        assert!(state.tickets[0].dispatches.is_empty());
+        assert!(state.spec_gate.rounds.is_empty());
+        assert_eq!(state.worktree, None);
+    }
+
+    #[test]
+    fn migration_is_forward_only_and_idempotent() {
+        let mut value = schema_one_fixture();
+        migrate_to_current(&mut value).unwrap();
+        let once = value.clone();
+        migrate_to_current(&mut value).unwrap();
+        assert_eq!(value, once, "a migrated state must not move again");
+    }
+
+    #[test]
+    fn a_write_records_the_worktree_it_belongs_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = dir.path();
+        git(worktree, &["init"]);
+        git(
+            worktree,
+            &[
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
+            ],
+        );
+
+        let mut state = RunState::new("spec-128".to_string(), 128, "codex/spec-128".to_string());
+        write_state(worktree, &mut state).unwrap();
+        let recorded = state
+            .worktree
+            .clone()
+            .expect("a write records the worktree fingerprint");
+        assert_eq!(recorded.head.len(), 40);
+        assert_eq!(recorded.tree.len(), 40);
+        assert!(!recorded.branch.is_empty());
+
+        let reloaded = read_state(worktree).unwrap();
+        assert_eq!(reloaded.worktree, Some(recorded));
+    }
+
+    #[test]
+    fn a_write_outside_a_git_worktree_stops_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = RunState::new("spec-128".to_string(), 128, "codex/spec-128".to_string());
+        let error = write_state(dir.path(), &mut state).unwrap_err();
+        assert!(error.contains("git rev-parse"), "got: {error}");
+    }
+
+    fn git(worktree: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(worktree)
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

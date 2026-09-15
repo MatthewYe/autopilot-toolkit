@@ -67,6 +67,36 @@ fn assert_error_contains(output: Output, expected: &str) -> String {
     stderr
 }
 
+/// A fresh temp dir that is a real git worktree: run state records the
+/// worktree fingerprint on every write, so a Spec run needs a repository.
+fn temp_worktree() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir.path())
+            .output()
+            .expect("git should execute");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init"]);
+    git(&[
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=Test",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "init",
+    ]);
+    dir
+}
+
 fn state_for(dir: &Path) -> Value {
     serde_json::from_str(
         &fs::read_to_string(dir.join(".director/state.json")).expect("state.json should exist"),
@@ -147,7 +177,7 @@ const BLOCKED_ENVELOPE: &str = r#"WORKER_REPORT:
 
 #[test]
 fn a_validated_report_is_attached_and_visible_in_inspect() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
 
     let begun = json_success(run(
@@ -187,7 +217,7 @@ fn a_validated_report_is_attached_and_visible_in_inspect() {
 
 #[test]
 fn a_report_read_from_a_file_validates() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     let path = dir.path().join("report.txt");
     fs::write(&path, GOOD_ENVELOPE).unwrap();
@@ -214,7 +244,7 @@ fn a_report_read_from_a_file_validates() {
 
 #[test]
 fn a_malformed_report_is_a_recorded_dispatch_failure() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -249,7 +279,7 @@ fn a_malformed_report_is_a_recorded_dispatch_failure() {
 
 #[test]
 fn an_envelope_that_contradicts_itself_is_a_recorded_failure() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -275,7 +305,7 @@ fn an_envelope_that_contradicts_itself_is_a_recorded_failure() {
 
 #[test]
 fn one_same_worker_retry_then_escalation() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
 
     json_success(run(
@@ -322,7 +352,7 @@ fn one_same_worker_retry_then_escalation() {
 
 #[test]
 fn the_retry_must_reuse_the_worker_that_failed() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -360,7 +390,7 @@ fn the_retry_must_reuse_the_worker_that_failed() {
 
 #[test]
 fn the_budget_refuses_an_attempt_after_escalation() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     for _ in 0..2 {
         json_success(run(
@@ -390,7 +420,7 @@ fn the_budget_refuses_an_attempt_after_escalation() {
 
 #[test]
 fn a_failed_finish_records_its_reason_and_keeps_one_retry() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -446,7 +476,7 @@ fn a_failed_finish_records_its_reason_and_keeps_one_retry() {
 
 #[test]
 fn a_failed_finish_needs_a_reason() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -493,7 +523,7 @@ fn a_failed_finish_needs_a_reason() {
 
 #[test]
 fn finishing_ok_needs_a_validated_report() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -517,7 +547,7 @@ fn finishing_ok_needs_a_validated_report() {
 
 #[test]
 fn a_blocked_report_is_finished_as_a_failure() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -560,7 +590,7 @@ fn a_blocked_report_is_finished_as_a_failure() {
 
 #[test]
 fn a_report_without_an_open_dispatch_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
 
     assert_error_contains(
@@ -579,7 +609,7 @@ fn a_report_without_an_open_dispatch_is_refused() {
 
 #[test]
 fn a_dispatch_only_opens_while_the_ticket_is_implementing() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),
@@ -599,7 +629,7 @@ fn a_dispatch_only_opens_while_the_ticket_is_implementing() {
 
 #[test]
 fn resuming_an_escalated_ticket_opens_a_fresh_budget_window() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     ready_ticket(dir.path(), 132);
     for _ in 0..2 {
         json_success(run(
@@ -658,7 +688,7 @@ fn reviewing_ticket(dir: &Path, ticket: u64) {
 
 #[test]
 fn a_finding_needs_a_hash_that_identifies_it() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     reviewing_ticket(dir.path(), 132);
 
     assert_error_contains(
@@ -713,7 +743,7 @@ fn a_finding_needs_a_hash_that_identifies_it() {
 
 #[test]
 fn a_rejection_needs_a_written_reason() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = temp_worktree();
     reviewing_ticket(dir.path(), 132);
     json_success(run(
         dir.path(),

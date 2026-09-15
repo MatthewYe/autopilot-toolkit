@@ -1,9 +1,11 @@
 //! Project-local state storage: the `.director/` directory, the exact
 //! `.gitignore` rule that must protect it, and atomic writes.
 
+use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::Path;
+use std::process::Command;
 
 /// The one rule that makes `.director/` effectively ignored.
 pub const DIRECTOR_IGNORE_RULE: &str = "/.director/";
@@ -14,6 +16,77 @@ pub const DEFAULT_ROUND_CAP: u64 = 3;
 /// Failed Worker dispatches allowed per ticket before Escalation (ADR 0048):
 /// the failed attempt plus exactly one same-Worker retry.
 pub const DISPATCH_RETRY_BUDGET: u64 = 1;
+
+/// What the worktree looked like when the run state was last written: the
+/// committed HEAD, its tree, and the checked-out branch. Resume compares this
+/// against the live worktree, so a boundary commit the Director made is
+/// distinguishable from context drift somebody else introduced (ADR 0035
+/// pattern).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorktreeFingerprint {
+    pub head: String,
+    pub tree: String,
+    pub branch: String,
+}
+
+impl WorktreeFingerprint {
+    /// One line per differing field, so a refusal can name both sides.
+    pub fn drift(&self, live: &Self) -> Vec<String> {
+        let mut drift = Vec::new();
+        if self.head != live.head {
+            drift.push(format!("HEAD: recorded {}, live {}", self.head, live.head));
+        }
+        if self.tree != live.tree {
+            drift.push(format!("tree: recorded {}, live {}", self.tree, live.tree));
+        }
+        if self.branch != live.branch {
+            drift.push(format!(
+                "branch: recorded {}, live {}",
+                self.branch, live.branch
+            ));
+        }
+        drift
+    }
+}
+
+/// Capture the worktree's HEAD, tree hash, and checked-out branch. The CLI
+/// stays offline: this reads the local repository and nothing else.
+pub fn capture_fingerprint(worktree: &Path) -> Result<WorktreeFingerprint, String> {
+    Ok(WorktreeFingerprint {
+        head: git_rev_parse(worktree, &["HEAD"])?,
+        tree: git_rev_parse(worktree, &["HEAD^{tree}"])?,
+        branch: git_rev_parse(worktree, &["--abbrev-ref", "HEAD"])?,
+    })
+}
+
+/// `git rev-parse <args...>` inside the worktree, refused unless it succeeds
+/// and prints something — a run state that cannot be pinned to a worktree
+/// state is not worth writing.
+fn git_rev_parse(worktree: &Path, args: &[&str]) -> Result<String, String> {
+    let what = args.join(" ");
+    let output = Command::new("git")
+        .arg("rev-parse")
+        .args(args)
+        .current_dir(worktree)
+        .output()
+        .map_err(|err| format!("cannot run `git rev-parse {what}`: {err}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "`git rev-parse {what}` failed in {}: {detail}",
+            worktree.display()
+        ));
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        return Err(format!(
+            "`git rev-parse {what}` returned nothing in {}",
+            worktree.display()
+        ));
+    }
+    Ok(value)
+}
 
 /// Fail closed unless run state can never become a trackable project file:
 /// the root `.gitignore` must carry the exact [`DIRECTOR_IGNORE_RULE`], the

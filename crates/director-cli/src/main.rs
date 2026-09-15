@@ -5,10 +5,25 @@
 //! adjudicates. Each command prints one JSON object on stdout, writes errors
 //! to stderr, and exits non-zero on any refusal.
 //!
-//! Storage: `.director/state.json` inside the worktree is the single
-//! authoritative record of one Spec run. There is deliberately no separate
-//! event log — the revision-stamped state plus the per-round finding ledger
-//! and the dispatch ledger is the audit record.
+//! # Storage layout
+//!
+//! `.director/state.json` inside the worktree is the single authoritative
+//! record of one Spec run:
+//!
+//! - project-local and worktree-local: run state lives in the worktree the run
+//!   operates on, never in a global home, and one worktree holds at most one
+//!   run ([`state::ensure_no_existing_run`] refuses a second `init`);
+//! - `/.director/` must be git-ignored before any state is written, so a run
+//!   can never become a trackable project file (ADR 0025 pattern, enforced by
+//!   [`storage::ensure_director_ignored`]);
+//! - it is written atomically (temp file + rename) and every mutation bumps
+//!   `revision`, so a stale session can detect that the run moved;
+//! - it is the whole audit record: the revision-stamped state plus the
+//!   per-round finding ledger and the dispatch ledger. There is deliberately
+//!   no separate event log;
+//! - the schema is versioned and migrates forward-only: a state written by an
+//!   older version still loads, a newer version stops closed, and the
+//!   `worktree` fingerprint recorded next to it is what `resume` revalidates.
 
 use std::env;
 use std::io::Read;
@@ -25,7 +40,7 @@ mod storage;
 mod transition;
 mod util;
 
-pub(crate) const CURRENT_SCHEMA_VERSION: u64 = 1;
+pub(crate) const CURRENT_SCHEMA_VERSION: u64 = 2;
 
 fn main() {
     if let Err(err) = run() {
@@ -41,6 +56,7 @@ fn run() -> Result<(), String> {
     match command.as_deref() {
         Some("init") => print_json(&init_run(rest)?),
         Some("inspect") => print_json(&inspect_run(rest)?),
+        Some("resume") => resume_run(rest),
         Some("ticket") => ticket_command(&rest),
         Some("run") => run_command(&rest),
         Some("round") => round_command(&rest),
@@ -89,12 +105,12 @@ fn init_run(raw: Vec<String>) -> Result<Value, String> {
     storage::ensure_director_ignored(&worktree)?;
     state::ensure_no_existing_run(&worktree)?;
 
-    let run_state = state::RunState::new(
+    let mut run_state = state::RunState::new(
         util::run_id_for_spec(spec_issue),
         spec_issue,
         util::branch_for_spec(spec_issue, &slug),
     );
-    state::write_state(&worktree, &run_state)?;
+    state::write_state(&worktree, &mut run_state)?;
 
     Ok(json!({
         "command": "init",
@@ -104,8 +120,23 @@ fn init_run(raw: Vec<String>) -> Result<Value, String> {
         "schema_version": run_state.schema_version,
         "revision": run_state.revision,
         "status": run_state.status.as_str(),
+        "worktree": run_state.worktree,
         "state_path": state::state_path(&worktree).display().to_string(),
     }))
+}
+
+/// Revalidate the recorded worktree fingerprint before a resumed session
+/// trusts the run state. A mismatch blocks with both sides named; `--accept-drift`
+/// is the explicit human acknowledgement that re-baselines the run.
+fn resume_run(raw: Vec<String>) -> Result<(), String> {
+    let mut flags = args::Flags::parse(raw)?;
+    let worktree = args::worktree(&mut flags)?;
+    let accept_drift = flags.boolean("--accept-drift")?;
+    flags.reject_unknown()?;
+
+    let mut run_state = load(&worktree)?;
+    let response = transition::resume_run(&worktree, &mut run_state, accept_drift)?;
+    print_json(&response)
 }
 
 /// Read the run state back through the typed schema gate.
@@ -152,6 +183,7 @@ fn inspect_run(raw: Vec<String>) -> Result<Value, String> {
         "status": run_state.status.as_str(),
         "tickets": tickets,
         "spec_gate": gate::spec_verdict(&run_state).to_json(),
+        "worktree": run_state.worktree,
     }))
 }
 

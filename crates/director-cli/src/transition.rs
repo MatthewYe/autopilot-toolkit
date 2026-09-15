@@ -734,6 +734,66 @@ fn require_text(value: &str, field: &str) -> Result<(), String> {
 
 // ── helpers ──
 
+/// Revalidate the worktree the run state was last written against.
+///
+/// A matching fingerprint resumes without touching the revision: resume is a
+/// read, and a read that bumps state would move the run out from under a
+/// stale session for no reason. A mismatch fails closed with both sides named
+/// (ADR 0035 pattern); `--accept-drift` is the explicit human acknowledgement
+/// that re-baselines the fingerprint.
+pub(crate) fn resume_run(
+    worktree: &Path,
+    state: &mut RunState,
+    accept_drift: bool,
+) -> Result<Value, String> {
+    let live = crate::storage::capture_fingerprint(worktree)?;
+    let recorded = state.worktree.clone();
+    let drift = match &recorded {
+        Some(recorded) => recorded.drift(&live),
+        None => vec![
+            "the state file records no worktree fingerprint (it predates schema 2, or was never written)"
+                .to_string(),
+        ],
+    };
+
+    if drift.is_empty() {
+        return Ok(json!({
+            "command": "resume",
+            "run_id": state.run_id,
+            "spec_issue": state.spec_issue,
+            "branch": state.branch,
+            "status": state.status.as_str(),
+            "revision": state.revision,
+            "worktree": recorded,
+            "drift": Vec::<String>::new(),
+            "rebaselined": false,
+        }));
+    }
+
+    if !accept_drift {
+        return Err(format!(
+            "worktree drift detected in {}: {}; settle the worktree back to the recorded state, or re-run with --accept-drift to re-baseline",
+            worktree.display(),
+            drift.join("; ")
+        ));
+    }
+
+    state.worktree = Some(live.clone());
+    let rebaselined_drift = drift;
+    write(worktree, state)?;
+    Ok(json!({
+        "command": "resume",
+        "run_id": state.run_id,
+        "spec_issue": state.spec_issue,
+        "branch": state.branch,
+        "status": state.status.as_str(),
+        "revision": state.revision,
+        "worktree": live,
+        "drift": rebaselined_drift,
+        "rebaselined": true,
+    }))
+}
+
 /// A finding about to be recorded.
 pub(crate) struct NewFinding {
     pub(crate) id: String,

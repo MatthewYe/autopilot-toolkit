@@ -6,6 +6,7 @@ pub(crate) const USAGE: &str = "\
 Usage:
   director init --worktree <path> --spec-issue <n> --slug <slug>
   director inspect --worktree <path>
+  director resume --worktree <path> [--accept-drift]
   director ticket add --worktree <path> --ticket <n> --title <title> [--blocked-by <n>]...
   director ticket transition --worktree <path> --ticket <n> --to <status>
   director run transition --worktree <path> --to <status>

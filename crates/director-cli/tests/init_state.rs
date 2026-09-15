@@ -94,12 +94,13 @@ fn init_writes_the_initial_state_at_revision_zero() {
     assert_eq!(response["command"], "init");
     assert_eq!(response["run_id"], "spec-128");
     assert_eq!(response["spec_issue"], 128);
-    assert_eq!(response["schema_version"], 1);
+    // Schema 2 is current: it adds the worktree fingerprint (ticket #133).
+    assert_eq!(response["schema_version"], 2);
     assert_eq!(response["revision"], 0);
     assert_eq!(response["status"], "init");
 
     let state = state_for(dir.path());
-    assert_eq!(state["schema_version"], 1);
+    assert_eq!(state["schema_version"], 2);
     assert_eq!(state["run_id"], "spec-128");
     assert_eq!(state["spec_issue"], 128);
     assert_eq!(

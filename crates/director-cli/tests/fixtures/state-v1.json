@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "run_id": "spec-128",
+  "spec_issue": 128,
+  "branch": "codex/spec-128-autopilot-director",
+  "status": "running",
+  "revision": 12,
+  "tickets": [
+    {
+      "ticket": 130,
+      "title": "director-cli skeleton + typed run-state schema",
+      "status": "done",
+      "round_cap": 3,
+      "blocked_by": [],
+      "rounds": [
+        {
+          "round": 1,
+          "status": "complete",
+          "findings": [
+            {
+              "id": "f1",
+              "axis": "standards",
+              "hash": "hash-f1",
+              "summary": "duplicated load path",
+              "disposition": { "status": "fixed", "commit": "abc1234" }
+            },
+            {
+              "id": "f2",
+              "axis": "spec",
+              "hash": "hash-f2",
+              "summary": "acceptance criterion unverified",
+              "disposition": {
+                "status": "rejected",
+                "reason": "the criterion is out of scope for this ticket"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ticket": 131,
+      "title": "director-cli transition engine + gate arithmetic",
+      "status": "implementing",
+      "round_cap": 3,
+      "blocked_by": [130],
+      "rounds": []
+    }
+  ],
+  "spec_gate": {
+    "round_cap": 3,
+    "rounds": []
+  }
+}
