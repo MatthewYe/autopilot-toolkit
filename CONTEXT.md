@@ -211,3 +211,49 @@ definitions must omit a model override so the host inherits the main effective
 model. If a host cannot prove equality, the review pass runs inline rather than
 silently switching models.
 _Avoid_: role default model, child fallback model
+
+## Autopilot Director
+
+**autopilot-director**:
+The spec-level workflow skill that completes one whole spec: a Director drives child tickets to done through code-verified gates and Two-axis gate review rounds, delegating code development to fast-model Workers. State transitions are computed by a typed state machine in code, never by prose.
+_Avoid_: orchestrator v2, spec runner
+
+**Spec run**:
+One resumable execution of autopilot-director over a single spec issue and its child tickets, within a specific target worktree. Its authoritative state lives in a project-local, git-ignored directory.
+_Avoid_: spec session, chat run
+
+**Director**:
+The lead role in a Spec run, played by the main effective model. It dispatches Workers, runs gates, adjudicates findings, and owns all merge-adjacent decisions. Never pinned to a fast model.
+_Avoid_: orchestrator, driver
+
+**Worker**:
+The code-development subagent role in a Spec run, dispatched per ticket and bound to a Role-pinned model. It implements one ticket's contract and fixes review findings; its own reports never count as gate evidence.
+_Avoid_: implementer (the five-axis orchestrator role), developer
+
+**Role-pinned model**:
+A child role bound to an explicit model instead of inheriting the Effective agent model. An exception to model inheritance, currently scoped to autopilot-director Workers (default a fast model, overridable per invocation); Two-axis gate reviewers always inherit the Effective agent model.
+_Avoid_: role default model, child fallback model
+
+**Two-axis gate**:
+The independent Standards + Spec review (upstream code-review process) run by fresh reviewers as a hard gate in a Spec run. Distinct from the Review axis concept of the five-axis autopilot-reviewer. Passes only at absolute zero: every finding fixed or given a recorded Finding disposition.
+_Avoid_: five-axis review, review pass
+
+**Review round**:
+One review-and-fix iteration on one ticket's diff (or on the aggregate spec diff): fresh reviewers run the Two-axis gate, the same Worker fixes the findings. Capped per ticket; exhausting the cap triggers Escalation.
+_Avoid_: retry loop, cycle
+
+**Finding disposition**:
+The recorded resolution of one gate finding: fixed, or rejected by the Director with a written reason. Dispositions are authoritative run-state records, auditable after the fact.
+_Avoid_: wontfix note, ignored finding
+
+**Escalation**:
+The state a ticket enters when its Review round cap is exhausted without reaching zero. The Director stops and reports to the human; the run resumes only on an explicit human decision.
+_Avoid_: failure, abort
+
+**Ticket boundary commit**:
+The single commit one ticket contributes to the spec branch. Work-in-progress commits are squashed into it once the ticket's Two-axis gate reaches zero.
+_Avoid_: ticket PR, WIP commit
+
+**Spec PR**:
+The single pull request carrying one Spec run's Ticket boundary commits. It opens only after every ticket gate and the aggregate spec-level Two-axis gate have reached zero.
+_Avoid_: ticket PR, integration branch
