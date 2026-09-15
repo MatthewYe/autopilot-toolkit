@@ -149,6 +149,13 @@ build_mock_tarball() {
         "linux-arm64": "bin/distill-artifacts/linux-arm64/distill",
         "linux-x64": "bin/distill-artifacts/linux-x64/distill"
       }
+    },
+    "director": {
+      "platforms": {
+        "darwin-arm64": "bin/director-artifacts/darwin-arm64/director",
+        "linux-arm64": "bin/director-artifacts/linux-arm64/director",
+        "linux-x64": "bin/director-artifacts/linux-x64/director"
+      }
     }
   },
   "skills": {
@@ -173,6 +180,13 @@ JSONEOF
 echo "distill ${platform} ${version}"
 SHEOF
         chmod +x "${staging}/.autopilot/bin/distill-artifacts/${platform}/distill"
+
+        mkdir -p "${staging}/.autopilot/bin/director-artifacts/${platform}"
+        cat > "${staging}/.autopilot/bin/director-artifacts/${platform}/director" << SHEOF
+#!/usr/bin/env bash
+echo "director ${platform} ${version}"
+SHEOF
+        chmod +x "${staging}/.autopilot/bin/director-artifacts/${platform}/director"
     done
 
     # Add some mock skill directories
@@ -312,7 +326,38 @@ test_distill_platform_selection() {
         || { echo "  FAIL: distill.env should export AUTOPILOT_DISTILL_BIN"; FAIL=$((FAIL + 1)); }
 }
 
+# ── Test: platform-selected Director executable ─────────────────────────
+
+test_director_platform_selection() {
+    echo ""
+    echo "=== test: platform-selected Director executable ==="
+
+    TMP_BASE="$(mktemp -d)"
+    local home="${TMP_BASE}/home"
+    local skills_dir="${home}/.agents/skills"
+    local mock_tarball="${TMP_BASE}/mock-toolkit.tar.gz"
+
+    build_mock_tarball "${mock_tarball}" "director-platform-001"
+
+    local install_sh="${TMP_BASE}/install.sh"
+    cp "${TEST_INSTALL_SH}" "${install_sh}"
+    chmod +x "${install_sh}"
+
+    HOME="${home}" \
+    AGENTS_SKILLS_DIR="${skills_dir}" \
+    AUTOPILOT_PLATFORM_OVERRIDE="linux-x64" \
+        bash "${install_sh}" --tarball "${mock_tarball}" --version "director-platform-001" > /dev/null 2>&1
+
+    assert_executable "director shim exists at stable path" "${skills_dir}/.autopilot/bin/director"
+    assert_eq "director selects linux-x64 artifact" "director linux-x64 director-platform-001" "$("${skills_dir}/.autopilot/bin/director")"
+    assert_file "director target path exported" "${skills_dir}/.autopilot/director.env"
+    grep -q "AUTOPILOT_DIRECTOR_BIN=" "${skills_dir}/.autopilot/director.env" \
+        && echo "  PASS: director.env exports AUTOPILOT_DIRECTOR_BIN" && PASS=$((PASS + 1)) \
+        || { echo "  FAIL: director.env should export AUTOPILOT_DIRECTOR_BIN"; FAIL=$((FAIL + 1)); }
+}
+
 # ── Test: Distill selection does not require Python ─────────────────────
+
 
 test_distill_platform_selection_without_python() {
     echo ""
@@ -1078,6 +1123,7 @@ prepare_test_install_script
 
 test_fresh_install_extraction
 test_distill_platform_selection
+test_director_platform_selection
 test_distill_platform_selection_without_python
 test_distill_unsupported_platform
 test_uninstall_removes_distill_artifacts_and_preserves_user_skills

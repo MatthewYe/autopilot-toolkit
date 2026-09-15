@@ -13,6 +13,7 @@ rust-script deploy.rs dev                     # Symlink all skills into agent di
 rust-script deploy.rs dev-clean               # Remove dev symlinks
 rust-script deploy.rs pack                    # Build tarball into dist/
 rust-script deploy.rs distill-artifacts       # Build Distill CLI for release platforms
+rust-script deploy.rs director-artifacts      # Build Director CLI for release platforms
 rust-script deploy.rs release                 # Pack + push to GitHub Releases
 rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
 rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot (tag/branch/commit)
@@ -20,6 +21,8 @@ rust-script scripts/check.rs                  # Verify upstream + vendor skill h
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
 cargo test                                    # unit + integration tests across the tooling crates
+cargo test -p director-cli                    # director-cli: state machine, gates, envelopes, resume
+cargo test -p distill-cli                     # distill-cli: run state, workflow boundaries, publication
 rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs

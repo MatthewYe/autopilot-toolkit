@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use super::director::stage_director_executables;
 use super::distill::stage_distill_executables;
 use super::stage_coupled_skill;
 use anyhow::Context;
@@ -48,18 +49,31 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     // ── generate manifest.json from the same enumeration ──
     let manifest = skill_index::generate_manifest(&entries, &version);
     let mut manifest_value = serde_json::to_value(manifest)?;
+    // Every shipped CLI is staged through the same artifact machinery and
+    // lands in the same manifest block, so the tarball either carries the
+    // complete binary set or it fails to pack.
     let distill_platforms = stage_distill_executables(project_root, &autopilot_staging)?;
-    if !distill_platforms.is_empty() {
+    let director_platforms = stage_director_executables(project_root, &autopilot_staging)?;
+    if !distill_platforms.is_empty() || !director_platforms.is_empty() {
+        let mut executables = serde_json::Map::new();
+        if !distill_platforms.is_empty() {
+            executables.insert(
+                "distill".to_string(),
+                serde_json::json!({ "platforms": distill_platforms }),
+            );
+        }
+        if !director_platforms.is_empty() {
+            executables.insert(
+                "director".to_string(),
+                serde_json::json!({ "platforms": director_platforms }),
+            );
+        }
         manifest_value
             .as_object_mut()
             .context("manifest must be an object")?
             .insert(
                 "executables".to_string(),
-                serde_json::json!({
-                    "distill": {
-                        "platforms": distill_platforms,
-                    }
-                }),
+                serde_json::Value::Object(executables),
             );
     }
     let manifest_json = serde_json::to_string_pretty(&manifest_value)?;

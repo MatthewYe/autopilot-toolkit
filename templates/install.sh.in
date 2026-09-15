@@ -12,6 +12,7 @@ BOOTSTRAP_SCRIPT="${AUTOPILOT_DIR}/bootstrap.sh"
 MANIFEST_FILE="${AUTOPILOT_DIR}/manifest.json"
 VERSION_FILE="${AUTOPILOT_DIR}/.version"
 DISTILL_ENV_FILE="${AUTOPILOT_DIR}/distill.env"
+DIRECTOR_ENV_FILE="${AUTOPILOT_DIR}/director.env"
 
 # ── usage ────────────────────────────────────────────────────────────────
 
@@ -98,17 +99,21 @@ detect_platform() {
     esac
 }
 
-select_distill_artifact() {
+# Every shipped CLI is selected the same way: prefer the artifact built for
+# ${platform}, refuse loudly when the tarball carries that CLI but not this
+# platform, and stay silent when the CLI is not part of the tarball at all.
+select_cli_artifact() {
     local tarball="$1"
     local platform="$2"
-    local rel="bin/distill-artifacts/${platform}/distill"
+    local cli="$3"
+    local rel="bin/${cli}-artifacts/${platform}/${cli}"
     local member
-    local has_distill_artifacts=0
+    local has_artifacts=0
 
     while IFS= read -r member; do
         case "${member}" in
-            ./.autopilot/bin/distill-artifacts/*/distill|.autopilot/bin/distill-artifacts/*/distill)
-                has_distill_artifacts=1
+            ./.autopilot/bin/${cli}-artifacts/*/${cli}|.autopilot/bin/${cli}-artifacts/*/${cli})
+                has_artifacts=1
                 ;;
         esac
 
@@ -118,8 +123,8 @@ select_distill_artifact() {
         fi
     done < <(tar -tzf "${tarball}")
 
-    if [[ "${has_distill_artifacts}" == "1" ]]; then
-        echo "ERROR: selected Distill CLI artifact is unavailable for ${platform}. Supported platforms: darwin-arm64, linux-arm64, linux-x64" >&2
+    if [[ "${has_artifacts}" == "1" ]]; then
+        echo "ERROR: selected ${cli} CLI artifact is unavailable for ${platform}. Supported platforms: darwin-arm64, linux-arm64, linux-x64" >&2
         return 1
     fi
 }
@@ -174,7 +179,8 @@ case "${CURRENT_PLATFORM}" in
     exit 1
         ;;
 esac
-DISTILL_ARTIFACT_REL="$(select_distill_artifact "${TARBALL_PATH}" "${CURRENT_PLATFORM}")"
+DISTILL_ARTIFACT_REL="$(select_cli_artifact "${TARBALL_PATH}" "${CURRENT_PLATFORM}" "distill")"
+DIRECTOR_ARTIFACT_REL="$(select_cli_artifact "${TARBALL_PATH}" "${CURRENT_PLATFORM}" "director")"
 
 # ── remove old toolkit-owned directories ─────────────────────────────────
 
@@ -213,20 +219,29 @@ if [[ -d "${SKILLS_DIR}/skills" ]]; then
     rmdir "${SKILLS_DIR}/skills"
 fi
 
-# ── select Distill executable ────────────────────────────────────────────
+# ── select CLI executables ───────────────────────────────────────────────
 
-if [[ -n "${DISTILL_ARTIFACT_REL}" ]]; then
-    DISTILL_ARTIFACT="${AUTOPILOT_DIR}/${DISTILL_ARTIFACT_REL}"
-    DISTILL_STABLE_BIN="${AUTOPILOT_DIR}/bin/distill"
-    if [[ ! -x "${DISTILL_ARTIFACT}" ]]; then
-        echo "ERROR: selected Distill CLI artifact is missing or not executable: ${DISTILL_ARTIFACT_REL}"
+install_cli() {
+    local cli="$1"
+    local artifact_rel="$2"
+    local env_file="$3"
+    if [[ -z "${artifact_rel}" ]]; then
+        return 0
+    fi
+    local artifact="${AUTOPILOT_DIR}/${artifact_rel}"
+    local stable_bin="${AUTOPILOT_DIR}/bin/${cli}"
+    if [[ ! -x "${artifact}" ]]; then
+        echo "ERROR: selected ${cli} CLI artifact is missing or not executable: ${artifact_rel}"
         exit 1
     fi
-    ln -sf "distill-artifacts/${CURRENT_PLATFORM}/distill" "${DISTILL_STABLE_BIN}"
-    cat > "${DISTILL_ENV_FILE}" <<EOF
-AUTOPILOT_DISTILL_BIN="${DISTILL_STABLE_BIN}"
+    ln -sf "${cli}-artifacts/${CURRENT_PLATFORM}/${cli}" "${stable_bin}"
+    cat > "${env_file}" <<EOF
+AUTOPILOT_$(echo "${cli}" | tr '[:lower:]' '[:upper:]')_BIN="${stable_bin}"
 EOF
-fi
+}
+
+install_cli "distill" "${DISTILL_ARTIFACT_REL}" "${DISTILL_ENV_FILE}"
+install_cli "director" "${DIRECTOR_ARTIFACT_REL}" "${DIRECTOR_ENV_FILE}"
 
 # ── deploy principles ────────────────────────────────────────────────────
 
