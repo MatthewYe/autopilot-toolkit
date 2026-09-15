@@ -4,8 +4,14 @@
 //! The code owns every state transition; the skill's prose dispatches and
 //! adjudicates. Each command prints one JSON object on stdout, writes errors
 //! to stderr, and exits non-zero on any refusal.
+//!
+//! Storage: `.director/state.json` inside the worktree is the single
+//! authoritative record of one Spec run. There is deliberately no separate
+//! event log — the revision-stamped state plus the per-round finding ledger
+//! and the dispatch ledger is the audit record.
 
 use std::env;
+use std::io::Read;
 use std::path::Path;
 use std::process;
 
@@ -13,6 +19,7 @@ use serde_json::{json, Value};
 
 mod args;
 mod gate;
+mod report;
 mod state;
 mod storage;
 mod transition;
@@ -38,6 +45,8 @@ fn run() -> Result<(), String> {
         Some("run") => run_command(&rest),
         Some("round") => round_command(&rest),
         Some("finding") => finding_command(&rest),
+        Some("dispatch") => dispatch_command(&rest),
+        Some("report") => report_command(&rest),
         Some("gate") => gate_command(rest),
         Some("--help" | "-h") | None => {
             println!("{}", args::USAGE);
@@ -119,6 +128,17 @@ fn inspect_run(raw: Vec<String>) -> Result<Value, String> {
                 "round_cap": ticket.round_cap,
                 "open_round": ticket.open_round().map(|round| round.round),
                 "gate": gate::ticket_verdict(ticket).to_json(),
+                "dispatches": ticket
+                    .dispatches
+                    .iter()
+                    .map(|record| json!({
+                        "worker": record.worker,
+                        "attempt": record.attempt,
+                        "status": record.status.as_str(),
+                        "reason": record.reason,
+                        "report": record.report.as_ref().map(|report| report.summary()),
+                    }))
+                    .collect::<Vec<_>>(),
             })
         })
         .collect::<Vec<_>>();
@@ -278,6 +298,94 @@ fn finding_command(rest: &[String]) -> Result<(), String> {
             args::USAGE
         )),
     }
+}
+
+fn dispatch_command(rest: &[String]) -> Result<(), String> {
+    let (subcommand, tail) = split_subcommand(rest)?;
+    match subcommand {
+        "begin" => {
+            let mut flags = args::Flags::parse(tail)?;
+            let worktree = args::worktree(&mut flags)?;
+            let ticket = args::parse_u64(&flags.required("--ticket")?, "--ticket")?;
+            let worker = flags.required("--worker")?;
+            flags.reject_unknown()?;
+
+            let mut run_state = load(&worktree)?;
+            let response = transition::begin_dispatch(&worktree, &mut run_state, ticket, &worker)?;
+            print_json(&response)
+        }
+        "finish" => {
+            let mut flags = args::Flags::parse(tail)?;
+            let worktree = args::worktree(&mut flags)?;
+            let ticket = args::parse_u64(&flags.required("--ticket")?, "--ticket")?;
+            let outcome = flags.required("--outcome")?;
+            let reason = flags.optional("--reason")?;
+            flags.reject_unknown()?;
+
+            let mut run_state = load(&worktree)?;
+            let response = match outcome.as_str() {
+                "ok" => {
+                    if reason.is_some() {
+                        return Err("--reason only applies to `--outcome failed`".to_string());
+                    }
+                    transition::finish_dispatch_ok(&worktree, &mut run_state, ticket)?
+                }
+                "failed" => {
+                    let reason =
+                        reason.ok_or_else(|| "--outcome failed requires --reason".to_string())?;
+                    transition::finish_dispatch_failed(&worktree, &mut run_state, ticket, &reason)?
+                }
+                other => {
+                    return Err(format!(
+                        "unknown --outcome {other:?}; expected `ok` or `failed`"
+                    ));
+                }
+            };
+            print_json(&response)
+        }
+        other => Err(format!(
+            "unknown dispatch subcommand: {other}\n{}",
+            args::USAGE
+        )),
+    }
+}
+
+/// Validate the Worker's `WORKER_REPORT` envelope and attach it to the open
+/// dispatch. A malformed envelope is recorded as a dispatch failure, so this
+/// command's error path is itself a state transition.
+fn report_command(rest: &[String]) -> Result<(), String> {
+    let (subcommand, tail) = split_subcommand(rest)?;
+    match subcommand {
+        "validate" => {
+            let mut flags = args::Flags::parse(tail)?;
+            let worktree = args::worktree(&mut flags)?;
+            let ticket = args::parse_u64(&flags.required("--ticket")?, "--ticket")?;
+            let file = flags.optional("--file")?;
+            flags.reject_unknown()?;
+
+            let raw = match file {
+                Some(path) => std::fs::read_to_string(&path)
+                    .map_err(|err| format!("cannot read report {path:?}: {err}"))?,
+                None => read_stdin()?,
+            };
+            let mut run_state = load(&worktree)?;
+            let response =
+                transition::record_worker_report(&worktree, &mut run_state, ticket, &raw)?;
+            print_json(&response)
+        }
+        other => Err(format!(
+            "unknown report subcommand: {other}\n{}",
+            args::USAGE
+        )),
+    }
+}
+
+fn read_stdin() -> Result<String, String> {
+    let mut buffer = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buffer)
+        .map_err(|err| format!("cannot read the WORKER_REPORT from stdin: {err}"))?;
+    Ok(buffer)
 }
 
 fn gate_command(raw: Vec<String>) -> Result<(), String> {

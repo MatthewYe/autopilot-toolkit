@@ -10,11 +10,12 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use crate::gate::{self, GateLayer};
+use crate::report;
 use crate::state::{
-    self, FindingDisposition, ReviewAxis, ReviewFinding, ReviewRound, RoundStatus, RunState,
-    RunStatus, TicketState, TicketStatus,
+    self, DispatchRecord, DispatchStatus, FindingDisposition, ReviewAxis, ReviewFinding,
+    ReviewRound, RoundStatus, RunState, RunStatus, TicketState, TicketStatus,
 };
-use crate::storage::DEFAULT_ROUND_CAP;
+use crate::storage::{DEFAULT_ROUND_CAP, DISPATCH_RETRY_BUDGET};
 
 // ── legal edges ──
 
@@ -107,6 +108,8 @@ pub(crate) fn add_ticket(
         round_cap: DEFAULT_ROUND_CAP,
         blocked_by: blocked_by.clone(),
         rounds: Vec::new(),
+        dispatches: Vec::new(),
+        dispatch_budget_base: 0,
     });
     write(worktree, state)?;
     Ok(json!({
@@ -225,6 +228,15 @@ pub(crate) fn transition_ticket(
             .ticket_mut(ticket)
             .expect("ticket existence checked above");
         ticket_state.round_cap += DEFAULT_ROUND_CAP;
+    }
+    // The human's "grant the Worker another go" decision resets the dispatch
+    // budget window, exactly as resuming an escalated run buys another cap's
+    // worth of spec rounds.
+    if to == TicketStatus::Implementing && from == TicketStatus::Escalated {
+        let ticket_state = state
+            .ticket_mut(ticket)
+            .expect("ticket existence checked above");
+        ticket_state.dispatch_budget_base = ticket_state.dispatches.len() as u64;
     }
 
     let ticket_state = state
@@ -389,6 +401,13 @@ pub(crate) fn record_finding(
     number: u64,
     finding: NewFinding,
 ) -> Result<Value, String> {
+    // Identity is what makes a finding checkable: an unnamed or unhashed
+    // finding could never be matched against a re-issued review, so it is
+    // refused rather than recorded as an anonymous row.
+    require_text(&finding.id, "finding id")?;
+    require_text(&finding.hash, "finding hash")?;
+    require_text(&finding.summary, "finding summary")?;
+
     let round = round_mut(state, layer, number, "record a finding on", true)?;
     if round
         .findings
@@ -461,6 +480,256 @@ pub(crate) fn dispose_finding(
         "verdict": verdict.to_json(),
         "revision": state.revision,
     }))
+}
+
+// ── dispatch bookkeeping ──
+
+/// Register the start of one Worker dispatch attempt. The retry budget — a
+/// failed attempt plus exactly one same-Worker retry — is enforced here, so
+/// "the Worker gets another go" is a fact about state, not a sentence in a
+/// prompt (ADR 0048).
+pub(crate) fn begin_dispatch(
+    worktree: &Path,
+    state: &mut RunState,
+    ticket: u64,
+    worker: &str,
+) -> Result<Value, String> {
+    let worker = worker.trim();
+    require_text(worker, "--worker")?;
+
+    let ticket_state = state
+        .ticket_mut(ticket)
+        .ok_or_else(|| format!("ticket #{ticket} is not registered"))?;
+    if ticket_state.status != TicketStatus::Implementing {
+        return Err(format!(
+            "cannot dispatch a Worker for ticket #{ticket} while it is `{}`; dispatches begin in `implementing`",
+            ticket_state.status.as_str()
+        ));
+    }
+    if let Some(open) = ticket_state.open_dispatch() {
+        return Err(format!(
+            "dispatch attempt {} for ticket #{ticket} is still open; finish it before starting another",
+            open.attempt
+        ));
+    }
+    let failures = ticket_state.failed_dispatches_in_streak();
+    if failures > DISPATCH_RETRY_BUDGET {
+        return Err(format!(
+            "the dispatch retry budget for ticket #{ticket} is exhausted ({failures} failed attempts, {DISPATCH_RETRY_BUDGET} retry allowed); the ticket resumes only on an explicit human decision"
+        ));
+    }
+    if failures == DISPATCH_RETRY_BUDGET {
+        let failed_worker = ticket_state
+            .last_failed_dispatch_in_streak()
+            .map(|record| record.worker.as_str())
+            .unwrap_or_default();
+        if failed_worker != worker {
+            return Err(format!(
+                "the retry for ticket #{ticket} must go to the same Worker that failed ({failed_worker:?}), not {worker:?}"
+            ));
+        }
+    }
+
+    let attempt = ticket_state.dispatches.len() as u64 + 1;
+    ticket_state.dispatches.push(DispatchRecord {
+        worker: worker.to_string(),
+        attempt,
+        status: DispatchStatus::Started,
+        reason: None,
+        report: None,
+    });
+    write(worktree, state)?;
+    Ok(json!({
+        "command": "dispatch-begin",
+        "ticket": ticket,
+        "worker": worker,
+        "attempt": attempt,
+        "retry": failures > 0,
+        "revision": state.revision,
+    }))
+}
+
+/// Validate and attach the Worker's `WORKER_REPORT` envelope to the open
+/// dispatch. A malformed envelope is a recorded dispatch failure, never a
+/// silent pass; the retry budget then decides whether another attempt is
+/// sanctioned or the ticket escalates.
+pub(crate) fn record_worker_report(
+    worktree: &Path,
+    state: &mut RunState,
+    ticket: u64,
+    raw: &str,
+) -> Result<Value, String> {
+    let (worker, attempt) = open_dispatch_identity(state, ticket)?;
+    match report::parse_envelope(raw) {
+        Ok(worker_report) => {
+            let summary = worker_report.summary();
+            let ticket_state = state
+                .ticket_mut(ticket)
+                .expect("ticket existence checked above");
+            let open = ticket_state
+                .open_dispatch_mut()
+                .expect("open dispatch checked above");
+            open.report = Some(worker_report);
+            write(worktree, state)?;
+            Ok(json!({
+                "command": "report-validate",
+                "ticket": ticket,
+                "worker": worker,
+                "attempt": attempt,
+                "report": summary,
+                "revision": state.revision,
+            }))
+        }
+        Err(detail) => {
+            let reason = format!("malformed WORKER_REPORT: {detail}");
+            let failure = fail_open_dispatch(worktree, state, ticket, &reason)?;
+            Err(format!("{reason}\n{}", failure.tail(ticket)))
+        }
+    }
+}
+
+/// Finish the open dispatch as successful. Only a validated `done` report
+/// counts: a `blocked` self-report is a failed dispatch by definition, and a
+/// dispatch with no validated report has no evidence at all.
+pub(crate) fn finish_dispatch_ok(
+    worktree: &Path,
+    state: &mut RunState,
+    ticket: u64,
+) -> Result<Value, String> {
+    let (worker, attempt) = open_dispatch_identity(state, ticket)?;
+    let report_status = state
+        .ticket(ticket)
+        .and_then(TicketState::open_dispatch)
+        .and_then(|open| open.report.as_ref())
+        .map(|worker_report| worker_report.status);
+    let Some(report_status) = report_status else {
+        return Err(format!(
+            "no validated WORKER_REPORT is attached to the open dispatch for ticket #{ticket}; run `director report validate` before finishing it"
+        ));
+    };
+    if report_status == report::ReportStatus::Blocked {
+        return Err(format!(
+            "the attached WORKER_REPORT for ticket #{ticket} reports `blocked`; finish the dispatch with `--outcome failed --reason <blockers>` so the retry budget applies"
+        ));
+    }
+
+    let ticket_state = state
+        .ticket_mut(ticket)
+        .expect("ticket existence checked above");
+    let open = ticket_state
+        .open_dispatch_mut()
+        .expect("open dispatch checked above");
+    open.status = DispatchStatus::Ok;
+    write(worktree, state)?;
+    Ok(json!({
+        "command": "dispatch-finish",
+        "ticket": ticket,
+        "worker": worker,
+        "attempt": attempt,
+        "outcome": "ok",
+        "revision": state.revision,
+    }))
+}
+
+/// Finish the open dispatch as failed. The budget decides the ending: the
+/// first failure records a sanctioned retry, the one past the budget escalates
+/// the ticket and refuses to be recorded as another retry.
+pub(crate) fn finish_dispatch_failed(
+    worktree: &Path,
+    state: &mut RunState,
+    ticket: u64,
+    reason: &str,
+) -> Result<Value, String> {
+    let reason = reason.trim();
+    require_text(reason, "--reason")?;
+
+    let (worker, attempt) = open_dispatch_identity(state, ticket)?;
+    let failure = fail_open_dispatch(worktree, state, ticket, reason)?;
+    if failure.escalated {
+        return Err(format!(
+            "dispatch attempt {attempt} for ticket #{ticket} failed: {reason}\n{}",
+            failure.tail(ticket)
+        ));
+    }
+    Ok(json!({
+        "command": "dispatch-finish",
+        "ticket": ticket,
+        "worker": worker,
+        "attempt": attempt,
+        "outcome": "failed",
+        "reason": reason,
+        "retry_remaining": true,
+        "revision": state.revision,
+    }))
+}
+
+/// What a recorded dispatch failure means for the ticket.
+struct DispatchFailure {
+    failures: u64,
+    escalated: bool,
+}
+
+impl DispatchFailure {
+    fn tail(&self, ticket: u64) -> String {
+        if self.escalated {
+            format!(
+                "ticket #{ticket} has {} failed dispatch attempt(s) and the retry budget allows {DISPATCH_RETRY_BUDGET} retry, so it is now `escalated` and resumes only on an explicit human decision",
+                self.failures
+            )
+        } else {
+            format!(
+                "ticket #{ticket} has {} failed dispatch attempt(s); one same-Worker retry remains",
+                self.failures
+            )
+        }
+    }
+}
+
+fn open_dispatch_identity(state: &RunState, ticket: u64) -> Result<(String, u64), String> {
+    let ticket_state = state
+        .ticket(ticket)
+        .ok_or_else(|| format!("ticket #{ticket} is not registered"))?;
+    let open = ticket_state.open_dispatch().ok_or_else(|| {
+        format!("ticket #{ticket} has no open dispatch; run `director dispatch begin` first")
+    })?;
+    Ok((open.worker.clone(), open.attempt))
+}
+
+/// Close the open dispatch as failed and apply the retry budget. The state is
+/// written either way: the failure is a fact, and only the *next* attempt is
+/// refused.
+fn fail_open_dispatch(
+    worktree: &Path,
+    state: &mut RunState,
+    ticket: u64,
+    reason: &str,
+) -> Result<DispatchFailure, String> {
+    let ticket_state = state
+        .ticket_mut(ticket)
+        .ok_or_else(|| format!("ticket #{ticket} is not registered"))?;
+    let open = ticket_state
+        .open_dispatch_mut()
+        .ok_or_else(|| format!("ticket #{ticket} has no open dispatch"))?;
+    open.status = DispatchStatus::Failed;
+    open.reason = Some(reason.to_string());
+
+    let failures = ticket_state.failed_dispatches_in_streak();
+    let escalated = failures > DISPATCH_RETRY_BUDGET;
+    if escalated {
+        ticket_state.status = TicketStatus::Escalated;
+    }
+    write(worktree, state)?;
+    Ok(DispatchFailure {
+        failures,
+        escalated,
+    })
+}
+
+fn require_text(value: &str, field: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    Ok(())
 }
 
 // ── helpers ──

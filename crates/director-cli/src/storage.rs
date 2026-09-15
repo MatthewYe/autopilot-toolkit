@@ -11,6 +11,10 @@ pub const DIRECTOR_IGNORE_RULE: &str = "/.director/";
 /// Review rounds allowed per gate layer before Escalation (ADR 0048).
 pub const DEFAULT_ROUND_CAP: u64 = 3;
 
+/// Failed Worker dispatches allowed per ticket before Escalation (ADR 0048):
+/// the failed attempt plus exactly one same-Worker retry.
+pub const DISPATCH_RETRY_BUDGET: u64 = 1;
+
 /// Fail closed unless run state can never become a trackable project file:
 /// the root `.gitignore` must carry the exact [`DIRECTOR_IGNORE_RULE`], the
 /// existing `.director/` path must stay inside the worktree, and neither may

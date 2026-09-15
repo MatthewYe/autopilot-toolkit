@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::report::WorkerReport;
 use crate::storage;
 use crate::CURRENT_SCHEMA_VERSION;
 
@@ -143,6 +144,26 @@ impl ReviewAxis {
     }
 }
 
+/// How one Worker dispatch attempt ended. `started` is the open attempt; the
+/// other two are terminal.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum DispatchStatus {
+    Started,
+    Ok,
+    Failed,
+}
+
+impl DispatchStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Ok => "ok",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 /// Internally tagged so the two dispositions serialize as
 /// `{"status": "fixed", ...}` / `{"status": "rejected", "reason": "..."}`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -171,6 +192,23 @@ impl FindingDisposition {
 }
 
 // ── records ──
+
+/// One Worker dispatch attempt against one ticket. The retry budget counts
+/// these records, so "the Worker gets one more try" is a fact about state, not
+/// a sentence in a prompt.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DispatchRecord {
+    pub(crate) worker: String,
+    pub(crate) attempt: u64,
+    pub(crate) status: DispatchStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reason: Option<String>,
+    /// The validated `WORKER_REPORT` the Worker handed back, kept verbatim so
+    /// the escalation report can show what was claimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) report: Option<WorkerReport>,
+}
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -218,6 +256,16 @@ pub(crate) struct TicketState {
     pub(crate) blocked_by: Vec<u64>,
     #[serde(default)]
     pub(crate) rounds: Vec<ReviewRound>,
+    /// Worker dispatch attempts, oldest first. Additive since schema v1: an
+    /// existing state file loads with an empty ledger and budget at zero.
+    #[serde(default)]
+    pub(crate) dispatches: Vec<DispatchRecord>,
+    /// Index into `dispatches` where the current retry budget starts. A human
+    /// decision that resumes an `escalated` ticket moves this to the end of the
+    /// ledger, granting a fresh attempt budget — the same way resuming the run
+    /// grants a fresh round cap.
+    #[serde(default)]
+    pub(crate) dispatch_budget_base: u64,
 }
 
 impl TicketState {
@@ -241,6 +289,39 @@ impl TicketState {
 
     pub(crate) fn round_mut(&mut self, number: u64) -> Option<&mut ReviewRound> {
         self.rounds.iter_mut().find(|round| round.round == number)
+    }
+
+    /// The dispatch attempt still in flight, if any.
+    pub(crate) fn open_dispatch(&self) -> Option<&DispatchRecord> {
+        self.dispatches
+            .iter()
+            .find(|record| record.status == DispatchStatus::Started)
+    }
+
+    pub(crate) fn open_dispatch_mut(&mut self) -> Option<&mut DispatchRecord> {
+        self.dispatches
+            .iter_mut()
+            .find(|record| record.status == DispatchStatus::Started)
+    }
+
+    /// Failed attempts inside the current budget window.
+    pub(crate) fn failed_dispatches_in_streak(&self) -> u64 {
+        self.dispatches_in_streak()
+            .filter(|record| record.status == DispatchStatus::Failed)
+            .count() as u64
+    }
+
+    /// The most recent failed attempt of the current budget window, which is
+    /// the Worker the sanctioned retry has to reuse.
+    pub(crate) fn last_failed_dispatch_in_streak(&self) -> Option<&DispatchRecord> {
+        self.dispatches_in_streak()
+            .rev()
+            .find(|record| record.status == DispatchStatus::Failed)
+    }
+
+    fn dispatches_in_streak(&self) -> impl DoubleEndedIterator<Item = &DispatchRecord> {
+        let base = self.dispatch_budget_base as usize;
+        self.dispatches.iter().skip(base.min(self.dispatches.len()))
     }
 }
 
@@ -432,6 +513,8 @@ mod tests {
                     },
                 ],
             }],
+            dispatches: Vec::new(),
+            dispatch_budget_base: 0,
         });
         state
     }

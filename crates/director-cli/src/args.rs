@@ -16,11 +16,16 @@ Usage:
       [--fixed <commit> | --rejected <reason>]
   director finding dispose --worktree <path> (--ticket <n> | --spec) --round <k>
       --id <id> (--fixed <commit> | --rejected <reason>)
+  director dispatch begin --worktree <path> --ticket <n> --worker <id>
+  director dispatch finish --worktree <path> --ticket <n> --outcome <ok|failed>
+      [--reason <text>]
+  director report validate --worktree <path> --ticket <n> [--file <path>]
   director gate --worktree <path> [--ticket <n>]
 
 Gate layers: `--ticket <n>` selects one ticket; `--spec` selects the aggregate
-spec diff. Every command prints one JSON object on stdout; errors go to stderr
-and exit non-zero.";
+spec diff. `report validate` reads the `WORKER_REPORT:` envelope from stdin
+unless `--file` names one (see WORKER_REPORT.md). Every command prints one JSON
+object on stdout; errors go to stderr and exit non-zero.";
 
 /// Parsed flags, each with the value it was given (`None` for a bare flag).
 #[derive(Debug)]
