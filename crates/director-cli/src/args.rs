@@ -2,190 +2,190 @@
 
 use std::path::PathBuf;
 
-use crate::util;
-
 pub(crate) const USAGE: &str = "\
-Usage: director init --worktree <path> --spec-issue <n> --slug <slug>
-       director inspect --worktree <path>";
+Usage:
+  director init --worktree <path> --spec-issue <n> --slug <slug>
+  director inspect --worktree <path>
+  director ticket add --worktree <path> --ticket <n> --title <title> [--blocked-by <n>]...
+  director ticket transition --worktree <path> --ticket <n> --to <status>
+  director run transition --worktree <path> --to <status>
+  director round open --worktree <path> (--ticket <n> | --spec)
+  director round close --worktree <path> (--ticket <n> | --spec) --round <k>
+  director finding record --worktree <path> (--ticket <n> | --spec) --round <k>
+      --axis <standards|spec> --id <id> --hash <hash> --summary <text>
+      [--fixed <commit> | --rejected <reason>]
+  director finding dispose --worktree <path> (--ticket <n> | --spec) --round <k>
+      --id <id> (--fixed <commit> | --rejected <reason>)
+  director gate --worktree <path> [--ticket <n>]
 
+Gate layers: `--ticket <n>` selects one ticket; `--spec` selects the aggregate
+spec diff. Every command prints one JSON object on stdout; errors go to stderr
+and exit non-zero.";
+
+/// Parsed flags, each with the value it was given (`None` for a bare flag).
 #[derive(Debug)]
-pub(crate) struct InitArgs {
-    pub(crate) worktree: PathBuf,
-    pub(crate) spec_issue: u64,
-    pub(crate) slug: String,
+pub(crate) struct Flags {
+    entries: Vec<(String, Option<String>)>,
 }
 
-#[derive(Debug)]
-pub(crate) struct InspectArgs {
-    pub(crate) worktree: PathBuf,
-}
-
-fn parse_flags(args: Vec<String>) -> Result<Vec<(String, Option<String>)>, String> {
-    let mut parsed = Vec::new();
-    let mut iter = args.into_iter();
-    while let Some(arg) = iter.next() {
-        if !arg.starts_with("--") {
-            return Err(format!("unexpected argument: {arg}"));
+impl Flags {
+    pub(crate) fn parse(args: Vec<String>) -> Result<Self, String> {
+        let mut entries: Vec<(String, Option<String>)> = Vec::new();
+        let mut iter = args.into_iter().peekable();
+        while let Some(arg) = iter.next() {
+            if !arg.starts_with("--") {
+                return Err(format!("unexpected argument: {arg}"));
+            }
+            let (name, inline) = match arg.split_once('=') {
+                Some((name, value)) => (name.to_string(), Some(value.to_string())),
+                None => (arg, None),
+            };
+            let value = match inline {
+                Some(value) => Some(value),
+                None => match iter.peek() {
+                    Some(next) if !next.starts_with("--") => iter.next(),
+                    _ => None,
+                },
+            };
+            if name != "--blocked-by" && entries.iter().any(|(seen, _)| *seen == name) {
+                return Err(format!("duplicate flag: {name}"));
+            }
+            entries.push((name, value));
         }
-        let (name, inline) = match arg.split_once('=') {
-            Some((name, value)) => (name.to_string(), Some(value.to_string())),
-            None => (arg, None),
-        };
-        let value = match inline {
-            Some(value) => value,
-            None => iter
-                .next()
-                .ok_or_else(|| format!("{name} requires a value"))?,
-        };
-        parsed.push((name, Some(value)));
+        Ok(Self { entries })
+    }
+
+    fn take(&mut self, name: &str) -> Option<Option<String>> {
+        let position = self.entries.iter().position(|(seen, _)| seen == name)?;
+        let (_, value) = self.entries.remove(position);
+        Some(value)
+    }
+
+    /// The flag's value, when present; a bare flag is an error.
+    pub(crate) fn optional(&mut self, name: &str) -> Result<Option<String>, String> {
+        match self.take(name) {
+            Some(Some(value)) if !value.is_empty() => Ok(Some(value)),
+            Some(_) => Err(format!("{name} requires a value")),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) fn required(&mut self, name: &str) -> Result<String, String> {
+        match self.take(name) {
+            Some(Some(value)) if !value.is_empty() => Ok(value),
+            Some(_) => Err(format!("{name} requires a value")),
+            None => Err(format!("{name} is required")),
+        }
+    }
+
+    /// A valueless flag; giving it a value is an error.
+    pub(crate) fn boolean(&mut self, name: &str) -> Result<bool, String> {
+        match self.take(name) {
+            Some(None) => Ok(true),
+            Some(Some(_)) => Err(format!("{name} does not take a value")),
+            None => Ok(false),
+        }
+    }
+
+    /// Every value given for a repeatable flag.
+    pub(crate) fn repeated(&mut self, name: &str) -> Result<Vec<String>, String> {
+        let mut values = Vec::new();
+        let mut index = 0;
+        while index < self.entries.len() {
+            if self.entries[index].0 == name {
+                let (_, value) = self.entries.remove(index);
+                match value {
+                    Some(value) if !value.is_empty() => values.push(value),
+                    _ => return Err(format!("{name} requires a value")),
+                }
+            } else {
+                index += 1;
+            }
+        }
+        Ok(values)
+    }
+
+    pub(crate) fn reject_unknown(&self) -> Result<(), String> {
+        match self.entries.first() {
+            Some((name, _)) => Err(format!("unknown flag: {name}\n{USAGE}")),
+            None => Ok(()),
+        }
+    }
+}
+
+pub(crate) fn worktree(flags: &mut Flags) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(flags.required("--worktree")?))
+}
+
+pub(crate) fn parse_u64(value: &str, flag: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|_| format!("{flag} must be a positive integer, got {value:?}"))?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be a positive integer, got {value:?}"));
     }
     Ok(parsed)
-}
-
-pub(crate) fn parse_init_args(args: Vec<String>) -> Result<InitArgs, String> {
-    let mut worktree = None;
-    let mut spec_issue = None;
-    let mut slug = None;
-    for (name, value) in parse_flags(args)? {
-        match name.as_str() {
-            "--worktree" => worktree = Some(PathBuf::from(value.expect("value required"))),
-            "--spec-issue" => {
-                let raw = value.expect("value required");
-                spec_issue = Some(raw.parse::<u64>().map_err(|_| {
-                    format!("--spec-issue must be a positive integer, got {raw:?}")
-                })?);
-            }
-            "--slug" => slug = Some(value.expect("value required")),
-            other => return Err(format!("unknown flag for init: {other}\n{USAGE}")),
-        }
-    }
-    let worktree = worktree.ok_or_else(|| format!("init requires --worktree\n{USAGE}"))?;
-    let spec_issue = spec_issue.ok_or_else(|| format!("init requires --spec-issue\n{USAGE}"))?;
-    if spec_issue == 0 {
-        return Err("--spec-issue must be a positive integer".to_string());
-    }
-    let slug = slug.ok_or_else(|| format!("init requires --slug\n{USAGE}"))?;
-    util::validate_slug(&slug)?;
-    Ok(InitArgs {
-        worktree,
-        spec_issue,
-        slug,
-    })
-}
-
-pub(crate) fn parse_inspect_args(args: Vec<String>) -> Result<InspectArgs, String> {
-    let mut worktree = None;
-    for (name, value) in parse_flags(args)? {
-        match name.as_str() {
-            "--worktree" => worktree = Some(PathBuf::from(value.expect("value required"))),
-            other => return Err(format!("unknown flag for inspect: {other}\n{USAGE}")),
-        }
-    }
-    let worktree = worktree.ok_or_else(|| format!("inspect requires --worktree\n{USAGE}"))?;
-    Ok(InspectArgs { worktree })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn args(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| value.to_string()).collect()
+    fn parsed(args: &[&str]) -> Flags {
+        Flags::parse(args.iter().map(|arg| arg.to_string()).collect()).unwrap()
     }
 
     #[test]
-    fn init_accepts_inline_and_separate_values() {
-        let init = parse_init_args(args(&[
-            "--worktree",
-            "/tmp/wt",
-            "--spec-issue",
-            "128",
-            "--slug",
-            "autopilot-director",
-        ]))
-        .unwrap();
-        assert_eq!(init.worktree, PathBuf::from("/tmp/wt"));
-        assert_eq!(init.spec_issue, 128);
-        assert_eq!(init.slug, "autopilot-director");
-
-        let inline = parse_init_args(args(&[
-            "--worktree=/tmp/wt",
-            "--spec-issue=128",
-            "--slug=autopilot-director",
-        ]))
-        .unwrap();
-        assert_eq!(inline.spec_issue, 128);
-        assert_eq!(inline.slug, "autopilot-director");
+    fn bare_and_valued_flags_parse_apart() {
+        let mut flags = parsed(&["--worktree", "/tmp/wt", "--spec", "--round", "2"]);
+        assert_eq!(flags.required("--worktree").unwrap(), "/tmp/wt");
+        assert!(flags.boolean("--spec").unwrap());
+        assert_eq!(flags.required("--round").unwrap(), "2");
+        flags.reject_unknown().unwrap();
     }
 
     #[test]
-    fn init_requires_every_input() {
-        assert!(parse_init_args(args(&[]))
-            .unwrap_err()
-            .contains("--worktree"));
-        assert!(parse_init_args(args(&["--worktree", "/tmp/wt"]))
-            .unwrap_err()
-            .contains("--spec-issue"));
-        assert!(
-            parse_init_args(args(&["--worktree", "/tmp/wt", "--spec-issue", "128"]))
-                .unwrap_err()
-                .contains("--slug")
-        );
+    fn inline_values_parse() {
+        let mut flags = parsed(&["--worktree=/tmp/wt", "--round=3"]);
+        assert_eq!(flags.required("--worktree").unwrap(), "/tmp/wt");
+        assert_eq!(flags.required("--round").unwrap(), "3");
     }
 
     #[test]
-    fn init_rejects_a_malformed_slug() {
-        let error = parse_init_args(args(&[
-            "--worktree",
-            "/tmp/wt",
-            "--spec-issue",
-            "128",
-            "--slug",
-            "Autopilot Director",
-        ]))
+    fn repeated_flags_collect_in_order() {
+        let mut flags = parsed(&["--blocked-by", "130", "--blocked-by=131"]);
+        assert_eq!(flags.repeated("--blocked-by").unwrap(), vec!["130", "131"]);
+    }
+
+    #[test]
+    fn bare_flag_where_a_value_is_required_is_refused() {
+        let mut flags = parsed(&["--worktree", "--spec"]);
+        assert!(flags.required("--worktree").is_err());
+    }
+
+    #[test]
+    fn duplicate_single_value_flags_are_refused() {
+        let error = Flags::parse(vec![
+            "--worktree".to_string(),
+            "/a".to_string(),
+            "--worktree".to_string(),
+            "/b".to_string(),
+        ])
         .unwrap_err();
-        assert!(error.contains("--slug"), "got: {error}");
+        assert!(error.contains("duplicate flag"), "got: {error}");
     }
 
     #[test]
-    fn init_rejects_non_positive_and_unknown_flags() {
-        let error = parse_init_args(args(&[
-            "--worktree",
-            "/tmp/wt",
-            "--spec-issue",
-            "abc",
-            "--slug",
-            "autopilot-director",
-        ]))
-        .unwrap_err();
-        assert!(error.contains("positive integer"), "got: {error}");
-        let error = parse_init_args(args(&[
-            "--worktree",
-            "/tmp/wt",
-            "--spec-issue",
-            "0",
-            "--slug",
-            "autopilot-director",
-        ]))
-        .unwrap_err();
-        assert!(error.contains("positive integer"), "got: {error}");
-        let error = parse_init_args(args(&[
-            "--worktree",
-            "/tmp/wt",
-            "--spec-issue",
-            "128",
-            "--slug",
-            "autopilot-director",
-            "--branch",
-            "x",
-        ]))
-        .unwrap_err();
-        assert!(error.contains("unknown flag"), "got: {error}");
+    fn unknown_flags_are_refused() {
+        let mut flags = parsed(&["--worktree", "/tmp/wt", "--nope"]);
+        flags.required("--worktree").unwrap();
+        let error = flags.reject_unknown().unwrap_err();
+        assert!(error.contains("--nope"), "got: {error}");
     }
 
     #[test]
-    fn flag_without_value_is_rejected() {
-        let error = parse_init_args(args(&["--worktree"])).unwrap_err();
-        assert!(error.contains("requires a value"), "got: {error}");
+    fn positional_arguments_are_refused() {
+        let error = Flags::parse(vec!["ticket".to_string()]).unwrap_err();
+        assert!(error.contains("unexpected argument"), "got: {error}");
     }
 }

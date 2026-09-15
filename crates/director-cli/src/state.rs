@@ -11,8 +11,6 @@
 //! call sites are still unwired, so the lint is allowed rather than dodged by
 //! deleting the seam the tests exist to pin.
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,21 +23,38 @@ use crate::CURRENT_SCHEMA_VERSION;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RunStatus {
-    Active,
+    Init,
+    Running,
+    SpecGating,
+    PrOpen,
+    Done,
     Escalated,
-    SpecPrOpen,
-    Completed,
-    Aborted,
 }
 
 impl RunStatus {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::Active => "active",
+            Self::Init => "init",
+            Self::Running => "running",
+            Self::SpecGating => "spec-gating",
+            Self::PrOpen => "pr-open",
+            Self::Done => "done",
             Self::Escalated => "escalated",
-            Self::SpecPrOpen => "spec-pr-open",
-            Self::Completed => "completed",
-            Self::Aborted => "aborted",
+        }
+    }
+
+    /// Parse a run status from its persisted spelling.
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "init" => Ok(Self::Init),
+            "running" => Ok(Self::Running),
+            "spec-gating" => Ok(Self::SpecGating),
+            "pr-open" => Ok(Self::PrOpen),
+            "done" => Ok(Self::Done),
+            "escalated" => Ok(Self::Escalated),
+            other => Err(format!(
+                "unknown run status {other:?}; expected one of: init, running, spec-gating, pr-open, done, escalated"
+            )),
         }
     }
 }
@@ -49,7 +64,9 @@ impl RunStatus {
 pub(crate) enum TicketStatus {
     Pending,
     Implementing,
+    Gating,
     Reviewing,
+    Fixing,
     Done,
     Escalated,
 }
@@ -59,9 +76,27 @@ impl TicketStatus {
         match self {
             Self::Pending => "pending",
             Self::Implementing => "implementing",
+            Self::Gating => "gating",
             Self::Reviewing => "reviewing",
+            Self::Fixing => "fixing",
             Self::Done => "done",
             Self::Escalated => "escalated",
+        }
+    }
+
+    /// Parse a ticket status from its persisted spelling.
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "pending" => Ok(Self::Pending),
+            "implementing" => Ok(Self::Implementing),
+            "gating" => Ok(Self::Gating),
+            "reviewing" => Ok(Self::Reviewing),
+            "fixing" => Ok(Self::Fixing),
+            "done" => Ok(Self::Done),
+            "escalated" => Ok(Self::Escalated),
+            other => Err(format!(
+                "unknown ticket status {other:?}; expected one of: pending, implementing, gating, reviewing, fixing, done, escalated"
+            )),
         }
     }
 }
@@ -73,11 +108,39 @@ pub(crate) enum RoundStatus {
     Complete,
 }
 
+impl RoundStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Reviewing => "reviewing",
+            Self::Complete => "complete",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ReviewAxis {
     Standards,
     Spec,
+}
+
+impl ReviewAxis {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Standards => "standards",
+            Self::Spec => "spec",
+        }
+    }
+
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "standards" => Ok(Self::Standards),
+            "spec" => Ok(Self::Spec),
+            other => Err(format!(
+                "unknown review axis {other:?}; expected `standards` or `spec`"
+            )),
+        }
+    }
 }
 
 /// Internally tagged so the two dispositions serialize as
@@ -90,6 +153,13 @@ pub(crate) enum FindingDisposition {
 }
 
 impl FindingDisposition {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Fixed { .. } => "fixed",
+            Self::Rejected { .. } => "rejected",
+        }
+    }
+
     /// The absolute-zero bar counts only recorded dispositions; a finding
     /// without one keeps its gate open.
     pub(crate) fn is_recorded(&self) -> bool {
@@ -107,6 +177,9 @@ impl FindingDisposition {
 pub(crate) struct ReviewFinding {
     pub(crate) id: String,
     pub(crate) axis: ReviewAxis,
+    /// Stable identity of the finding's text, so a re-issued review can be
+    /// matched against the recorded one.
+    pub(crate) hash: String,
     pub(crate) summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) disposition: Option<FindingDisposition>,
@@ -154,9 +227,20 @@ impl TicketState {
         !self.rounds.is_empty() && self.rounds.iter().all(ReviewRound::is_zero)
     }
 
-    /// The layer has run out of rounds without reaching zero.
-    pub(crate) fn cap_exhausted(&self) -> bool {
-        self.rounds.len() as u64 >= self.round_cap && !self.gate_is_zero()
+    /// The open review round, if a round is still collecting findings.
+    pub(crate) fn open_round(&self) -> Option<&ReviewRound> {
+        self.rounds
+            .iter()
+            .find(|round| round.status == RoundStatus::Reviewing)
+    }
+
+    /// The most recently recorded round.
+    pub(crate) fn latest_round(&self) -> Option<&ReviewRound> {
+        self.rounds.last()
+    }
+
+    pub(crate) fn round_mut(&mut self, number: u64) -> Option<&mut ReviewRound> {
+        self.rounds.iter_mut().find(|round| round.round == number)
     }
 }
 
@@ -173,8 +257,14 @@ impl SpecGate {
         !self.rounds.is_empty() && self.rounds.iter().all(ReviewRound::is_zero)
     }
 
-    pub(crate) fn cap_exhausted(&self) -> bool {
-        self.rounds.len() as u64 >= self.round_cap && !self.is_zero()
+    pub(crate) fn open_round(&self) -> Option<&ReviewRound> {
+        self.rounds
+            .iter()
+            .find(|round| round.status == RoundStatus::Reviewing)
+    }
+
+    pub(crate) fn round_mut(&mut self, number: u64) -> Option<&mut ReviewRound> {
+        self.rounds.iter_mut().find(|round| round.round == number)
     }
 }
 
@@ -205,7 +295,7 @@ impl RunState {
             run_id,
             spec_issue,
             branch,
-            status: RunStatus::Active,
+            status: RunStatus::Init,
             revision: 0,
             tickets: Vec::new(),
             spec_gate: SpecGate {
@@ -213,6 +303,14 @@ impl RunState {
                 rounds: Vec::new(),
             },
         }
+    }
+
+    pub(crate) fn ticket(&self, ticket: u64) -> Option<&TicketState> {
+        self.tickets.iter().find(|state| state.ticket == ticket)
+    }
+
+    pub(crate) fn ticket_mut(&mut self, ticket: u64) -> Option<&mut TicketState> {
+        self.tickets.iter_mut().find(|state| state.ticket == ticket)
     }
 }
 
@@ -310,6 +408,7 @@ mod tests {
                     ReviewFinding {
                         id: "f1".to_string(),
                         axis: ReviewAxis::Standards,
+                        hash: "hash-f1".to_string(),
                         summary: "duplicated load path".to_string(),
                         disposition: Some(FindingDisposition::Fixed {
                             commit: Some("abc1234".to_string()),
@@ -318,6 +417,7 @@ mod tests {
                     ReviewFinding {
                         id: "f2".to_string(),
                         axis: ReviewAxis::Spec,
+                        hash: "hash-f2".to_string(),
                         summary: "acceptance criterion unverified".to_string(),
                         disposition: Some(FindingDisposition::Rejected {
                             reason: "criterion is out of scope for this ticket".to_string(),
@@ -326,6 +426,7 @@ mod tests {
                     ReviewFinding {
                         id: "f3".to_string(),
                         axis: ReviewAxis::Spec,
+                        hash: "hash-f3".to_string(),
                         summary: "still open".to_string(),
                         disposition: None,
                     },
@@ -347,7 +448,7 @@ mod tests {
     fn fresh_state_starts_at_revision_zero() {
         let state = RunState::new("spec-128".to_string(), 128, "codex/spec-128".to_string());
         assert_eq!(state.revision, 0);
-        assert_eq!(state.status, RunStatus::Active);
+        assert_eq!(state.status, RunStatus::Init);
         assert_eq!(state.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(state.tickets.is_empty());
         assert!(state.spec_gate.rounds.is_empty());
@@ -384,44 +485,6 @@ mod tests {
     fn gate_is_not_zero_before_any_round_runs() {
         let state = RunState::new("spec-128".to_string(), 128, "codex/spec-128".to_string());
         assert!(!state.spec_gate.is_zero());
-        assert!(!state.spec_gate.cap_exhausted());
-    }
-
-    #[test]
-    fn layer_escalates_only_after_the_cap_is_exhausted_without_zero() {
-        let mut spec_gate = SpecGate {
-            round_cap: 3,
-            rounds: Vec::new(),
-        };
-        for round in 1..=3 {
-            spec_gate.rounds.push(round_with_open_finding(round));
-        }
-        assert!(spec_gate.cap_exhausted());
-
-        // Dispositioning only the latest round is not enough: an earlier
-        // round's open finding keeps the whole layer's gate open.
-        spec_gate.rounds[2].findings[0].disposition =
-            Some(FindingDisposition::Fixed { commit: None });
-        assert!(!spec_gate.is_zero());
-
-        for round in spec_gate.rounds.iter_mut() {
-            round.findings[0].disposition = Some(FindingDisposition::Fixed { commit: None });
-        }
-        assert!(spec_gate.is_zero());
-        assert!(!spec_gate.cap_exhausted());
-    }
-
-    fn round_with_open_finding(round: u64) -> ReviewRound {
-        ReviewRound {
-            round,
-            status: RoundStatus::Complete,
-            findings: vec![ReviewFinding {
-                id: format!("f{round}"),
-                axis: ReviewAxis::Standards,
-                summary: "open".to_string(),
-                disposition: None,
-            }],
-        }
     }
 
     #[test]
@@ -447,7 +510,7 @@ mod tests {
             "run_id": "spec-128",
             "spec_issue": 128,
             "branch": "codex/spec-128",
-            "status": "active",
+            "status": "init",
             "revision": 0
         });
         migrate_to_current(&mut value).unwrap();
@@ -463,6 +526,33 @@ mod tests {
         value["schema_version"] = serde_json::json!(CURRENT_SCHEMA_VERSION + 1);
         let error = migrate_to_current(&mut value).unwrap_err();
         assert!(error.contains("unknown state schema"), "got: {error}");
+    }
+
+    #[test]
+    fn statuses_round_trip_through_their_persisted_spellings() {
+        for status in [
+            RunStatus::Init,
+            RunStatus::Running,
+            RunStatus::SpecGating,
+            RunStatus::PrOpen,
+            RunStatus::Done,
+            RunStatus::Escalated,
+        ] {
+            assert_eq!(RunStatus::parse(status.as_str()).unwrap(), status);
+        }
+        for status in [
+            TicketStatus::Pending,
+            TicketStatus::Implementing,
+            TicketStatus::Gating,
+            TicketStatus::Reviewing,
+            TicketStatus::Fixing,
+            TicketStatus::Done,
+            TicketStatus::Escalated,
+        ] {
+            assert_eq!(TicketStatus::parse(status.as_str()).unwrap(), status);
+        }
+        assert!(RunStatus::parse("active").is_err());
+        assert!(TicketStatus::parse("active").is_err());
     }
 
     #[test]

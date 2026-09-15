@@ -96,7 +96,7 @@ fn init_writes_the_initial_state_at_revision_zero() {
     assert_eq!(response["spec_issue"], 128);
     assert_eq!(response["schema_version"], 1);
     assert_eq!(response["revision"], 0);
-    assert_eq!(response["status"], "active");
+    assert_eq!(response["status"], "init");
 
     let state = state_for(dir.path());
     assert_eq!(state["schema_version"], 1);
@@ -106,7 +106,7 @@ fn init_writes_the_initial_state_at_revision_zero() {
         state["branch"], "codex/spec-128-autopilot-director",
         "the recorded branch is ADR 0047-shaped from revision 0"
     );
-    assert_eq!(state["status"], "active");
+    assert_eq!(state["status"], "init");
     assert_eq!(state["revision"], 0);
     assert_eq!(state["tickets"].as_array().unwrap().len(), 0);
     assert_eq!(state["spec_gate"]["round_cap"], 3);
@@ -217,7 +217,7 @@ fn inspect_reads_the_state_back_through_the_schema_gate() {
     assert_eq!(response["command"], "inspect");
     assert_eq!(response["run_id"], "spec-128");
     assert_eq!(response["revision"], 0);
-    assert_eq!(response["status"], "active");
+    assert_eq!(response["status"], "init");
     assert_eq!(response["tickets"].as_array().unwrap().len(), 0);
 }
 
