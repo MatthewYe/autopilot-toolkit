@@ -18,11 +18,6 @@ pub fn distill_artifacts_command(
     crate::artifacts::artifacts_command(project_root, distill_spec(), platform_filter)
 }
 
-/// Check all Distill CLI artifacts exist under `dist/distill/`.
-pub fn all_distill_artifacts_present(project_root: &Path) -> bool {
-    crate::artifacts::all_artifacts_present(project_root, distill_spec())
-}
-
 /// Stage distill executables into the autopilot staging directory for tarball inclusion.
 /// Returns a map of platform → relative archive path.
 pub fn stage_distill_executables(
