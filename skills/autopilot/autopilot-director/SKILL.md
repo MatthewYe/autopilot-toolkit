@@ -106,6 +106,12 @@ Flattened dispatch — spawn the two axis reviewers directly; do not invoke the
   the full axis prompt of the upstream `code-review` process: the smell
   baseline pasted in full, the standards sources listed, the spec content
   quoted. Reviewers never see the Worker's context or each other's findings.
+- The Standards axis also carries this repo's two review rules: for every guard
+  or predicate the diff adds or changes, the reviewer names its single
+  implementation and confirms the contract's boundary state (unset, open,
+  empty, zero) has a test at the decision point; and for every rename, that the
+  same diff moved every usage string, help text, doc comment and inventory
+  count that names it.
 - Record every finding:
   `director finding record (--ticket <n> | --spec) --round <k> --axis
   <standards|spec> --id <id> --hash <hash> --summary <text>`.

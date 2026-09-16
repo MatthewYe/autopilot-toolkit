@@ -47,10 +47,13 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
   model, each fresh, each receiving only its own axis prompt: the smell
   baseline pasted in full, the standards sources listed, the spec content
   quoted. Never pass Worker context to a reviewer.
-- **Spawn fallback** — if a spawned agent returns without a payload or without
-  its `WORKER_REPORT:`, re-dispatch once; if that fails too, do that piece of
-  work yourself and record the fallback in the run report. Do not spend the run
-  fighting the spawn path.
+- **Spawn fallback** — deliver every dispatch as a file pointer: write the
+  brief to a file, then send "read `<path>` and execute it end to end". A
+  pointer survives a payload that arrives empty. If a spawned agent still
+  returns without a payload or without its `WORKER_REPORT:`, re-dispatch once
+  through a follow-up; if that fails too, do that piece of work yourself and
+  record the fallback in the run report. Do not spend the run fighting the
+  spawn path.
 
 ## The loop
 
@@ -86,7 +89,10 @@ frontier; v1 runs tickets serially off that frontier.
 5. `director ticket transition --ticket <n> --to gating`, then the review
    rounds:
    - `director round open --ticket <n>`;
-   - spawn the two fresh axis reviewers; record every finding with
+   - spawn the two fresh axis reviewers (the Standards axis also carries this
+     repo's two review rules: a guard names its single implementation and tests
+     the contract's boundary state at the decision point; a rename moves every
+     usage string, help text, doc comment and inventory count); record every finding with
      `director finding record --ticket <n> --round <k> --axis <standards|spec>
      --id <id> --hash <hash> --summary <text>`;
    - `director round close --ticket <n> --round <k>`;

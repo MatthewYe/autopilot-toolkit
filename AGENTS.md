@@ -73,7 +73,7 @@ crates/validation-runner/ # validation run over the Expected set + report
 crates/skill-check/    # upstream + vendor skill hash verification (scripts/check.rs)
 crates/git-utils/      # git tree hashing for skill folders
 crates/distill-cli/    # precompiled Distill CLI (offline runner)
-crates/director-cli/   # precompiled Director CLI (autopilot-director run state)
+crates/director-cli/   # precompiled Director CLI; layering mirrors distill-cli (read its state/transition first)
 validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
 docs/
