@@ -51,9 +51,11 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
   brief to a file, then send "read `<path>` and execute it end to end". A
   pointer survives a payload that arrives empty. If a spawned agent still
   returns without a payload or without its `WORKER_REPORT:`, re-dispatch once
-  through a follow-up; if that fails too, do that piece of work yourself and
-  record the fallback in the run report. Do not spend the run fighting the
-  spawn path.
+  through a follow-up; record the dead attempt first, as
+  `director dispatch finish --ticket <n> --outcome failed --reason "no payload"`
+  so the retry budget and the audit ledger show what happened. If the retry
+  fails too, do that piece of work yourself and record the fallback in the run
+  report. Do not spend the run fighting the spawn path.
 
 ## The loop
 

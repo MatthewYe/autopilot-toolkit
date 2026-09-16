@@ -37,7 +37,9 @@ The seam tells you where the change belongs in the codebase.
   create branches, do not touch another ticket's files.
 - Commit as you go with conventional messages. The Director squashes your
   work-in-progress commits into one Ticket boundary commit, so commit often and
-  keep each commit coherent.
+  keep each commit coherent. Stage explicit paths — the run worktree also holds
+  untracked run artifacts (`.scratch/` briefs, review prompts, worker reports),
+  so `git add -A` and `git add .` are forbidden.
 - Test cadence: typecheck or build after each change, run the single test file
   you touched after each change, and run the full suite once at the end. Every
   gate claim in your report must name the command you ran and its observed

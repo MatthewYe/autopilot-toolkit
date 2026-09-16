@@ -120,9 +120,10 @@ Flattened dispatch — spawn the two axis reviewers directly; do not invoke the
   rejected by you with a written reason —
   `director finding dispose ... --fixed <commit>` or
   `director finding dispose ... --rejected "<reason>"`.
-- `director gate (--ticket <n> | --spec)` must exit 0 (zero) before you
-  advance. If findings remain, transition the ticket `--to fixing`, hand the
-  findings to the same Worker, and open the next round.
+- `director gate --ticket <n>` (ticket layer) and `director gate` (spec layer —
+  the layer is the no-flag form; `gate` does not take `--spec`) must exit 0
+  (zero) before you advance. If findings remain, transition the ticket
+  `--to fixing`, hand the findings to the same Worker, and open the next round.
 
 The cap is three rounds per layer and it is enforced in code: a fourth
 `round open` refuses and moves the layer to `escalated`.
