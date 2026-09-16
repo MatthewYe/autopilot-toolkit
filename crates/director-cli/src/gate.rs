@@ -62,15 +62,20 @@ impl GateVerdict {
             })
             .count() as u64;
         let rounds_used = rounds.len() as u64;
-        let zero = rounds_used > 0 && undispositioned == 0;
+        // A round that is still `reviewing` has not run: it may be empty
+        // because its reviewers have not reported yet, so it is never
+        // evidence of zero. Only closed rounds whose findings all carry a
+        // recorded disposition count.
+        let open_round = rounds
+            .iter()
+            .find(|round| round.status == RoundStatus::Reviewing);
+        let zero =
+            rounds_used > 0 && open_round.is_none() && rounds.iter().all(ReviewRound::is_zero);
         Self {
             layer,
             rounds_used,
             round_cap,
-            open_round: rounds
-                .iter()
-                .find(|round| round.status == RoundStatus::Reviewing)
-                .map(|round| round.round),
+            open_round: open_round.map(|round| round.round),
             findings_total,
             undispositioned,
             zero,
@@ -198,10 +203,35 @@ mod tests {
             ),
         ];
         let verdict = GateVerdict::compute(GateLayer::Spec, &rounds, 3);
+        // The second round is still open: an open round has not run, so the
+        // layer is not at zero even though every recorded finding carries a
+        // disposition.
+        assert!(!verdict.zero);
+        assert_eq!(verdict.open_round, Some(2));
+
+        let mut closed = rounds.clone();
+        closed[1].status = RoundStatus::Complete;
+        let verdict = GateVerdict::compute(GateLayer::Spec, &closed, 3);
         assert!(verdict.zero);
         assert_eq!(verdict.rounds_used, 2);
-        assert_eq!(verdict.open_round, Some(2));
+        assert_eq!(verdict.open_round, None);
         assert!(!verdict.cap_exhausted);
+    }
+
+    #[test]
+    fn an_open_round_is_never_zero_even_when_empty() {
+        let rounds = vec![round(1, RoundStatus::Reviewing, Vec::new())];
+        let verdict = GateVerdict::compute(GateLayer::Ticket(200), &rounds, 3);
+        assert!(!verdict.zero, "an open round has not run yet");
+        assert_eq!(verdict.open_round, Some(1));
+        assert_eq!(verdict.undispositioned, 0);
+
+        let rounds = vec![round(1, RoundStatus::Complete, Vec::new())];
+        let verdict = GateVerdict::compute(GateLayer::Ticket(200), &rounds, 3);
+        assert!(
+            verdict.zero,
+            "a closed round with no findings did run and found nothing"
+        );
     }
 
     #[test]

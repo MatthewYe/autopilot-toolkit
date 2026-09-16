@@ -22,8 +22,10 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
 
 ## Preconditions
 
-1. `director --help` works (installed at `~/.agents/skills/.autopilot/bin/director`,
-   otherwise `cargo build --release -p director-cli`).
+1. `director --help` works. When the toolkit is installed, prefer the path in
+   `~/.agents/skills/.autopilot/director.env` (`AUTOPILOT_DIRECTOR_BIN`) and
+   fall back to the stable `~/.agents/skills/.autopilot/bin/director`; in a
+   source checkout, `cargo build --release -p director-cli`.
 2. `gh` is authenticated for the spec's repository.
 3. You are in the target worktree; never bypass the CLI's `.director/`
    git-ignore enforcement.

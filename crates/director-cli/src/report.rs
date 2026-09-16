@@ -13,6 +13,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::util::require_text;
+
 /// The marker line that introduces the envelope. The bare `WORKER_REPORT`
 /// spelling is accepted too, so a Worker that drops the colon is not failed
 /// for punctuation.
@@ -222,12 +224,6 @@ fn validate(report: &WorkerReport) -> Result<(), String> {
     Ok(())
 }
 
-fn require_text(value: &str, field: &str) -> Result<(), String> {
-    if value.trim().is_empty() {
-        return Err(format!("{field} must not be empty"));
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

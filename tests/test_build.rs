@@ -417,7 +417,7 @@ mod tests {
         __director_artifacts_platform_filter_builds_only_selected_targets();
         __release_stops_when_target_install_fails();
         __release_builds_packs_and_publishes_once_in_order();
-        __release_skip_distill_build_publishes_without_building();
+        __release_skip_cli_build_publishes_without_building();
         __pack_fails_when_distill_artifact_set_is_incomplete();
         __pack_stages_every_shipped_cli();
         __pack_fails_when_director_artifact_set_is_incomplete();
@@ -1165,7 +1165,7 @@ fi
         assert_release_builds_packs_and_publishes_once_in_order(&["release"], true);
     }
 
-    fn __release_skip_distill_build_publishes_without_building() {
+    fn __release_skip_cli_build_publishes_without_building() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = tmp.path().join("project");
         fs::create_dir_all(&root).unwrap();
@@ -1180,14 +1180,14 @@ fi
         let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
         let output = Command::new("rust-script")
             .arg(install_script())
-            .args(["release", "--skip-distill-build"])
+            .args(["release", "--skip-cli-build"])
             .env("PROJECT_ROOT", &root)
             .env("PATH", path)
             .output()
-            .expect("failed to run deploy.rs release --skip-distill-build");
+            .expect("failed to run deploy.rs release --skip-cli-build");
         assert!(
             output.status.success(),
-            "release --skip-distill-build should succeed with prestaged artifacts, stdout: {}, stderr: {}",
+            "release --skip-cli-build should succeed with prestaged artifacts, stdout: {}, stderr: {}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
@@ -1195,18 +1195,18 @@ fi
         let logged = fs::read_to_string(&log).unwrap();
         assert!(
             !logged.contains("cargo build"),
-            "release --skip-distill-build must not build distill artifacts, log:\n{}",
+            "release --skip-cli-build must not build distill artifacts, log:\n{}",
             logged
         );
         assert!(
             !logged.contains("rustup target add"),
-            "release --skip-distill-build must not install rust targets, log:\n{}",
+            "release --skip-cli-build must not install rust targets, log:\n{}",
             logged
         );
         assert_eq!(
             logged.matches("gh release create").count(),
             1,
-            "release --skip-distill-build should publish once, log:\n{}",
+            "release --skip-cli-build should publish once, log:\n{}",
             logged
         );
     }

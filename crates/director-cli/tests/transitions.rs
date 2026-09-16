@@ -292,9 +292,23 @@ fn a_finding_without_a_disposition_keeps_the_gate_open() {
             dir.path(),
             &["ticket", "transition", "--ticket", "200", "--to", "done"],
         ),
-        "not at zero",
+        "still open",
     );
     assert_eq!(state_bytes(dir.path()), before);
+
+    // With the round closed, the undispositioned finding is what holds the
+    // gate open — and the refusal says so.
+    json_success(run(
+        dir.path(),
+        &["round", "close", "--ticket", "200", "--round", "1"],
+    ));
+    assert_error_contains(
+        run(
+            dir.path(),
+            &["ticket", "transition", "--ticket", "200", "--to", "done"],
+        ),
+        "not at zero",
+    );
 
     // Rejection needs a written reason; an empty one does not count.
     assert_error_contains(
@@ -316,10 +330,6 @@ fn a_finding_without_a_disposition_keeps_the_gate_open() {
         "written reason",
     );
 
-    json_success(run(
-        dir.path(),
-        &["round", "close", "--ticket", "200", "--round", "1"],
-    ));
     json_success(run(
         dir.path(),
         &[
@@ -488,6 +498,63 @@ fn the_spec_pr_opens_only_after_every_ticket_and_the_spec_gate_are_zero() {
     json_success(run(dir.path(), &["run", "transition", "--to", "done"]));
     let state = state_for(dir.path());
     assert_eq!(state["status"], "done");
+}
+
+#[test]
+fn an_open_round_never_reads_as_zero() {
+    let dir = setup();
+    add_ticket(dir.path(), 200);
+    json_success(run(
+        dir.path(),
+        &[
+            "ticket",
+            "transition",
+            "--ticket",
+            "200",
+            "--to",
+            "implementing",
+        ],
+    ));
+    json_success(run(
+        dir.path(),
+        &["ticket", "transition", "--ticket", "200", "--to", "gating"],
+    ));
+    json_success(run(dir.path(), &["round", "open", "--ticket", "200"]));
+
+    // An open round has not run yet: an empty one is not evidence of zero.
+    let gate = run(dir.path(), &["gate", "--ticket", "200"]);
+    assert!(!gate.status.success(), "an open gate exits non-zero");
+    let verdict: Value = serde_json::from_slice(&gate.stdout).unwrap();
+    assert_eq!(verdict["verdict"]["zero"], false);
+    assert_eq!(verdict["verdict"]["open_round"], 1);
+    assert_eq!(verdict["verdict"]["undispositioned"], 0);
+
+    // …so the ticket cannot reach `done` with the round still open.
+    let before = state_bytes(dir.path());
+    assert_error_contains(
+        run(
+            dir.path(),
+            &["ticket", "transition", "--ticket", "200", "--to", "done"],
+        ),
+        "still open",
+    );
+    assert_eq!(
+        state_bytes(dir.path()),
+        before,
+        "a refused transition must not touch state"
+    );
+
+    // A closed round that found nothing is a review that ran: that is zero.
+    json_success(run(
+        dir.path(),
+        &["round", "close", "--ticket", "200", "--round", "1"],
+    ));
+    let gate = run(dir.path(), &["gate", "--ticket", "200"]);
+    assert!(gate.status.success(), "a closed empty round is zero");
+    json_success(run(
+        dir.path(),
+        &["ticket", "transition", "--ticket", "200", "--to", "done"],
+    ));
 }
 
 #[test]

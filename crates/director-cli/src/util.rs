@@ -1,5 +1,13 @@
 //! Run identity derivation.
 
+/// Refuse blank text wherever the machine promises real content.
+pub(crate) fn require_text(value: &str, field: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    Ok(())
+}
+
 /// The deterministic run id for one spec run. A worktree holds at most one
 /// Spec run (`.director/state.json`), so the id is derived from the spec issue
 /// rather than generated: a resumed session can always recompute it.

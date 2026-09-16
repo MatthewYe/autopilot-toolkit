@@ -63,4 +63,4 @@ jobs:
       - name: Pack and release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: rust-script deploy.rs release --skip-distill-build
+        run: rust-script deploy.rs release --skip-cli-build

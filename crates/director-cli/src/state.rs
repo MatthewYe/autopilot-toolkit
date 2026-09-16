@@ -5,11 +5,11 @@
 //! unknown enum values fail closed rather than round-tripping as free-form
 //! JSON, so the schema stays a typed contract instead of a bag of values.
 //!
-//! This module owns the schema and the gate arithmetic that reads it. The
-//! arithmetic (`is_recorded` / `is_zero` / `cap_exhausted`) is exercised by the
-//! unit tests here and consumed by the transition commands that follow; those
-//! call sites are still unwired, so the lint is allowed rather than dodged by
-//! deleting the seam the tests exist to pin.
+//! This module owns the schema and the per-record predicates that read it
+//! (`ReviewRound::is_zero`, `FindingDisposition::is_recorded`). The gate
+//! verdict itself — the absolute-zero rule, its round accounting and its
+//! escalation arithmetic — lives in [`crate::gate`], the single owner of that
+//! rule, so the two layers can never disagree about when a gate passes.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -269,12 +269,6 @@ pub(crate) struct TicketState {
 }
 
 impl TicketState {
-    /// The absolute-zero gate at the ticket layer: every round recorded so far
-    /// is at zero, and at least one round has run.
-    pub(crate) fn gate_is_zero(&self) -> bool {
-        !self.rounds.is_empty() && self.rounds.iter().all(ReviewRound::is_zero)
-    }
-
     /// The open review round, if a round is still collecting findings.
     pub(crate) fn open_round(&self) -> Option<&ReviewRound> {
         self.rounds
@@ -334,10 +328,6 @@ pub(crate) struct SpecGate {
 }
 
 impl SpecGate {
-    pub(crate) fn is_zero(&self) -> bool {
-        !self.rounds.is_empty() && self.rounds.iter().all(ReviewRound::is_zero)
-    }
-
     pub(crate) fn open_round(&self) -> Option<&ReviewRound> {
         self.rounds
             .iter()
@@ -593,7 +583,7 @@ mod tests {
     fn round_reaches_zero_only_when_every_finding_is_dispositioned() {
         let state = populated_state();
         assert!(!state.tickets[0].rounds[0].is_zero());
-        assert!(!state.tickets[0].gate_is_zero());
+        assert!(!crate::gate::ticket_verdict(&state.tickets[0]).zero);
     }
 
     #[test]
@@ -606,7 +596,7 @@ mod tests {
     #[test]
     fn gate_is_not_zero_before_any_round_runs() {
         let state = RunState::new("spec-128".to_string(), 128, "codex/spec-128".to_string());
-        assert!(!state.spec_gate.is_zero());
+        assert!(!crate::gate::spec_verdict(&state).zero);
     }
 
     #[test]

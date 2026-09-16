@@ -10,6 +10,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use crate::gate::{self, GateLayer};
+use crate::util::require_text;
 use crate::report;
 use crate::state::{
     self, DispatchRecord, DispatchStatus, FindingDisposition, ReviewAxis, ReviewFinding,
@@ -155,6 +156,12 @@ pub(crate) fn transition_run(
     if to == RunStatus::PrOpen || to == RunStatus::Done {
         let verdict = gate::spec_verdict(state);
         if !verdict.zero {
+            if let Some(open) = verdict.open_round {
+                return Err(format!(
+                    "cannot move the run to `{}`: spec round {open} is still open; close it first",
+                    to.as_str()
+                ));
+            }
             return Err(format!(
                 "cannot move the run to `{}`: the spec gate is not at zero ({} undispositioned finding(s) across {} round(s))",
                 to.as_str(),
@@ -203,6 +210,11 @@ pub(crate) fn transition_ticket(
         TicketStatus::Done => {
             let verdict = gate::ticket_verdict(current);
             if !verdict.zero {
+                if let Some(open) = verdict.open_round {
+                    return Err(format!(
+                        "cannot mark ticket #{ticket} `done`: round {open} is still open; close it first"
+                    ));
+                }
                 return Err(format!(
                     "cannot mark ticket #{ticket} `done`: its gate is not at zero ({} undispositioned finding(s) across {} round(s))",
                     verdict.undispositioned, verdict.rounds_used
@@ -262,6 +274,12 @@ pub(crate) fn open_round(
 ) -> Result<Value, String> {
     match layer {
         GateLayer::Ticket(ticket) => {
+            // The zero check reads the gate verdict, the single owner of the
+            // absolute-zero rule, before the ticket is borrowed mutably.
+            let already_zero = state
+                .ticket(ticket)
+                .map(|ticket_state| gate::ticket_verdict(ticket_state).zero)
+                .unwrap_or(false);
             let ticket_state = state
                 .ticket_mut(ticket)
                 .ok_or_else(|| format!("ticket #{ticket} is not registered"))?;
@@ -280,7 +298,7 @@ pub(crate) fn open_round(
                     ));
                 }
             }
-            if ticket_state.gate_is_zero() {
+            if already_zero {
                 return Err(format!(
                     "ticket #{ticket} is already at zero; transition it to `done` instead of reviewing again"
                 ));
@@ -331,7 +349,7 @@ pub(crate) fn open_round(
                     open.round
                 ));
             }
-            if state.spec_gate.is_zero() {
+            if gate::spec_verdict(state).zero {
                 return Err(
                     "the spec gate is already at zero; open the Spec PR instead of reviewing again"
                         .to_string(),
@@ -725,12 +743,6 @@ fn fail_open_dispatch(
     })
 }
 
-fn require_text(value: &str, field: &str) -> Result<(), String> {
-    if value.trim().is_empty() {
-        return Err(format!("{field} must not be empty"));
-    }
-    Ok(())
-}
 
 // ── helpers ──
 

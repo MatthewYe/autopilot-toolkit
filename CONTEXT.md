@@ -1,11 +1,11 @@
 # Autopilot Toolkit
 
-A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 40 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 7 autopilot (custom, living in `skills/autopilot/`). 35 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 5 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
+A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 41 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 8 autopilot (custom, living in `skills/autopilot/`). 35 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 6 autopilot workflow skills have per-runtime variants due to differing subagent dispatch mechanisms.
 
 ## Language
 
 **Toolkit skill**:
-One of the 40 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream), a `.vendor-lock.json` entry (vendor), or a directory under `skills/autopilot/` (autopilot).
+One of the 41 skills that autopilot-toolkit owns and installs. Always traceable to a source: either a `.skill-lock.json` entry (upstream), a `.vendor-lock.json` entry (vendor), or a directory under `skills/autopilot/` (autopilot).
 _Avoid_: project skill, owned skill
 
 **Expected set**:
@@ -37,7 +37,7 @@ A skill whose body contains only methodology instructions — no references to r
 _Avoid_: universal skill, portable skill
 
 **Runtime-coupled skill**:
-A skill whose body depends on runtime-specific mechanisms (subagent dispatch, session export, proprietary tools). The 5 autopilot workflow skills (orchestrator, implementer, reviewer, distill, audit-autopilot) are runtime-coupled.
+A skill whose body depends on runtime-specific mechanisms (subagent dispatch, session export, proprietary tools). The 6 autopilot workflow skills (orchestrator, implementer, reviewer, distill, audit-autopilot, director) are runtime-coupled.
 _Avoid_: platform-specific skill, bound skill
 
 **Skill variant**:

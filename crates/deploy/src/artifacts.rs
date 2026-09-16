@@ -135,17 +135,6 @@ pub fn select_targets(
     Ok(selected)
 }
 
-/// Check every artifact for `spec` exists under `dist/<subdir>/`.
-pub fn all_artifacts_present(project_root: &Path, spec: &CliSpec) -> bool {
-    let artifacts_root = spec.artifacts_root(project_root);
-    RELEASE_TARGETS.iter().all(|target| {
-        artifacts_root
-            .join(target.platform)
-            .join(spec.name)
-            .is_file()
-    })
-}
-
 /// Build the CLI's executables for the selected release platforms.
 pub fn artifacts_command(
     project_root: &Path,
@@ -262,30 +251,16 @@ pub fn stage_executables(
     }
 
     let artifacts_root = spec.artifacts_root(project_root);
-    if !all_artifacts_present(project_root, spec) {
-        for target in RELEASE_TARGETS {
-            let artifact = artifacts_root.join(target.platform).join(spec.name);
-            if !artifact.is_file() {
-                anyhow::bail!(
-                    "missing {} artifact for {} at {}; run `deploy.rs {}-artifacts` before `deploy.rs pack`",
-                    spec.label,
-                    target.platform,
-                    artifact.display(),
-                    spec.name
-                );
-            }
-        }
-    }
-
     let mut platforms = BTreeMap::new();
     for target in RELEASE_TARGETS {
         let src = artifacts_root.join(target.platform).join(spec.name);
         if !src.is_file() {
             anyhow::bail!(
-                "missing {} artifact for {} at {}",
+                "missing {} artifact for {} at {}; run `deploy.rs {}-artifacts` before `deploy.rs pack`",
                 spec.label,
                 target.platform,
-                src.display()
+                src.display(),
+                spec.name
             );
         }
         let rel = format!(

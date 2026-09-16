@@ -32,9 +32,11 @@ gate, absolute-zero bar, escalation).
 
 ## Preconditions
 
-1. The `director` CLI is available: `~/.agents/skills/.autopilot/bin/director`
-   when the toolkit is installed, otherwise build it with
-   `cargo build --release -p director-cli`. Verify with `director --help`.
+1. The `director` CLI is available. When the toolkit is installed, read
+   `~/.agents/skills/.autopilot/director.env` if it exists and use
+   `AUTOPILOT_DIRECTOR_BIN` as the executable path; otherwise use the stable
+   `~/.agents/skills/.autopilot/bin/director`. In a source checkout, build it
+   with `cargo build --release -p director-cli`. Verify with `director --help`.
 2. `gh` is authenticated for the repository that hosts the spec.
 3. You are in the target worktree, and `/.director/` is git-ignored (the CLI
    establishes the rule or refuses — never override it).

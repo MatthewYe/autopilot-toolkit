@@ -23,10 +23,37 @@ fn usage() -> ! {
     println!("  director-artifacts      Build Director CLI executables for release platforms");
     println!("                          [--platform <csv>] to build only the named platforms");
     println!("  release                 Pack + push to GitHub Releases");
-    println!("                          [--skip-distill-build] to reuse prebuilt dist/distill/ artifacts");
+    println!(
+        "                          [--skip-cli-build] to reuse the prebuilt dist/distill/ and"
+    );
+    println!("                          dist/director/ artifacts instead of building them");
     println!("  dev-clean               Remove all dev symlinks from agent dirs");
     println!("  link-principles <src>   Ensure ~/.agents/principles is a symlink to <src>");
     std::process::exit(1);
+}
+
+/// Split the `*-artifacts` argument tail into the platform filter and any
+/// arguments this command does not understand.
+fn parse_platform_args(positional: &[&str]) -> (Option<String>, Vec<String>) {
+    let mut platform_filter: Option<String> = None;
+    let mut extras: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < positional.len() {
+        if positional[i] == "--platform" {
+            i += 1;
+            if i >= positional.len() {
+                eprintln!("ERROR: --platform requires a comma-separated value");
+                usage();
+            }
+            platform_filter = Some(positional[i].to_string());
+        } else if let Some(value) = positional[i].strip_prefix("--platform=") {
+            platform_filter = Some(value.to_string());
+        } else {
+            extras.push(positional[i].to_string());
+        }
+        i += 1;
+    }
+    (platform_filter, extras)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -72,63 +99,24 @@ fn main() -> anyhow::Result<()> {
             }
             deploy::pack::pack_command(&project_root)?;
         }
-        "distill-artifacts" => {
-            let mut platform_filter: Option<String> = None;
-            let mut extras: Vec<&str> = Vec::new();
-            let mut i = 0;
-            while i < positional.len() {
-                if positional[i] == "--platform" {
-                    i += 1;
-                    if i >= positional.len() {
-                        eprintln!("ERROR: --platform requires a comma-separated value");
-                        usage();
-                    }
-                    platform_filter = Some(positional[i].to_string());
-                } else if let Some(value) = positional[i].strip_prefix("--platform=") {
-                    platform_filter = Some(value.to_string());
-                } else {
-                    extras.push(positional[i]);
-                }
-                i += 1;
-            }
+        "distill-artifacts" | "director-artifacts" => {
+            let cli = subcommand.trim_end_matches("-artifacts");
+            let (platform_filter, extras) = parse_platform_args(&positional);
             if !extras.is_empty() {
                 warn(&format!("ignoring extra arguments: {:?}", extras));
             }
-            deploy::distill::distill_artifacts_command(&project_root, platform_filter.as_deref())?;
-        }
-        "director-artifacts" => {
-            let mut platform_filter: Option<String> = None;
-            let mut extras: Vec<&str> = Vec::new();
-            let mut i = 0;
-            while i < positional.len() {
-                if positional[i] == "--platform" {
-                    i += 1;
-                    if i >= positional.len() {
-                        eprintln!("ERROR: --platform requires a comma-separated value");
-                        usage();
-                    }
-                    platform_filter = Some(positional[i].to_string());
-                } else if let Some(value) = positional[i].strip_prefix("--platform=") {
-                    platform_filter = Some(value.to_string());
-                } else {
-                    extras.push(positional[i]);
-                }
-                i += 1;
-            }
-            if !extras.is_empty() {
-                warn(&format!("ignoring extra arguments: {:?}", extras));
-            }
-            deploy::director::director_artifacts_command(
+            deploy::artifacts::artifacts_command(
                 &project_root,
+                deploy::artifacts::spec(cli)?,
                 platform_filter.as_deref(),
             )?;
         }
         "release" => {
-            let mut skip_distill_build = false;
+            let mut skip_cli_build = false;
             let mut extras: Vec<&str> = Vec::new();
             for arg in &positional {
-                if *arg == "--skip-distill-build" {
-                    skip_distill_build = true;
+                if *arg == "--skip-cli-build" {
+                    skip_cli_build = true;
                 } else {
                     extras.push(arg);
                 }
@@ -136,7 +124,7 @@ fn main() -> anyhow::Result<()> {
             if !extras.is_empty() {
                 warn(&format!("ignoring extra arguments: {:?}", extras));
             }
-            deploy::release::release_command(&project_root, skip_distill_build)?;
+            deploy::release::release_command(&project_root, skip_cli_build)?;
         }
         "dev" => {
             if !positional.is_empty() {
