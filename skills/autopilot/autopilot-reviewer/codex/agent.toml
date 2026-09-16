@@ -59,6 +59,8 @@ Axis 3: code quality
 - Are interfaces small, legible, and testable?
 - Did it add undeclared dependencies or unnecessary files?
 - Does it conflict with any ADR or design constraint?
+- For every guard or predicate the diff adds or changes: name its single implementation, and confirm the state the contract leans on (unset, open, empty, zero) has a test at the decision point. A guard the decision point does not consult is an unmet contract, not a style question.
+- For every renamed or reshaped interface: confirm the same diff moved every usage string, help text, doc comment and documented inventory count that names it.
 - Fowler baseline scan: check changed files against the 12 smells, noting any matches by name and hunk.
 
 Axis 4: plan fidelity

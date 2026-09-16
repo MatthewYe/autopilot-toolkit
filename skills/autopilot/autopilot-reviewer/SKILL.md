@@ -69,6 +69,11 @@ Check against project CONTEXT.md and docs/adr/:
 - [ ] Are interfaces small and testable (interface is the test surface)?
 - [ ] Were dependencies introduced that are not declared in the AGENT-BRIEF?
 - [ ] Does it conflict with existing ADRs?
+- [ ] For every guard or predicate the diff adds or changes: name its single implementation, and
+      confirm the state the contract leans on (unset, open, empty, zero) has a test at the decision
+      point. A guard the decision point does not consult is an unmet contract, not a style question.
+- [ ] For every renamed or reshaped interface: confirm the same diff moved every usage string, help
+      text, doc comment and documented inventory count that names it.
 
 #### Axis 4: Plan fidelity and cross-module consistency
 

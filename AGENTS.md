@@ -34,9 +34,12 @@ rust-script#122). After editing anything under `crates/`, run
 `bash scripts/refresh-rs-cache.sh` before the suites, or pass `-f` when running a
 script directly. `--test` runs always invoke cargo and are unaffected.
 
-Sandboxed sessions: when `rust-script` fails with `Operation not permitted`, run it via
-`bash scripts/sandboxed-rust-script.sh <same args>` — it redirects HOME/CARGO_HOME into a
-writable temp dir and runs cargo offline.
+Sandboxed sessions: run `rust-script` through `bash scripts/sandboxed-rust-script.sh` when it fails
+with `Operation not permitted` (it redirects HOME/CARGO_HOME into a writable temp dir and runs cargo
+offline); ask once for the `git` prefix before the first `.git` write, since branch, commit, merge,
+worktree and push all need it; and dispatch sub-agents by **file pointer** — write the task to a
+file, send "read `<path>` and execute it end to end", retry once through a follow-up, then do the
+work directly and record the fallback.
 
 ## Architecture
 

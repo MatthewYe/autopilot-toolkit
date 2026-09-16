@@ -13,6 +13,12 @@ Issues and PRDs for this repo live as GitHub issues on `MatthewYe/autopilot-tool
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+When `gh` is unauthenticated or its token is stale, the GitHub MCP tools
+(`mcp__github__*`) cover the same operations. For a sub-agent that only has to
+read issues, hand it a local dump of the bodies (one file, `# <n>` headers)
+instead of a live fetch: it is one read, it cannot fail on auth, and it keeps
+the fetch cost out of the sub-agent's context.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: yes.** External PRs run through the same labels and states as issues, using the `gh pr` equivalents:
