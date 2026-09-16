@@ -13,9 +13,10 @@
 //! - `check_codex_status(entries)` → `Vec<String>`
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use validation::{parse_frontmatter, validate_skill_with_variant, SkillVariant, ValidationResult};
@@ -84,6 +85,199 @@ pub struct ValidationReport {
 pub type ValidatedSkill<'a> = (&'a ValidationTarget, &'a SkillResult);
 
 // ── Validation targets: Expected-set Skill files ───────────────────────────
+
+// ── Repository checks ──────────────────────────────────────────────────────
+
+/// One assertion about the tree that the Expected set alone cannot make.
+///
+/// Skills pass or fail on their own frontmatter; these checks cover the
+/// repository around them — the documented inventory and the stray-file
+/// classes that are invisible to every per-file validator.
+pub struct RepositoryCheck {
+    pub title: String,
+    pub passed: bool,
+    pub detail: String,
+}
+
+/// Directories no repository check walks: VCS metadata, build output, the
+/// vendored trees (their own checks own them), and local agent state.
+const CHECK_SKIP_DIRS: &[&str] = &[
+    ".git",
+    ".agents",
+    ".codex",
+    "target",
+    "dist",
+    "node_modules",
+    "upstream",
+    "vendor",
+];
+
+/// Every repository-level check, in report order.
+pub fn repository_checks(
+    project_root: &Path,
+    entries: &[skill_index::ExpectedSetEntry],
+) -> Vec<RepositoryCheck> {
+    vec![
+        documented_inventory_matches(project_root, entries),
+        no_duplicate_companion_files(project_root),
+    ]
+}
+
+/// The Expected set is the single owner of the inventory (ADR 0044); the
+/// counts in the docs are its cache. This check fails the moment the cache
+/// goes stale, so a skill added or removed moves the prose in the same commit.
+fn documented_inventory_matches(
+    project_root: &Path,
+    entries: &[skill_index::ExpectedSetEntry],
+) -> RepositoryCheck {
+    // The docs count *skills*, and one skill resolves to several expected-set
+    // entries (a root file plus its runtime variants), so count names.
+    let names = |source: &str| -> HashSet<&str> {
+        entries
+            .iter()
+            .filter(|entry| entry.source == source)
+            .map(|entry| entry.name.as_str())
+            .collect()
+    };
+    let upstream = names("upstream").len();
+    let vendor = names("vendor").len();
+    let autopilot = names("autopilot").len();
+    let total = upstream + vendor + autopilot;
+    let coupled = entries
+        .iter()
+        .filter(|entry| entry.skill_type == skill_index::SkillType::Coupled)
+        .map(|entry| entry.name.as_str())
+        .collect::<HashSet<_>>()
+        .len();
+
+    let expectations = [
+        ("AGENTS.md", format!("{total} skills for Reasonix")),
+        (
+            "AGENTS.md",
+            format!("{upstream} upstream skills from mattpocock/skills"),
+        ),
+        ("AGENTS.md", format!("{vendor} vendored third-party skill")),
+        (
+            "AGENTS.md",
+            format!("plus {autopilot} autopilot workflow skills"),
+        ),
+        (
+            "AGENTS.md",
+            format!("# {autopilot} custom autopilot skills"),
+        ),
+        ("AGENTS.md", format!("(the {coupled} workflow skills)")),
+        ("README.md", format!("{total} skills for Reasonix")),
+        ("README.md", format!("{upstream} upstream skills")),
+        (
+            "README.md",
+            format!("and {autopilot} autopilot workflow skills"),
+        ),
+        ("CONTEXT.md", format!("Ships {total} skills")),
+        ("CONTEXT.md", format!("{upstream} upstream")),
+        ("CONTEXT.md", format!("{coupled} autopilot workflow skills")),
+    ];
+
+    let mut stale = Vec::new();
+    for (file, needle) in expectations {
+        // A doc that is not part of this project cannot drift; one that is
+        // present must agree with the set.
+        let Ok(text) = fs::read_to_string(project_root.join(file)) else {
+            continue;
+        };
+        if !text.contains(&needle) {
+            stale.push(format!("{file} is missing {needle:?}"));
+        }
+    }
+
+    RepositoryCheck {
+        title: format!(
+            "Documented inventory matches the Expected set ({total} skills: {upstream} upstream + {vendor} vendor + {autopilot} autopilot; {coupled} runtime-coupled)"
+        ),
+        passed: stale.is_empty(),
+        detail: stale.join("; "),
+    }
+}
+
+/// Catch the duplicate-companion class that editors and syncs leave behind:
+/// `X 2.md` next to `X.md`, and two ADRs wearing the same number. Both are
+/// invisible to per-file validation and both have bitten this repo.
+fn no_duplicate_companion_files(project_root: &Path) -> RepositoryCheck {
+    let mut offenders: Vec<String> = Vec::new();
+    let mut adr_numbers: HashMap<String, Vec<String>> = HashMap::new();
+    let mut stack: Vec<PathBuf> = vec![project_root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let Ok(read_dir) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if CHECK_SKIP_DIRS.contains(&name.as_str()) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+
+            let relative = path
+                .strip_prefix(project_root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+
+            if let Some(sibling) = duplicate_companion(&path, &name) {
+                offenders.push(format!("{relative} (companion of {sibling})"));
+            }
+
+            if relative.starts_with("docs/adr/") {
+                if let Some(number) = adr_number(&name) {
+                    adr_numbers.entry(number).or_default().push(relative);
+                }
+            }
+        }
+    }
+
+    for (number, files) in &adr_numbers {
+        if files.len() > 1 {
+            offenders.push(format!("ADR {number} is used by {}", files.join(" and ")));
+        }
+    }
+    offenders.sort();
+
+    RepositoryCheck {
+        title: "No duplicate-companion files or duplicate ADR numbers".to_string(),
+        passed: offenders.is_empty(),
+        detail: offenders.join("; "),
+    }
+}
+
+/// `X 2.md` in a directory that also holds `X.md`.
+fn duplicate_companion(path: &Path, name: &str) -> Option<String> {
+    let (stem, extension) = name.rsplit_once('.')?;
+    let (base, suffix) = stem.rsplit_once(' ')?;
+    if base.is_empty() || suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let sibling = format!("{base}.{extension}");
+    let parent = path.parent()?;
+    if parent.join(&sibling).is_file() {
+        Some(sibling)
+    } else {
+        None
+    }
+}
+
+/// `0045-name.md` → `0045`.
+fn adr_number(name: &str) -> Option<String> {
+    let (number, _) = name.split_once('-')?;
+    if number.len() == 4 && number.chars().all(|c| c.is_ascii_digit()) {
+        Some(number.to_string())
+    } else {
+        None
+    }
+}
 
 /// Build the validation targets for a project: one per Skill file the
 /// Expected-set entries own, in enumeration order.
@@ -209,6 +403,14 @@ pub fn generate_report(validated: &[ValidatedSkill], project_root: Option<&Path>
     let (upstream_total, upstream_pass, upstream_fail) = count_by_source(validated, "upstream");
     let (autopilot_total, autopilot_pass, autopilot_fail) = count_by_source(validated, "autopilot");
     let (vendor_total, vendor_pass, vendor_fail) = count_by_source(validated, "vendor");
+    let entries = entries_of(validated);
+    let repository_checks = project_root
+        .map(|root| repository_checks(root, &entries))
+        .unwrap_or_default();
+    let repository_failures = repository_checks
+        .iter()
+        .filter(|check| !check.passed)
+        .count();
 
     let mut report = String::new();
 
@@ -259,10 +461,6 @@ pub fn generate_report(validated: &[ValidatedSkill], project_root: Option<&Path>
 
     // ── Codex variant status ──
     {
-        let entries: Vec<skill_index::ExpectedSetEntry> = validated
-            .iter()
-            .map(|(target, _)| target.entry.clone())
-            .collect();
         let codex_status = check_codex_status(&entries);
         if !codex_status.is_empty() {
             wln!(report, "--- Codex Variant Status ---");
@@ -336,12 +534,32 @@ pub fn generate_report(validated: &[ValidatedSkill], project_root: Option<&Path>
     }
     wln!(report);
 
+    // Checks 3+: repository-level assertions over the Expected set and the tree
+    for check in &repository_checks {
+        wln!(report, "Check: {}", check.title);
+        if check.passed {
+            wln!(report, "Result: ✓ PASS");
+        } else {
+            wln!(report, "Result: ✗ FAIL — {}", check.detail);
+        }
+        wln!(report);
+    }
+
     // ── Overall result ──
     wln!(report, "{}", sep);
     wln!(report, "OVERALL RESULT");
     wln!(report, "{}", sep);
-    if fail_count == 0 {
+    if fail_count == 0 && repository_failures == 0 {
         wln!(report, "All skills PASS validation.");
+        if !repository_checks.is_empty() {
+            wln!(report, "All repository checks PASS.");
+        }
+    } else if fail_count == 0 {
+        wln!(
+            report,
+            "{} repository check(s) FAIL. See the GLOBAL CHECKS section above.",
+            repository_failures
+        );
     } else {
         wln!(
             report,
@@ -483,11 +701,20 @@ pub fn run_validation(project_root: &Path) -> Result<ValidationReport, anyhow::E
         .map(|(target, result)| (target, result))
         .collect();
     let report = generate_report(&pairs, Some(project_root));
-    let has_failures = validated.iter().any(|(_, result)| !result.result.passed);
+    let checks = repository_checks(project_root, &entries_of(&pairs));
+    let has_failures = validated.iter().any(|(_, result)| !result.result.passed)
+        || checks.iter().any(|check| !check.passed);
     Ok(ValidationReport {
         report,
         has_failures,
     })
+}
+
+fn entries_of(validated: &[ValidatedSkill]) -> Vec<skill_index::ExpectedSetEntry> {
+    validated
+        .iter()
+        .map(|(target, _)| target.entry.clone())
+        .collect()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -1399,5 +1626,154 @@ mod tests {
             "skills with a codex/SKILL.md must not be reported as agent definitions, got: {:?}",
             status
         );
+    }
+}
+
+// ── Repository checks: tests ───────────────────────────────────────────────
+
+#[cfg(test)]
+mod repository_check_tests {
+    use super::*;
+    use skill_index::{ExpectedSetEntry, SkillType};
+
+    fn entry(
+        name: &str,
+        source: &str,
+        skill_type: SkillType,
+        variants: &[&str],
+    ) -> ExpectedSetEntry {
+        ExpectedSetEntry {
+            name: name.to_string(),
+            source: source.to_string(),
+            skill_type,
+            variants: variants.iter().map(|variant| variant.to_string()).collect(),
+            codex_agent: false,
+            source_dir: PathBuf::from(format!("skills/{source}/{name}")),
+            skill_files: Vec::new(),
+        }
+    }
+
+    /// One upstream, one vendor, two autopilot (one coupled) — the smallest
+    /// set whose documented counts differ from each other.
+    fn sample_entries() -> Vec<ExpectedSetEntry> {
+        vec![
+            entry("upstream-skill", "upstream", SkillType::Agnostic, &[]),
+            entry("vendor-skill", "vendor", SkillType::Agnostic, &[]),
+            entry("agnostic-skill", "autopilot", SkillType::Agnostic, &[]),
+            entry("coupled-skill", "autopilot", SkillType::Coupled, &["codex"]),
+        ]
+    }
+
+    fn write_docs(root: &Path, agents_total: usize, context_total: usize) {
+        fs::write(
+            root.join("AGENTS.md"),
+            format!(
+                "{agents_total} skills for Reasonix — 1 upstream skills from mattpocock/skills, \
+                 1 vendored third-party skill, plus 2 autopilot workflow skills. \
+                 \n# 2 custom autopilot skills\n(the 1 workflow skills)\n"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            root.join("README.md"),
+            format!("{agents_total} skills for Reasonix — 1 upstream skills, and 2 autopilot workflow skills."),
+        )
+        .unwrap();
+        fs::write(
+            root.join("CONTEXT.md"),
+            format!("Ships {context_total} skills — 1 upstream, 1 vendor, plus 2 autopilot. 1 autopilot workflow skills have per-runtime variants."),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn documented_inventory_passes_when_the_docs_agree_with_the_set() {
+        let dir = tempfile::tempdir().unwrap();
+        write_docs(dir.path(), 4, 4);
+        let check = documented_inventory_matches(dir.path(), &sample_entries());
+        assert!(check.passed, "expected pass, detail: {}", check.detail);
+        assert!(check
+            .title
+            .contains("4 skills: 1 upstream + 1 vendor + 2 autopilot"));
+        assert!(check.title.contains("1 runtime-coupled"));
+    }
+
+    #[test]
+    fn documented_inventory_fails_when_a_count_goes_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        // The tree gained a skill; the docs did not move.
+        write_docs(dir.path(), 3, 3);
+        let check = documented_inventory_matches(dir.path(), &sample_entries());
+        assert!(!check.passed);
+        assert!(
+            check
+                .detail
+                .contains("AGENTS.md is missing \"4 skills for Reasonix\""),
+            "detail should name the file and the stale phrase: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn duplicate_companion_files_are_flagged_with_their_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("note.md"), "x").unwrap();
+        fs::write(dir.path().join("note 2.md"), "x").unwrap();
+        // A lone "… 2" file has no companion to shadow: not an offender.
+        fs::write(dir.path().join("lone 2.md"), "x").unwrap();
+
+        let check = no_duplicate_companion_files(dir.path());
+        assert!(!check.passed);
+        assert!(
+            check.detail.contains("note 2.md (companion of note.md)"),
+            "detail: {}",
+            check.detail
+        );
+        assert!(!check.detail.contains("lone"), "detail: {}", check.detail);
+    }
+
+    #[test]
+    fn duplicate_adr_numbers_are_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("docs/adr")).unwrap();
+        fs::write(dir.path().join("docs/adr/0045-first.md"), "x").unwrap();
+        fs::write(dir.path().join("docs/adr/0045-second.md"), "x").unwrap();
+        fs::write(dir.path().join("docs/adr/0046-next.md"), "x").unwrap();
+
+        let check = no_duplicate_companion_files(dir.path());
+        assert!(!check.passed);
+        assert!(
+            check.detail.contains("ADR 0045 is used by"),
+            "detail: {}",
+            check.detail
+        );
+        assert!(!check.detail.contains("0046"), "detail: {}", check.detail);
+    }
+
+    #[test]
+    fn a_clean_tree_passes_every_repository_check() {
+        let dir = tempfile::tempdir().unwrap();
+        write_docs(dir.path(), 4, 4);
+        fs::create_dir_all(dir.path().join("docs/adr")).unwrap();
+        fs::write(dir.path().join("docs/adr/0045-only.md"), "x").unwrap();
+
+        let checks = repository_checks(dir.path(), &sample_entries());
+        for check in &checks {
+            assert!(check.passed, "{} failed: {}", check.title, check.detail);
+        }
+    }
+
+    #[test]
+    fn vendored_and_build_directories_are_not_walked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("skills/vendor/skill")).unwrap();
+        fs::write(dir.path().join("skills/vendor/skill/note.md"), "x").unwrap();
+        fs::write(dir.path().join("skills/vendor/skill/note 2.md"), "x").unwrap();
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        fs::write(dir.path().join("target/build.md"), "x").unwrap();
+        fs::write(dir.path().join("target/build 2.md"), "x").unwrap();
+
+        let check = no_duplicate_companion_files(dir.path());
+        assert!(check.passed, "detail: {}", check.detail);
     }
 }

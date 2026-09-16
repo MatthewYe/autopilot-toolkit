@@ -228,6 +228,41 @@ pub fn project_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Serializes tests that read or pin `PROJECT_ROOT`. The variable is
+    /// process-global while tests run in parallel threads, so an unsynchronized
+    /// pin lets a sibling test observe a temp root where it expects the real
+    /// one (`project_root()` returns the pinned dir, whose `.skill-lock.json`
+    /// exists but which has no `Cargo.toml`).
+    static PROJECT_ROOT_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_project_root() -> MutexGuard<'static, ()> {
+        PROJECT_ROOT_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Pins `PROJECT_ROOT` for one test and removes it on drop, holding the
+    /// lock for as long as the pin lives.
+    struct ProjectRootEnv {
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl ProjectRootEnv {
+        fn pin(path: &std::path::Path) -> Self {
+            let _guard = lock_project_root();
+            std::env::set_var("PROJECT_ROOT", path);
+            Self { _guard }
+        }
+    }
+
+    impl Drop for ProjectRootEnv {
+        fn drop(&mut self) {
+            std::env::remove_var("PROJECT_ROOT");
+        }
+    }
+
     // ── LockedSkill / SkillLock deserialization ──────────────────────────
 
     #[test]
@@ -433,9 +468,8 @@ mod tests {
         std::fs::write(dir.path().join(".skill-lock.json"), lock_json).expect("write");
 
         // Override PROJECT_ROOT so load_skill_lock() finds our temp dir
-        std::env::set_var("PROJECT_ROOT", dir.path());
+        let _env = ProjectRootEnv::pin(dir.path());
         let result = load_skill_lock();
-        std::env::remove_var("PROJECT_ROOT");
 
         let lock = result.expect("should load");
         assert_eq!(lock.skills.len(), 1);
@@ -452,9 +486,8 @@ mod tests {
         )
         .expect("write");
 
-        std::env::set_var("PROJECT_ROOT", dir.path());
+        let _env = ProjectRootEnv::pin(dir.path());
         let result = load_skill_lock();
-        std::env::remove_var("PROJECT_ROOT");
 
         assert!(result.is_err(), "expected error for missing field");
         assert!(
@@ -503,6 +536,7 @@ mod tests {
 
     #[test]
     fn project_root_finds_real_root() {
+        let _guard = lock_project_root();
         let root = project_root();
         assert!(
             root.join(".skill-lock.json").exists(),
@@ -526,9 +560,8 @@ mod tests {
         )
         .expect("write");
 
-        std::env::set_var("PROJECT_ROOT", dir.path());
+        let _env = ProjectRootEnv::pin(dir.path());
         let root = project_root();
-        std::env::remove_var("PROJECT_ROOT");
 
         // Compare canonical forms (macOS /var vs /private/var)
         assert_eq!(
@@ -539,6 +572,7 @@ mod tests {
 
     #[test]
     fn project_root_consistency() {
+        let _guard = lock_project_root();
         // Calling twice returns the same result
         let r1 = project_root();
         let r2 = project_root();

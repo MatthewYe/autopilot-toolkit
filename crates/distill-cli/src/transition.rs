@@ -239,8 +239,8 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let worktree = temp.path();
         let limits = test_limits();
-        // Distinct run id: a sibling test exports an injected state-write
-        // failure for "run-1" in the same process.
+        // Distinct run id from every other test: the injected state-write
+        // failure a sibling exports is keyed by run id.
         let event_lines = vec![test_event_line("run-audit", &limits)];
         // Far beyond the 64 KiB run budget: `commit` would reject this in
         // its preflight, but the audit-only transitions (purge/abort/
@@ -252,9 +252,8 @@ mod tests {
             .expect("audit-only commit skips the quota preflight");
 
         assert!(worktree.join(".distill/runs/run-audit/state.json").exists());
-        let events =
-            std::fs::read_to_string(worktree.join(".distill/runs/run-audit/events.jsonl"))
-                .expect("events were appended");
+        let events = std::fs::read_to_string(worktree.join(".distill/runs/run-audit/events.jsonl"))
+            .expect("events were appended");
         assert!(events.contains("stage-waiting"));
     }
 
@@ -263,16 +262,19 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let worktree = temp.path();
         let limits = test_limits();
-        let event_lines = vec![test_event_line("run-1", &limits)];
-        let next_state = test_state("run-1", 2);
+        // A run id no other test uses: the injection below is process-global,
+        // so a shared id would fail a sibling test's state write instead of
+        // (only) this one's.
+        let event_lines = vec![test_event_line("run-inject", &limits)];
+        let next_state = test_state("run-inject", 2);
 
         // Force the state write to fail; the events appended earlier in the
         // protocol must already be on disk (the pre-existing partial-failure
         // window, preserved verbatim).
-        std::env::set_var("DISTILL_FAIL_WRITE_STATE_FOR_RUN", "run-1");
+        std::env::set_var("DISTILL_FAIL_WRITE_STATE_FOR_RUN", "run-inject");
         let result = commit(
             worktree,
-            "run-1",
+            "run-inject",
             &next_state,
             &event_lines,
             vec![],
@@ -281,9 +283,12 @@ mod tests {
         std::env::remove_var("DISTILL_FAIL_WRITE_STATE_FOR_RUN");
 
         assert!(result.is_err());
-        let events = std::fs::read_to_string(worktree.join(".distill/runs/run-1/events.jsonl"))
-            .expect("events were appended before the state write failed");
+        let events =
+            std::fs::read_to_string(worktree.join(".distill/runs/run-inject/events.jsonl"))
+                .expect("events were appended before the state write failed");
         assert!(events.contains("stage-waiting"));
-        assert!(!worktree.join(".distill/runs/run-1/state.json").exists());
+        assert!(!worktree
+            .join(".distill/runs/run-inject/state.json")
+            .exists());
     }
 }
