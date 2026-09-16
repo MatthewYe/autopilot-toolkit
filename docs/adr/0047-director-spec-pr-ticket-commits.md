@@ -22,6 +22,18 @@ single Spec PR, whose body lists all tickets with `Closes #…`. The Spec PR mus
 merged with a merge commit; squash-merge is forbidden because it would flatten the
 boundary commits.
 
+The branch may carry at most two commits that are not Ticket boundary commits, and
+both exist to keep the run honest:
+
+- one run-setup chore when the run needs a repository change to exist at all (for
+  example `chore: ignore .director/ run state`), and
+- one aggregate-gate fix commit when the spec-level Two-axis gate finds something
+  after every ticket is done — the ticket boundary commits are already frozen at
+  that point, so the fix cannot be folded into one of them.
+
+Anything else on the branch is a shape violation: a Spec PR that reads as more than
+"one commit per ticket plus these two" hides work no ticket owns.
+
 ## Alternatives considered
 
 ### A. Per-ticket PRs to main (status quo)

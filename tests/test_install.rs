@@ -36,6 +36,19 @@ fn install_script() -> PathBuf {
     project_root().join("deploy.rs")
 }
 
+fn copy_dir_all(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).unwrap();
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let target = dst.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir_all(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
 fn run_deploy(
     args: &[&str],
     home: &Path,
@@ -111,6 +124,13 @@ fn setup_mock_project(root: &Path) {
         "[agent]\nname = \"coupled-skill\"\n",
     )
     .unwrap();
+
+    // The real runtime-coupled director skill (fallback + Codex variant +
+    // shared references) so pack/router coverage is not synthetic-only.
+    copy_dir_all(
+        &project_root().join("skills/autopilot/autopilot-director"),
+        &root.join("skills/autopilot/autopilot-director"),
+    );
 
     // Create principles/
     let principles = root.join("principles");
@@ -279,6 +299,76 @@ mod tests {
         assert!(
             !skills.join("test-skill").exists(),
             "symlink should be removed"
+        );
+    }
+
+    #[test]
+    fn pack_stages_the_director_router_variant_and_contract() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let skills = home.join(".agents/skills");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project(&project);
+
+        let (out, err, code) = run_deploy(&["pack"], &home, Some(&skills), Some(&project));
+        assert_eq!(
+            code, 0,
+            "pack should exit 0, stderr: {}, stdout: {}",
+            err, out
+        );
+
+        let tarball = project.join("dist/autopilot-toolkit.tar.gz");
+        let listing = Command::new("tar")
+            .args(["-tzf", &tarball.to_string_lossy()])
+            .output()
+            .expect("tar listing should run");
+        let listing = String::from_utf8_lossy(&listing.stdout).to_string();
+
+        // One discoverable entry point: no SKILL.md anywhere under the installed
+        // skill except the router.
+        let skill_md_count = listing
+            .lines()
+            .filter(|line| line.contains("autopilot-director") && line.ends_with("SKILL.md"))
+            .count();
+        assert_eq!(
+            skill_md_count, 1,
+            "coupled director skill must expose exactly one SKILL.md, listing:\n{listing}"
+        );
+        for rel in [
+            "./skills/autopilot-director/runtime/default/INSTRUCTIONS.md",
+            "./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md",
+            "./skills/autopilot-director/runtime/default/references/worker-contract.md",
+        ] {
+            assert!(
+                listing.contains(rel),
+                "tarball should carry {rel}, listing:\n{listing}"
+            );
+        }
+
+        let read = |member: &str| {
+            let output = Command::new("tar")
+                .args(["-xzOf", &tarball.to_string_lossy(), member])
+                .output()
+                .expect("tar extraction should run");
+            assert!(output.status.success(), "tar should extract {member}");
+            String::from_utf8_lossy(&output.stdout).to_string()
+        };
+        let router = read("./skills/autopilot-director/SKILL.md");
+        assert!(
+            router.contains("Runtime routing"),
+            "router should route runtimes"
+        );
+        let codex = read("./skills/autopilot-director/runtime/codex/INSTRUCTIONS.md");
+        assert!(
+            codex.contains("director"),
+            "the Codex variant should drive the director CLI"
+        );
+        let contract =
+            read("./skills/autopilot-director/runtime/default/references/worker-contract.md");
+        assert!(
+            contract.contains("WORKER_REPORT") && contract.contains("tdd"),
+            "the worker contract should carry the envelope and the sole skill"
         );
     }
 

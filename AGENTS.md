@@ -1,6 +1,6 @@
 # autopilot-toolkit
 
-40 skills for Reasonix, Codex, and Kimi Code — 32 upstream skills from mattpocock/skills, 1 vendored third-party skill, plus 7 autopilot workflow skills (orchestrator → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
+41 skills for Reasonix, Codex, and Kimi Code — 32 upstream skills from mattpocock/skills, 1 vendored third-party skill, plus 8 autopilot workflow skills (orchestrator → director → implementer → reviewer). Runtime-agnostic skills deploy via symlinks to `~/.agents/skills/`; runtime-coupled skills ship per-runtime variant sources behind one installed router.
 
 ## Project
 
@@ -13,6 +13,7 @@ rust-script deploy.rs dev                     # Symlink all skills into agent di
 rust-script deploy.rs dev-clean               # Remove dev symlinks
 rust-script deploy.rs pack                    # Build tarball into dist/
 rust-script deploy.rs distill-artifacts       # Build Distill CLI for release platforms
+rust-script deploy.rs director-artifacts      # Build Director CLI for release platforms
 rust-script deploy.rs release                 # Pack + push to GitHub Releases
 rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
 rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot (tag/branch/commit)
@@ -20,6 +21,8 @@ rust-script scripts/check.rs                  # Verify upstream + vendor skill h
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
 cargo test                                    # unit + integration tests across the tooling crates
+cargo test -p director-cli                    # director-cli: state machine, gates, envelopes, resume
+cargo test -p distill-cli                     # distill-cli: run state, workflow boundaries, publication
 rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
@@ -49,7 +52,7 @@ skills/
 │   └── in-progress/   # allowlisted beta skills: implement-spec, loop-me, retro
 ├── vendor/            # third-party vendored skills (see .vendor-lock.json)
 │   └── show-me/       # visual explanations: diagrams, code-shape sketches, HTML artifacts
-├── autopilot/         # 7 custom autopilot skills
+├── autopilot/         # 8 custom autopilot skills
 │   ├── autopilot-orchestrator/   # scans .scratch/ + GitHub Issues for ready work
 │   │   ├── reasonix/  # per-runtime variant sources (runtime-coupled skills)
 │   │   ├── codex/
@@ -70,6 +73,7 @@ crates/validation-runner/ # validation run over the Expected set + report
 crates/skill-check/    # upstream + vendor skill hash verification (scripts/check.rs)
 crates/git-utils/      # git tree hashing for skill folders
 crates/distill-cli/    # precompiled Distill CLI (offline runner)
+crates/director-cli/   # precompiled Director CLI; layering mirrors distill-cli (read its state/transition first)
 validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
 docs/
@@ -83,7 +87,7 @@ docs/
 ## Install model
 
 - **Runtime-agnostic skills** (upstream 32 + vendor 1 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
-- **Runtime-coupled skills** (the 5 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
+- **Runtime-coupled skills** (the 6 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
 - `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
 
 ## Conventions

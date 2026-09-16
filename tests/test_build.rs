@@ -114,6 +114,17 @@ fn setup_mock_project_for_distill(root: &Path) {
     .unwrap();
     fs::write(cli.join("main.rs"), "fn main() {}\n").unwrap();
 
+    // The second shipped CLI: pack requires the complete artifact set for
+    // every CLI crate the checkout carries.
+    let director_cli = root.join("crates/director-cli/src");
+    fs::create_dir_all(&director_cli).unwrap();
+    fs::write(
+        root.join("crates/director-cli/Cargo.toml"),
+        "[package]\nname = \"director-cli\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"director\"\npath = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    fs::write(director_cli.join("main.rs"), "fn main() {}\n").unwrap();
+
     fs::create_dir_all(root.join("templates")).unwrap();
     fs::write(
         root.join("templates/install.sh.in"),
@@ -222,6 +233,13 @@ fn setup_full_pack_project(root: &Path) {
         .unwrap();
 }
 
+/// Stage complete mock artifacts for every shipped CLI, the way a release
+/// build would before `pack` runs.
+fn write_mock_cli_artifacts(root: &Path) {
+    write_mock_distill_artifacts(root);
+    write_mock_director_artifacts(root);
+}
+
 fn write_mock_distill_artifacts(root: &Path) {
     for platform in &["darwin-arm64", "linux-arm64", "linux-x64"] {
         let artifact = root
@@ -233,6 +251,23 @@ fn write_mock_distill_artifacts(root: &Path) {
         fs::write(
             &artifact,
             format!("#!/usr/bin/env bash\necho distill {}\n", platform),
+        )
+        .unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+fn write_mock_director_artifacts(root: &Path) {
+    for platform in &["darwin-arm64", "linux-arm64", "linux-x64"] {
+        let artifact = root
+            .join("dist")
+            .join("director")
+            .join(platform)
+            .join("director");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(
+            &artifact,
+            format!("#!/usr/bin/env bash\necho director {}\n", platform),
         )
         .unwrap();
         fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
@@ -263,6 +298,8 @@ done
 mkdir -p "target/${{target}}/release"
 printf '#!/usr/bin/env bash\necho distill %s\n' "${{target}}" > "target/${{target}}/release/distill"
 chmod +x "target/${{target}}/release/distill"
+printf '#!/usr/bin/env bash\necho director %s\n' "${{target}}" > "target/${{target}}/release/director"
+chmod +x "target/${{target}}/release/director"
 "#,
             log.display(),
             log.display(),
@@ -376,10 +413,14 @@ mod tests {
         __distill_artifacts_command_platform_filter_builds_only_selected_targets();
         __distill_artifacts_command_platform_equals_form_filter();
         __distill_artifacts_command_unknown_platform_fails_without_building();
+        __director_artifacts_command_builds_supported_targets();
+        __director_artifacts_platform_filter_builds_only_selected_targets();
         __release_stops_when_target_install_fails();
         __release_builds_packs_and_publishes_once_in_order();
-        __release_skip_distill_build_publishes_without_building();
+        __release_skip_cli_build_publishes_without_building();
         __pack_fails_when_distill_artifact_set_is_incomplete();
+        __pack_stages_every_shipped_cli();
+        __pack_fails_when_director_artifact_set_is_incomplete();
         __pack_fails_when_expected_skill_is_missing();
         __pack_fails_when_lock_file_is_malformed();
         __build_creates_dist_dir_if_missing();
@@ -399,7 +440,7 @@ mod tests {
 
         let tarball_name = "autopilot-toolkit.tar.gz";
         let tarball_path = dist_dir.join(tarball_name);
-        write_mock_distill_artifacts(&root);
+        write_mock_cli_artifacts(&root);
 
         // Run build
         let (out, err, code) = run_build(&["pack"], Some(&root));
@@ -445,7 +486,7 @@ mod tests {
         assert!(!git_hash.is_empty());
 
         let dist_dir = root.join("dist");
-        write_mock_distill_artifacts(&root);
+        write_mock_cli_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);
@@ -1124,12 +1165,12 @@ fi
         assert_release_builds_packs_and_publishes_once_in_order(&["release"], true);
     }
 
-    fn __release_skip_distill_build_publishes_without_building() {
+    fn __release_skip_cli_build_publishes_without_building() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = tmp.path().join("project");
         fs::create_dir_all(&root).unwrap();
         setup_mock_project_for_distill(&root);
-        write_mock_distill_artifacts(&root);
+        write_mock_cli_artifacts(&root);
         let fake_bin = tmp.path().join("bin");
         let log = tmp.path().join("release.log");
         fs::create_dir_all(&fake_bin).unwrap();
@@ -1139,14 +1180,14 @@ fi
         let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
         let output = Command::new("rust-script")
             .arg(install_script())
-            .args(["release", "--skip-distill-build"])
+            .args(["release", "--skip-cli-build"])
             .env("PROJECT_ROOT", &root)
             .env("PATH", path)
             .output()
-            .expect("failed to run deploy.rs release --skip-distill-build");
+            .expect("failed to run deploy.rs release --skip-cli-build");
         assert!(
             output.status.success(),
-            "release --skip-distill-build should succeed with prestaged artifacts, stdout: {}, stderr: {}",
+            "release --skip-cli-build should succeed with prestaged artifacts, stdout: {}, stderr: {}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
@@ -1154,18 +1195,18 @@ fi
         let logged = fs::read_to_string(&log).unwrap();
         assert!(
             !logged.contains("cargo build"),
-            "release --skip-distill-build must not build distill artifacts, log:\n{}",
+            "release --skip-cli-build must not build distill artifacts, log:\n{}",
             logged
         );
         assert!(
             !logged.contains("rustup target add"),
-            "release --skip-distill-build must not install rust targets, log:\n{}",
+            "release --skip-cli-build must not install rust targets, log:\n{}",
             logged
         );
         assert_eq!(
             logged.matches("gh release create").count(),
             1,
-            "release --skip-distill-build should publish once, log:\n{}",
+            "release --skip-cli-build should publish once, log:\n{}",
             logged
         );
     }
@@ -1309,12 +1350,180 @@ fi
         );
     }
 
+    fn __director_artifacts_command_builds_supported_targets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .arg("director-artifacts")
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .env("DIRECTOR_LINUX_ARM64_LINKER", "/toolchains/aarch64-linker")
+            .env("DIRECTOR_LINUX_X64_LINKER", "/toolchains/x86_64-linker")
+            .output()
+            .expect("failed to run deploy.rs director-artifacts");
+        assert!(
+            output.status.success(),
+            "director-artifacts should succeed, stdout: {}, stderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        for platform in &["darwin-arm64", "linux-arm64", "linux-x64"] {
+            let artifact = root
+                .join("dist")
+                .join("director")
+                .join(platform)
+                .join("director");
+            assert!(
+                artifact.is_file(),
+                "director artifact should be staged at {:?}",
+                artifact
+            );
+        }
+        let logged = fs::read_to_string(&log).unwrap();
+        assert!(
+            logged.contains("--target aarch64-unknown-linux-musl"),
+            "director-artifacts should build the linux arm64 target, log:\n{}",
+            logged
+        );
+        // The per-CLI linker overrides are separate: a director build must not
+        // silently read the Distill ones.
+        assert!(logged.contains("arm64_linker=/toolchains/aarch64-linker"));
+    }
+
+    fn __director_artifacts_platform_filter_builds_only_selected_targets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("project");
+        fs::create_dir_all(&root).unwrap();
+        setup_mock_project_for_distill(&root);
+        let fake_bin = tmp.path().join("bin");
+        let log = tmp.path().join("cargo.log");
+        fs::create_dir_all(&fake_bin).unwrap();
+        write_fake_cargo(&fake_bin, &log);
+
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+        let output = Command::new("rust-script")
+            .arg(install_script())
+            .args(["director-artifacts", "--platform", "linux-x64"])
+            .env("PROJECT_ROOT", &root)
+            .env("PATH", path)
+            .output()
+            .expect("failed to run deploy.rs director-artifacts --platform");
+        assert!(
+            output.status.success(),
+            "filtered director-artifacts should succeed, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let logged = fs::read_to_string(&log).unwrap();
+        assert!(
+            logged.contains("--target x86_64-unknown-linux-musl"),
+            "selected target should build, log:\n{}",
+            logged
+        );
+        assert!(
+            !logged.contains("--target aarch64-apple-darwin"),
+            "unselected targets should not build, log:\n{}",
+            logged
+        );
+    }
+
+    fn __pack_stages_every_shipped_cli() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+        write_mock_cli_artifacts(&project);
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_eq!(
+            code, 0,
+            "pack should succeed with both CLIs staged, stdout: {}, stderr: {}",
+            out, err
+        );
+
+        let tarball = project.join("dist/autopilot-toolkit.tar.gz");
+        assert!(tarball.is_file(), "pack should produce a tarball");
+        let listing = Command::new("tar")
+            .args(["-tzf", &tarball.to_string_lossy()])
+            .output()
+            .expect("tar listing should run");
+        let listing = String::from_utf8_lossy(&listing.stdout).to_string();
+        for rel in [
+            "./.autopilot/bin/distill-artifacts/darwin-arm64/distill",
+            "./.autopilot/bin/director-artifacts/darwin-arm64/director",
+            "./.autopilot/bin/director-artifacts/linux-x64/director",
+        ] {
+            assert!(
+                listing.contains(rel),
+                "tarball should carry {rel}, listing:\n{}",
+                listing
+            );
+        }
+
+        let manifest = Command::new("tar")
+            .args([
+                "-xzOf",
+                &tarball.to_string_lossy(),
+                "./.autopilot/manifest.json",
+            ])
+            .output()
+            .expect("manifest should be readable from the tarball");
+        assert!(
+            manifest.status.success(),
+            "tarball should carry .autopilot/manifest.json"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&manifest.stdout).expect("manifest should be JSON");
+        assert!(manifest["executables"]["distill"]["platforms"].is_object());
+        assert!(manifest["executables"]["director"]["platforms"].is_object());
+    }
+
+    fn __pack_fails_when_director_artifact_set_is_incomplete() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        setup_mock_project_for_distill(&project);
+        write_mock_distill_artifacts(&project);
+
+        // Distill is complete; the Director CLI has only one platform.
+        let artifact = project.join("dist/director/darwin-arm64/director");
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, "#!/usr/bin/env bash\necho darwin-arm64\n").unwrap();
+        fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let (out, err, code) = run_build(&["pack"], Some(&project));
+        assert_ne!(
+            code, 0,
+            "pack should fail when the Director artifact set is incomplete, stdout: {}, stderr: {}",
+            out, err
+        );
+        assert!(
+            err.contains("missing Director CLI artifact"),
+            "pack should report the missing Director artifact, stderr: {}",
+            err
+        );
+        assert!(
+            !project.join("dist/autopilot-toolkit.tar.gz").exists(),
+            "pack must not produce a tarball when a CLI artifact set is incomplete"
+        );
+    }
+
     fn __build_creates_dist_dir_if_missing() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = tmp.path().join("project");
         setup_full_pack_project(&root);
         let dist_dir = root.join("dist");
-        write_mock_distill_artifacts(&root);
+        write_mock_cli_artifacts(&root);
 
         let (out, err, code) = run_build(&["pack"], Some(&root));
         eprintln!("DEBUG2 pack exit code: {}", code);
@@ -1472,7 +1681,7 @@ fi
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).unwrap();
         setup_mock_project_for_distill(&project);
-        write_mock_distill_artifacts(&project);
+        write_mock_cli_artifacts(&project);
 
         // A lock entry whose directory does not exist must fail the pack.
         // Deliberate change: pack no longer warns and skips the entry.
@@ -1514,7 +1723,7 @@ fi
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).unwrap();
         setup_mock_project_for_distill(&project);
-        write_mock_distill_artifacts(&project);
+        write_mock_cli_artifacts(&project);
 
         fs::write(project.join(".skill-lock.json"), "{ not valid json").unwrap();
 

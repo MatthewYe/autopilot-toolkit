@@ -4,15 +4,16 @@
 
 use std::path::Path;
 
-use super::distill::distill_artifacts_command;
+use super::artifacts::build_shipped_clis;
 use super::pack::{get_repo_slug, get_version, pack_command};
 
 /// Pack + push to GitHub Releases.
 ///
-/// When `skip_distill_build` is true, the Distill CLI build is skipped and the
-/// prebuilt artifacts under `dist/distill/` are used as-is (CI matrix builds
-/// stage them per platform beforehand); `pack` fails if any are missing.
-pub fn release_command(project_root: &Path, skip_distill_build: bool) -> Result<(), anyhow::Error> {
+/// When `skip_cli_build` is true, every shipped CLI build is skipped and the
+/// prebuilt artifacts under `dist/distill/` and `dist/director/` are used
+/// as-is (the CI matrix stages them per platform beforehand); `pack` fails if
+/// any are missing.
+pub fn release_command(project_root: &Path, skip_cli_build: bool) -> Result<(), anyhow::Error> {
     // Check gh is available
     if !std::process::Command::new("gh")
         .arg("--version")
@@ -42,10 +43,12 @@ pub fn release_command(project_root: &Path, skip_distill_build: bool) -> Result<
     }
 
     println!("==> Releasing {} to {}", tag, repo_slug);
-    if skip_distill_build {
-        println!("==> Skipping distill build — using prebuilt artifacts in dist/distill/");
+    if skip_cli_build {
+        println!(
+            "==> Skipping the CLI artifact build — using the prebuilt artifacts in dist/distill/ and dist/director/"
+        );
     } else {
-        distill_artifacts_command(project_root, None)?;
+        build_shipped_clis(project_root)?;
     }
     pack_command(project_root)?;
 

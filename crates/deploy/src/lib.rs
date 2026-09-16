@@ -12,7 +12,9 @@
 //! - `pack::get_version(project_root)`, `pack::get_repo_slug(project_root)` — git helpers
 //! - `release::release_command(project_root)` — pack + push to GitHub Releases
 
+pub mod artifacts;
 pub mod dev;
+pub mod director;
 pub mod distill;
 pub mod pack;
 pub mod release;
