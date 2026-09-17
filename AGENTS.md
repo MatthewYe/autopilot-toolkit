@@ -64,6 +64,7 @@ skills/
 │   ├── autopilot-implementer/    # TDD-driven implementation agent (same variant layout)
 │   ├── autopilot-reviewer/       # five-axis review (behavior, TDD, code, plan, upstream code-review)
 │   ├── autopilot-distill/        # Distill requirement-to-issues workflow
+│   ├── autopilot-director/       # spec-level loop: Director + fast-model Workers, director-cli owns state
 │   ├── audit-autopilot/          # post-hoc fidelity audit of agent execution
 │   ├── toolkit-setup/            # install/update orchestration (agnostic)
 │   └── zoom-out/                 # higher-level perspective (agnostic)
