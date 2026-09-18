@@ -35,6 +35,11 @@ pub enum SyncKind {
     Dir,
     /// Source must be a file; error if missing.
     File,
+    /// Source must be a file; materialise it at `dst` as a regular file.
+    ///
+    /// Codex refuses to read agent configs through a symlink at the final
+    /// path component, so agent definitions cannot be linked in dev installs.
+    CopyFile,
 }
 
 /// Create a symlink at `dst` pointing to `src`.
@@ -56,7 +61,7 @@ pub fn sync_path(src: &Path, dst: &Path, kind: SyncKind) -> Result<(), anyhow::E
                 return Ok(());
             }
         }
-        SyncKind::File => {
+        SyncKind::File | SyncKind::CopyFile => {
             if !src.is_file() {
                 anyhow::bail!("source file does not exist: {}", src.display());
             }
@@ -69,22 +74,37 @@ pub fn sync_path(src: &Path, dst: &Path, kind: SyncKind) -> Result<(), anyhow::E
             .with_context(|| format!("cannot create directory {}", parent.display()))?;
     }
 
+    // Copy-real-file sync: the target is installer-owned, so an existing
+    // regular file is overwritten when it differs from the source.
+    if kind == SyncKind::CopyFile {
+        if dst.exists() && !dst.is_symlink() && !dst.is_file() {
+            anyhow::bail!("real directory conflict at {}", dst.display());
+        }
+        if dst.is_symlink() {
+            std::fs::remove_file(dst)
+                .with_context(|| format!("cannot remove symlink {}", dst.display()))?;
+        }
+        let identical = dst.is_file() && std::fs::read(dst).ok() == std::fs::read(src).ok();
+        if !identical {
+            std::fs::copy(src, dst)
+                .with_context(|| format!("cannot copy {} -> {}", src.display(), dst.display()))?;
+        }
+        return Ok(());
+    }
+
     // If dst exists as a real file/directory (not a symlink), refuse to overwrite
     if dst.exists() && !dst.is_symlink() {
         let kind_str = match kind {
             SyncKind::Dir => "directory",
             SyncKind::File => "file",
+            SyncKind::CopyFile => "file",
         };
         warn(&format!(
             "{} exists as a real {} (not a symlink) — refusing to overwrite",
             dst.display(),
             kind_str
         ));
-        anyhow::bail!(
-            "real {} conflict at {}",
-            kind_str,
-            dst.display()
-        );
+        anyhow::bail!("real {} conflict at {}", kind_str, dst.display());
     }
 
     // If dst is a symlink, inspect its current state
@@ -96,7 +116,7 @@ pub fn sync_path(src: &Path, dst: &Path, kind: SyncKind) -> Result<(), anyhow::E
         let matches = existing == src
             && match kind {
                 SyncKind::Dir => src.is_dir(),
-                SyncKind::File => src.is_file(),
+                SyncKind::File | SyncKind::CopyFile => src.is_file(),
             };
         if matches {
             return Ok(());
@@ -365,8 +385,11 @@ mod tests {
         sync_path(&src, &dst, SyncKind::Dir).unwrap();
 
         let meta_after = std::fs::symlink_metadata(&dst).unwrap();
-        assert_eq!(meta_before.modified().unwrap(), meta_after.modified().unwrap(),
-            "valid symlink should not be touched");
+        assert_eq!(
+            meta_before.modified().unwrap(),
+            meta_after.modified().unwrap(),
+            "valid symlink should not be touched"
+        );
         assert_eq!(std::fs::read_link(&dst).unwrap(), src);
     }
 
@@ -417,7 +440,10 @@ mod tests {
 
         let result = sync_path(&src, &dst, SyncKind::Dir);
         assert!(result.is_err(), "should refuse to overwrite real directory");
-        assert!(dst.is_dir() && !dst.is_symlink(), "real dir should remain untouched");
+        assert!(
+            dst.is_dir() && !dst.is_symlink(),
+            "real dir should remain untouched"
+        );
     }
 
     #[test]
@@ -430,7 +456,10 @@ mod tests {
 
         let result = sync_path(&src, &dst, SyncKind::File);
         assert!(result.is_err(), "should refuse to overwrite real file");
-        assert!(dst.is_file() && !dst.is_symlink(), "real file should remain untouched");
+        assert!(
+            dst.is_file() && !dst.is_symlink(),
+            "real file should remain untouched"
+        );
     }
 
     // ── Parent directory creation ──────────────────────────────────────
@@ -486,31 +515,49 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let src = tmp.path().join("myskill");
         std::fs::create_dir_all(src.join("reasonix")).unwrap();
-        std::fs::write(src.join("SKILL.md"), "---\nname: myskill\ndescription: test\n---\nfallback\n").unwrap();
-        std::fs::write(src.join("reasonix").join("SKILL.md"), "---\nname: myskill\ndescription: reasonix\n---\nreasonix body\n").unwrap();
+        std::fs::write(
+            src.join("SKILL.md"),
+            "---\nname: myskill\ndescription: test\n---\nfallback\n",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("reasonix").join("SKILL.md"),
+            "---\nname: myskill\ndescription: reasonix\n---\nreasonix body\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(src.join("codex")).unwrap();
-        std::fs::write(src.join("codex").join("SKILL.md"), "---\nname: myskill\ndescription: codex\n---\ncodex body\n").unwrap();
+        std::fs::write(
+            src.join("codex").join("SKILL.md"),
+            "---\nname: myskill\ndescription: codex\n---\ncodex body\n",
+        )
+        .unwrap();
 
         let dst = tmp.path().join("staged");
         stage_coupled_skill(&src, &dst).unwrap();
 
         // Router SKILL.md at root
         let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
-        assert!(router.starts_with("---\n"), "router must start with YAML frontmatter delimiter");
+        assert!(
+            router.starts_with("---\n"),
+            "router must start with YAML frontmatter delimiter"
+        );
         assert!(router.contains("name: myskill"));
-        assert!(router.contains("\n---\n"), "router must have closing frontmatter delimiter");
+        assert!(
+            router.contains("\n---\n"),
+            "router must have closing frontmatter delimiter"
+        );
         assert!(router.contains("Runtime routing"));
 
         // runtime/reasonix/INSTRUCTIONS.md
-        let reasonix_instructions = std::fs::read_to_string(
-            dst.join("runtime").join("reasonix").join("INSTRUCTIONS.md"),
-        ).unwrap();
+        let reasonix_instructions =
+            std::fs::read_to_string(dst.join("runtime").join("reasonix").join("INSTRUCTIONS.md"))
+                .unwrap();
         assert!(reasonix_instructions.contains("reasonix body"));
 
         // runtime/default/INSTRUCTIONS.md (from top-level non-variant files)
-        let default_instructions = std::fs::read_to_string(
-            dst.join("runtime").join("default").join("INSTRUCTIONS.md"),
-        ).unwrap();
+        let default_instructions =
+            std::fs::read_to_string(dst.join("runtime").join("default").join("INSTRUCTIONS.md"))
+                .unwrap();
         assert!(default_instructions.contains("fallback"));
     }
 
@@ -519,15 +566,19 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let src = tmp.path().join("myskill");
         std::fs::create_dir_all(src.join("reasonix")).unwrap();
-        std::fs::write(src.join("reasonix").join("SKILL.md"), "---\nname: myskill\n---\nbody\n").unwrap();
+        std::fs::write(
+            src.join("reasonix").join("SKILL.md"),
+            "---\nname: myskill\n---\nbody\n",
+        )
+        .unwrap();
 
         let dst = tmp.path().join("staged");
         stage_coupled_skill(&src, &dst).unwrap();
 
         // fallback to reasonix variant
-        let default_instructions = std::fs::read_to_string(
-            dst.join("runtime").join("default").join("INSTRUCTIONS.md"),
-        ).unwrap();
+        let default_instructions =
+            std::fs::read_to_string(dst.join("runtime").join("default").join("INSTRUCTIONS.md"))
+                .unwrap();
         assert!(default_instructions.contains("body"));
     }
 }

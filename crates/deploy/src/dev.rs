@@ -100,23 +100,56 @@ pub fn dev_clean(
     }
 
     if codex_agents_dir.is_dir() {
+        // Agent definitions are copied (not linked) because Codex refuses to
+        // read them through a symlink; identify our copies by content.
+        let project_agents = project_agent_contents(project_root)?;
         for entry in std::fs::read_dir(codex_agents_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if !path.is_symlink() {
+            if path.is_symlink() {
+                if let Ok(target) = std::fs::read_link(&path) {
+                    if target.starts_with(project_root) {
+                        std::fs::remove_file(&path)?;
+                        removed += 1;
+                    }
+                }
                 continue;
             }
-            if let Ok(target) = std::fs::read_link(&path) {
-                if target.starts_with(project_root) {
-                    std::fs::remove_file(&path)?;
-                    removed += 1;
+            if path.is_file() {
+                if let Ok(content) = std::fs::read(&path) {
+                    if project_agents.contains(&content) {
+                        std::fs::remove_file(&path)?;
+                        removed += 1;
+                    }
                 }
             }
         }
     }
 
-    println!("==> Done: {} symlinks removed.", removed);
+    println!("==> Done: {} entries removed.", removed);
     Ok(())
+}
+
+/// Contents of every `<skill>/codex/agent.toml` source in the project tree.
+fn project_agent_contents(project_root: &Path) -> Result<Vec<Vec<u8>>, anyhow::Error> {
+    let skills_root = project_root.join("skills");
+    let mut contents = Vec::new();
+    if !skills_root.is_dir() {
+        return Ok(contents);
+    }
+    let mut pending = vec![skills_root];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                pending.push(path);
+            } else if path.ends_with("codex/agent.toml") {
+                contents.push(std::fs::read(&path)?);
+            }
+        }
+    }
+    Ok(contents)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -125,7 +158,8 @@ pub fn dev_clean(
 ///
 /// Runtime-coupled skills are staged into the router layout first; agnostic
 /// and upstream skills are symlinked directly from the source tree. Returns 1
-/// when the entry also ships a Codex `agent.toml` (linked here), 0 otherwise.
+/// when the entry also ships a Codex `agent.toml` (copied here — Codex refuses
+/// to read agent configs through a symlink), 0 otherwise.
 fn sync_expected_entry(
     entry: &skill_index::ExpectedSetEntry,
     project_root: &Path,
@@ -151,7 +185,7 @@ fn sync_expected_entry(
             sync_path(
                 &agent_src,
                 &codex_agents_dir.join(format!("{}.toml", name)),
-                SyncKind::File,
+                SyncKind::CopyFile,
             )?;
             extra += 1;
         }
@@ -313,12 +347,13 @@ mod tests {
         assert!(!dirs.reasonix.join("beta").exists());
         assert!(!dirs.codex.join("beta").exists());
 
-        // Codex agent linked from the source tree.
+        // Codex agent copied from the source tree (Codex refuses symlinked
+        // agent configs, so dev installs materialise a regular file).
         let agent = dirs.codex_agents.join("beta.toml");
-        assert!(agent.is_symlink());
+        assert!(!agent.is_symlink());
         assert_eq!(
-            std::fs::read_link(&agent).unwrap(),
-            root.join("skills/autopilot/beta/codex/agent.toml")
+            std::fs::read_to_string(&agent).unwrap(),
+            "[agent]\nname = \"beta\"\n"
         );
 
         // Resolved vendor and upstream skills are linked.
