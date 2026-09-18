@@ -33,10 +33,10 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
 ## Sub-agent dispatch model (Codex)
 
 - **Worker** — spawn with an explicit model override:
-  `spawn_agent(agent_type: "worker", model: "<worker model>", fork_context: false, message: <dispatch>)`.
-  The model pin is per dispatch and never committed. `fork_context: false`
-  (MultiAgentV2's equivalent is `fork_turns: "none"`; v2 rejects `fork_context`)
-  is required: a full-history spawn inherits the lead model and cannot be pinned.
+  `spawn_agent(agent_type: "worker", model: "<worker model>", fork_turns: "none", message: <dispatch>)`.
+  The model pin is per dispatch and never committed. `fork_turns: "none"` (or a
+  positive count; MultiAgentV1's equivalent is `fork_context: false`) is
+  required: a full-history spawn inherits the lead model and cannot be pinned.
 - The Worker's dispatch message carries the ticket issue reference, the
   worktree, the branch, the ticket's `Seam:` annotation (or your
   `Seam(inferred)`), the instruction to read
