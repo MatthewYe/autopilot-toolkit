@@ -33,10 +33,10 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
 ## Sub-agent dispatch model (Codex)
 
 - **Worker** — spawn with an explicit model override:
-  `spawn_agent(agent_type: "worker", model: "<worker model>", fork_turns: "none", message: <dispatch>)`.
-  The model pin is per dispatch and never committed. `fork_turns: "none"` (or a
-  positive count) is required: a full-history spawn inherits the lead model and
-  cannot be pinned.
+  `spawn_agent(agent_type: "worker", model: "<worker model>", fork_context: false, message: <dispatch>)`.
+  The model pin is per dispatch and never committed. `fork_context: false`
+  (MultiAgentV2's equivalent is `fork_turns: "none"`; v2 rejects `fork_context`)
+  is required: a full-history spawn inherits the lead model and cannot be pinned.
 - The Worker's dispatch message carries the ticket issue reference, the
   worktree, the branch, the ticket's `Seam:` annotation (or your
   `Seam(inferred)`), the instruction to read
@@ -51,7 +51,8 @@ ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
   brief to a file, then send "read `<path>` and execute it end to end". A
   pointer survives a payload that arrives empty. If a spawned agent still
   returns without a payload or without its `WORKER_REPORT:`, re-dispatch once
-  through a follow-up; record the dead attempt first, as
+  through a follow-up (`send_input` on MultiAgentV1; `followup_task` on v2);
+  record the dead attempt first, as
   `director dispatch finish --ticket <n> --outcome failed --reason "no payload"`
   so the retry budget and the audit ledger show what happened. If the retry
   fails too, do that piece of work yourself and record the fallback in the run
