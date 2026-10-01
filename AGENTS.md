@@ -84,10 +84,10 @@ validation/run.rs      # validation runner — discovers all variant sources
 tests/                 # rust-script integration tests
 docs/
 ├── agents/            # issue-tracker, triage-labels, domain config
-├── issues/            # local issue docs
-├── prd/               # PRD-0001..0003
+├── issues/            # design + ADR-linked ticket notes (not the tracker)
+├── prd/               # PRD-0001..0004
 └── reports/           # smoke-test results
-.scratch/              # local-markdown issue tracker (legacy)
+.scratch/              # untracked agent working space (briefs, logs, suggestions)
 ```
 
 ## Install model
@@ -102,13 +102,18 @@ docs/
 - **SKILL.md frontmatter** — every skill opens with `---`-delimited YAML that must parse under a **strict** YAML parser (quote values containing `: `). Required: `name` (strict kebab-case `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 1-64 chars — DSH ignores any skill whose name does not match), `description`. Reasonix variants may add `runAs` (`inline`|`subagent`) + `allowed-tools` (required when `runAs: subagent`); kimi variants carry only `name` + `description`; dsh variants allow exactly `name`, `description`, `whenToUse`, `disable-model-invocation`, `user-invocable` and must not carry `runAs`/`allowed-tools` (DSH silently ignores them). The legacy camelCase keys `disableModelInvocation`/`modelInvocable` are rejected in every variant (DSH drops the whole skill): use `disable-model-invocation` (or `user-invocable`) instead.
 - **Rust scripts** — `rust-script` with a `//! ```cargo` dependency header. Section dividers: `# ── name ──`.
 - **Tests** — `#[test]` fns run via `rust-script --test`; integration tests drive `install.rs` through `std::process::Command` with temp-dir env overrides (`AGENTS_SKILLS_DIR` etc.).
-- **Issue tracking** — local markdown tracker in `docs/issues/` + PRDs in `docs/prd/` (GitHub Issues configured; `gh` CLI available on this machine).
+- **Issue tracking** — GitHub Issues on `MatthewYe/autopilot-toolkit` is the tracker of record; do all issue and PRD work through the `gh` CLI, following `docs/agents/issue-tracker.md`. `docs/issues/` + `docs/prd/` hold reference docs only, and `.scratch/` is untracked agent working space — neither is an issue surface.
 
 ## Agent skills
 
 ### Issue tracker
 
-Local tracker: `docs/issues/` (numbered, `Parent` → PRD in `docs/prd/`). GitHub Issues on `MatthewYe/autopilot-toolkit` is the configured remote tracker (see `docs/agents/issue-tracker.md`), used when `gh` is available.
+**GitHub Issues on `MatthewYe/autopilot-toolkit`** is the tracker of record: create, read, label, comment, and close through the `gh` CLI, with `docs/agents/issue-tracker.md` as the single source of truth. The upstream skills (`to-tickets`, `to-spec`, `triage`, `code-review`) resolve the tracker from that file at run time, so it never needs mirroring by hand.
+
+Markdown in this repo is **not** the tracker:
+
+- `docs/issues/NN-*.md` + `docs/prd/*.md` — checked-in design and ADR-linked ticket notes (`Parent:` → PRD). Reference material: cite them from an issue, never file or close work in them.
+- `.scratch/` — gitignored agent working space (per-issue `AGENT-BRIEF.md`, PR bodies, run logs, `suggestions.json`). The Distill local-markdown layout (`.scratch/<feature>/issues/<NN>-<slug>.md`) is only a publish target for runs explicitly pointed at local markdown; a default Distill run publishes to GitHub.
 
 ### Triage labels
 
