@@ -15,6 +15,9 @@ logic manually.
 - A runtime-coupled skill has one installed `SKILL.md` router.
 - Runtime bodies live at `runtime/<runtime>/INSTRUCTIONS.md` and are not
   independently discoverable.
+- Every runtime-coupled skill ships a DSH body at
+  `runtime/dsh/INSTRUCTIONS.md`; DSH resolves it ahead of
+  `runtime/default/INSTRUCTIONS.md`.
 - Do not create coupled-skill links in `~/.codex/skills/` or
   `~/.reasonix/skills/`.
 - Codex custom agents remain links in `${CODEX_AGENTS_DIR:-$HOME/.codex/agents}`.
@@ -66,6 +69,13 @@ logic manually.
    - `runtime/default/INSTRUCTIONS.md` exists;
    - each enumerated variant skill file has a corresponding installed
      `runtime/<variant>/INSTRUCTIONS.md`;
+   - `runtime/dsh/INSTRUCTIONS.md` exists — DSH is a supported runtime for
+     every runtime-coupled skill, so a missing DSH body is a failure, not a
+     fallback to `runtime/default/`;
+   - the installed `SKILL.md` router names `dsh` among the runtimes it routes
+     (`dsh` may appear in any form, for example a backticked list or prose);
+     a router staged by an older deploy predates the DSH variant and must be
+     re-staged;
    - no same-name entry exists in the Codex or Reasonix exclusive skill
      directory.
 8. For every enumerated agent definition, verify the corresponding
@@ -97,6 +107,7 @@ Expected: <count>
 Actions: <dev/link-principles actions>
 Glossary: MIGRATED|UNCHANGED|ABSENT|CONFLICT
 Routers: <count passed>, <count failed>
+Dsh variants: <count passed>, <count failed>
 Codex agents: <count passed>, <count failed>
 Principles: PASS|FAIL
 Warnings: <paths or none>

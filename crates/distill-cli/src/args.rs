@@ -4,7 +4,7 @@ use crate::util::{parse_revision, require_non_empty, require_run_id};
 
 // Mirrors `skill_index::RUNTIME_VARIANTS` — the accepted `--runtime` values.
 // Kept local so the shipped CLI takes no skill-index dependency.
-pub(crate) const SUPPORTED_RUNTIMES: [&str; 3] = ["codex", "kimi", "reasonix"];
+pub(crate) const SUPPORTED_RUNTIMES: [&str; 4] = ["codex", "kimi", "reasonix", "dsh"];
 
 pub(crate) struct StartArgs {
     pub(crate) runtime: String,
@@ -468,6 +468,19 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_start_args_dsh_runtime() {
+        let args = vec![
+            "--runtime", "dsh",
+            "--session-id", "s1",
+            "--worktree", "/tmp/ws",
+            "--requirement", "req",
+        ].into_iter().map(|s| s.to_string()).collect();
+        let result = parse_start_args(args).unwrap();
+        assert_eq!(result.runtime, "dsh");
+        assert_eq!(result.session_id, "s1");
+    }
+
+    #[test]
     fn test_parse_start_args_missing_runtime() {
         let args = vec![
             "--session-id", "s1",
@@ -775,6 +788,14 @@ mod tests {
     }
 
     #[test]
+    fn test_require_supported_runtime_dsh() {
+        assert_eq!(
+            require_supported_runtime(Some("dsh".to_string())).unwrap(),
+            "dsh"
+        );
+    }
+
+    #[test]
     fn test_require_supported_runtime_none() {
         let result = require_supported_runtime(None);
         assert!(result.is_err());
@@ -786,5 +807,16 @@ mod tests {
         let result = require_supported_runtime(Some("gpt".to_string()));
         assert!(result.is_err());
         assert!(result.err().unwrap().contains("runtime must be one of"));
+    }
+
+    #[test]
+    fn test_unsupported_runtime_error_lists_every_supported_runtime() {
+        let err = require_supported_runtime(Some("gpt".to_string())).unwrap_err();
+        for runtime in SUPPORTED_RUNTIMES {
+            assert!(
+                err.contains(runtime),
+                "error must advertise {runtime:?}, got: {err}"
+            );
+        }
     }
 }

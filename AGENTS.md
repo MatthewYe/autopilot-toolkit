@@ -93,10 +93,11 @@ docs/
 - **Runtime-agnostic skills** (upstream 32 + vendor 1 + toolkit-setup + zoom-out) → `~/.agents/skills/` via `--shared`.
 - **Runtime-coupled skills** (the 6 workflow skills) retain variant sources per runtime, but pack/dev install one router at `~/.agents/skills/<name>/SKILL.md`. Variant bodies are renamed to `runtime/<runtime>/INSTRUCTIONS.md` so recursive discovery yields one logical skill. Codex `agent.toml` files are still linked into `~/.codex/agents/`.
 - `toolkit-setup` orchestrates discovery, diagnosis, minimal sync/unlink, and verification per `--target`.
+- **DSH (DeepSeek Harness)** discovers the same `~/.agents/skills/` install; routers resolve `runtime/dsh/INSTRUCTIONS.md` when present, else `runtime/default/`. See `docs/agents/runtimes/dsh.md`.
 
 ## Conventions
 
-- **SKILL.md frontmatter** — every skill opens with `---`-delimited YAML that must parse under a **strict** YAML parser (quote values containing `: `). Required: `name` (alphanumeric, 1-64 chars, hyphens/underscores/dots ok), `description`. Reasonix variants may add `runAs` (`inline`|`subagent`) + `allowed-tools` (required when `runAs: subagent`); kimi variants carry only `name` + `description`.
+- **SKILL.md frontmatter** — every skill opens with `---`-delimited YAML that must parse under a **strict** YAML parser (quote values containing `: `). Required: `name` (strict kebab-case `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 1-64 chars — DSH ignores any skill whose name does not match), `description`. Reasonix variants may add `runAs` (`inline`|`subagent`) + `allowed-tools` (required when `runAs: subagent`); kimi variants carry only `name` + `description`; dsh variants allow exactly `name`, `description`, `whenToUse`, `disable-model-invocation`, `user-invocable` and must not carry `runAs`/`allowed-tools` (DSH silently ignores them). The legacy camelCase keys `disableModelInvocation`/`modelInvocable` are rejected in every variant (DSH drops the whole skill): use `disable-model-invocation` (or `user-invocable`) instead.
 - **Rust scripts** — `rust-script` with a `//! ```cargo` dependency header. Section dividers: `# ── name ──`.
 - **Tests** — `#[test]` fns run via `rust-script --test`; integration tests drive `install.rs` through `std::process::Command` with temp-dir env overrides (`AGENTS_SKILLS_DIR` etc.).
 - **Issue tracking** — local markdown tracker in `docs/issues/` + PRDs in `docs/prd/` (GitHub Issues configured; `gh` CLI available on this machine).

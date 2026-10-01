@@ -373,6 +373,7 @@ pub fn validate_all(
                                 Some("reasonix") => SkillVariant::Reasonix,
                                 Some("codex") => SkillVariant::Codex,
                                 Some("kimi") => SkillVariant::Kimi,
+                                Some("dsh") => SkillVariant::Dsh,
                                 _ => SkillVariant::Agnostic,
                             };
                             validate_skill_with_variant(&content, variant)
@@ -482,7 +483,9 @@ pub fn generate_report(validated: &[ValidatedSkill], project_root: Option<&Path>
     wln!(report, "{}", sep);
     wln!(report);
 
-    // Check 1: 0 opencode-specific fields (exclude codex and kimi variants)
+    // Check 1: 0 opencode-specific fields (exclude codex and kimi variants).
+    // dsh is deliberately NOT excluded: it belongs to the strict group with
+    // reasonix, so its opencode-field issues stay counted here.
     let oc_count: usize = validated
         .iter()
         .filter(|(target, _)| {
@@ -991,6 +994,153 @@ mod tests {
             report.contains("1 non-codex/kimi"),
             "global check should show 1 non-codex/kimi, got:\n{}",
             report
+        );
+    }
+
+    #[test]
+    fn report_dsh_variant_stays_in_the_strict_opencode_group() {
+        // dsh must be counted with reasonix (strict), never excluded like
+        // codex/kimi: 2 strict targets out of 4.
+        let targets = vec![
+            test_target_with_variant("reasonix-skill", "autopilot", Some("reasonix")),
+            test_target_with_variant("dsh-skill", "autopilot", Some("dsh")),
+            test_target_with_variant("codex-skill", "autopilot", Some("codex")),
+            test_target_with_variant("kimi-skill", "autopilot", Some("kimi")),
+        ];
+        let pairs = pairs_for(
+            &targets,
+            vec![pass_result(), pass_result(), pass_result(), pass_result()],
+        );
+        let report = render(&pairs);
+        assert!(
+            report.contains("2 non-codex/kimi"),
+            "dsh must stay in the strict group — expected 2 non-codex/kimi, got:\n{}",
+            report
+        );
+    }
+
+    // ── dsh variant dispatch (validate_all) ─────────────────────────────
+
+    /// Write `content` at the target's relative path under a fresh temp root
+    /// and validate it through the real dispatch in `validate_all`.
+    fn validate_variant_content(variant: &str, content: &str) -> ValidationResult {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = test_target_with_variant("fixture-skill", "autopilot", Some(variant));
+        let full_path = tmp.path().join(&target.relative_path);
+        fs::create_dir_all(full_path.parent().unwrap()).unwrap();
+        fs::write(&full_path, content).unwrap();
+
+        let results = validate_all(tmp.path(), std::slice::from_ref(&target));
+        assert_eq!(results.len(), 1, "one target yields one result");
+        results.into_iter().next().unwrap().1.result
+    }
+
+    #[test]
+    fn dsh_variant_dispatch_accepts_contract_fields() {
+        let result = validate_variant_content(
+            "dsh",
+            "---
+name: fixture-skill
+description: fixture
+whenToUse: Use when testing DSH dispatch.
+disable-model-invocation: true
+user-invocable: true
+---
+# Fixture",
+        );
+        assert!(
+            result.passed,
+            "a legal dsh variant must pass through the dispatch, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_dispatch_rejects_runas() {
+        // An Agnostic fallback would accept runAs: inline, so a rejection here
+        // proves Some("dsh") reaches SkillVariant::Dsh.
+        let result = validate_variant_content(
+            "dsh",
+            "---
+name: fixture-skill
+description: fixture
+runAs: inline
+---
+# Fixture",
+        );
+        assert!(
+            !result.passed,
+            "a dsh variant carrying runAs must fail, got: {:?}",
+            result.issues
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("runAs") && i.contains("ignored by DSH")),
+            "the issue must explain DSH ignores runAs, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_dispatch_rejects_allowed_tools() {
+        let result = validate_variant_content(
+            "dsh",
+            "---
+name: fixture-skill
+description: fixture
+allowed-tools: read
+---
+# Fixture",
+        );
+        assert!(
+            !result.passed,
+            "a dsh variant carrying allowed-tools must fail, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_dispatch_rejects_underscore_name() {
+        let result = validate_variant_content(
+            "dsh",
+            "---
+name: fixture_skill
+description: fixture
+---
+# Fixture",
+        );
+        assert!(
+            !result.passed,
+            "a non-kebab-case name must fail for dsh, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_dispatch_rejects_legacy_camel_case_key() {
+        let result = validate_variant_content(
+            "dsh",
+            "---
+name: fixture-skill
+description: fixture
+disableModelInvocation: true
+---
+# Fixture",
+        );
+        assert!(
+            !result.passed,
+            "the legacy camelCase key must fail for dsh, got: {:?}",
+            result.issues
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("disable-model-invocation")),
+            "the issue must name the kebab-case replacement, got: {:?}",
+            result.issues
         );
     }
 

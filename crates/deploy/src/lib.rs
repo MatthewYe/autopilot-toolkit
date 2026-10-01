@@ -202,7 +202,8 @@ pub fn skill_frontmatter(content: &str) -> Result<&str, anyhow::Error> {
 ///     ├── default/           ← top-level non-variant files (SKILL.md→INSTRUCTIONS.md)
 ///     ├── reasonix/          ← reasonix variant subtree
 ///     ├── codex/             ← codex variant subtree
-///     └── kimi/              ← kimi variant subtree
+///     ├── kimi/              ← kimi variant subtree
+///     └── dsh/               ← dsh variant subtree
 /// ```
 pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
     if dst.exists() {
@@ -231,7 +232,7 @@ pub fn stage_coupled_skill(src: &Path, dst: &Path) -> Result<(), anyhow::Error> 
     let router = format!(
         "---\n{frontmatter}\n---\n\n# Runtime routing\n\n\
 This installed skill has one discoverable entry point so runtimes do not index duplicate skills.\n\n\
-1. Identify the current agent runtime from the system context: `codex`, `kimi`, or `reasonix`.\n\
+1. Identify the current agent runtime from the system context: `codex`, `kimi`, `reasonix`, or `dsh`.\n\
 2. Read `runtime/<runtime>/INSTRUCTIONS.md` completely when it exists.\n\
 3. Otherwise read `runtime/default/INSTRUCTIONS.md` completely.\n\
 4. Follow only the selected instruction file and its relative references. Do not load another runtime's instructions.\n"
@@ -547,6 +548,10 @@ mod tests {
             "router must have closing frontmatter delimiter"
         );
         assert!(router.contains("Runtime routing"));
+        assert!(
+            router.contains("`codex`, `kimi`, `reasonix`, or `dsh`"),
+            "router must name every supported runtime: {router}"
+        );
 
         // runtime/reasonix/INSTRUCTIONS.md
         let reasonix_instructions =
@@ -559,6 +564,46 @@ mod tests {
             std::fs::read_to_string(dst.join("runtime").join("default").join("INSTRUCTIONS.md"))
                 .unwrap();
         assert!(default_instructions.contains("fallback"));
+    }
+
+    #[test]
+    fn stage_coupled_skill_stages_dsh_variant() {
+        // A dsh variant stages like any other known runtime variant: the
+        // variant subtree lands under runtime/dsh/ and is not duplicated into
+        // the default fallback.
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("myskill");
+        std::fs::create_dir_all(src.join("dsh")).unwrap();
+        std::fs::write(
+            src.join("SKILL.md"),
+            "---\nname: myskill\ndescription: test\n---\nfallback\n",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("dsh").join("SKILL.md"),
+            "---\nname: myskill\ndescription: dsh\n---\ndsh body\n",
+        )
+        .unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_coupled_skill(&src, &dst).unwrap();
+
+        let dsh_instructions =
+            std::fs::read_to_string(dst.join("runtime").join("dsh").join("INSTRUCTIONS.md"))
+                .unwrap();
+        assert!(dsh_instructions.contains("dsh body"));
+
+        let default_instructions =
+            std::fs::read_to_string(dst.join("runtime").join("default").join("INSTRUCTIONS.md"))
+                .unwrap();
+        assert!(default_instructions.contains("fallback"));
+        assert!(
+            !dst.join("runtime").join("default").join("dsh").exists(),
+            "a known runtime variant must not be copied into the default fallback"
+        );
+
+        let router = std::fs::read_to_string(dst.join("SKILL.md")).unwrap();
+        assert!(router.contains("`dsh`"), "router must name dsh: {router}");
     }
 
     #[test]
