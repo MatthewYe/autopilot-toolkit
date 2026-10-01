@@ -27,7 +27,7 @@ The orchestrator can pass:
 Before judging:
 
 1. Read the contract: Acceptance Criteria, What to build, Out of scope, and Blocked by.
-2. Read linked specs, ADRs, CONTEXT.md, and relevant design docs when referenced by the contract.
+2. Read linked specs, ADRs, GLOSSARY.md (fall back to legacy CONTEXT.md if absent), and relevant design docs when referenced by the contract.
 3. Read every path in CHANGED_FILES. Treat pre-existing entries as part of the review surface.
 4. Inspect sibling changed files when supplied to understand the established pattern.
 5. Separate verified behavior from claims in the implementer's report.
@@ -54,7 +54,7 @@ Axis 2: TDD discipline
 
 Axis 3: code quality
 
-- Does the change use project domain terms from CONTEXT.md and ADRs?
+- Does the change use project domain terms from GLOSSARY.md and ADRs?
 - Does it follow nearby code patterns and existing test style?
 - Are interfaces small, legible, and testable?
 - Did it add undeclared dependencies or unnecessary files?

@@ -52,7 +52,7 @@ skills/
 │   ├── engineering/   # codebase-design, diagnosing-bugs, domain-modeling, tdd, triage, …
 │   ├── productivity/  # grilling, handoff, teach, writing-for-agents, …
 │   ├── misc/          # git-guardrails-claude-code, scaffold-exercises, …
-│   └── in-progress/   # allowlisted beta skills: implement-spec, loop-me, retro
+│   └── in-progress/   # allowlisted beta skill: loop-me
 ├── vendor/            # third-party vendored skills (see .vendor-lock.json)
 │   └── show-me/       # visual explanations: diagrams, code-shape sketches, HTML artifacts
 ├── autopilot/         # 8 custom autopilot skills
@@ -113,6 +113,6 @@ Defaults: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `w
 
 ### Domain docs
 
-Single-context (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
+Single-context (`GLOSSARY.md` + `docs/adr/` at repo root). Legacy projects may still use `CONTEXT.md`. See `docs/agents/domain.md`.
 
 ## Notes

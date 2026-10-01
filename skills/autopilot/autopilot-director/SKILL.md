@@ -16,7 +16,8 @@ state transition is owned by the `director` CLI — a change you cannot record
 through the CLI did not happen.
 
 One run lands exactly one PR; each ticket contributes exactly one Ticket
-boundary commit. The vocabulary this file uses is defined in `CONTEXT.md`
+boundary commit. The vocabulary this file uses is defined in `GLOSSARY.md`
+(fall back to legacy `CONTEXT.md` if absent)
 ("Autopilot Director"); the decisions behind it are ADR 0046 (role-pinned
 models), ADR 0047 (one Spec PR, one commit per ticket) and ADR 0048 (two-axis
 gate, absolute-zero bar, escalation).

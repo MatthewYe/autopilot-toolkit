@@ -27,7 +27,7 @@ The orchestrator can pass one of these task sources:
 Before editing files:
 
 1. Identify the task source and read the complete contract.
-2. Read linked specs, ADRs, CONTEXT.md, and relevant docs when the contract references them or when the domain terms affect implementation.
+2. Read linked specs, ADRs, GLOSSARY.md (fall back to legacy CONTEXT.md if absent), and relevant docs when the contract references them or when the domain terms affect implementation.
 3. Inspect the surrounding code until the public behavior seam is clear.
 4. Extract the Acceptance Criteria and any Out of scope constraints.
 5. Identify the test seam for each Acceptance Criterion. Human-provided Seam annotations take precedence over inferred seams.

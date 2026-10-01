@@ -150,7 +150,7 @@ fn documented_inventory_matches(
         .collect::<HashSet<_>>()
         .len();
 
-    let expectations = [
+    let mut expectations = vec![
         ("AGENTS.md", format!("{total} skills for Reasonix")),
         (
             "AGENTS.md",
@@ -172,10 +172,14 @@ fn documented_inventory_matches(
             "README.md",
             format!("and {autopilot} autopilot workflow skills"),
         ),
-        ("CONTEXT.md", format!("Ships {total} skills")),
-        ("CONTEXT.md", format!("{upstream} upstream")),
-        ("CONTEXT.md", format!("{coupled} autopilot workflow skills")),
     ];
+    for glossary in ["GLOSSARY.md", "CONTEXT.md"] {
+        expectations.extend([
+            (glossary, format!("Ships {total} skills")),
+            (glossary, format!("{upstream} upstream")),
+            (glossary, format!("{coupled} autopilot workflow skills")),
+        ]);
+    }
 
     let mut stale = Vec::new();
     for (file, needle) in expectations {
@@ -1712,6 +1716,42 @@ mod repository_check_tests {
             "detail should name the file and the stale phrase: {}",
             check.detail
         );
+    }
+
+    #[test]
+    fn documented_inventory_checks_new_and_legacy_glossaries() {
+        for names in [
+            vec!["GLOSSARY.md"],
+            vec!["CONTEXT.md"],
+            vec!["GLOSSARY.md", "CONTEXT.md"],
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            write_docs(dir.path(), 4, 4);
+            fs::remove_file(dir.path().join("CONTEXT.md")).unwrap();
+            for name in &names {
+                fs::write(
+                    dir.path().join(name),
+                    "Ships 4 skills — 1 upstream; 1 autopilot workflow skills",
+                )
+                .unwrap();
+            }
+            assert!(documented_inventory_matches(dir.path(), &sample_entries()).passed);
+            for name in &names {
+                fs::write(
+                    dir.path().join(name),
+                    "Ships 3 skills — 1 upstream; 1 autopilot workflow skills",
+                )
+                .unwrap();
+                let check = documented_inventory_matches(dir.path(), &sample_entries());
+                assert!(!check.passed, "stale {name} must not be silently skipped");
+                assert!(check.detail.contains(name));
+                fs::write(
+                    dir.path().join(name),
+                    "Ships 4 skills — 1 upstream; 1 autopilot workflow skills",
+                )
+                .unwrap();
+            }
+        }
     }
 
     #[test]

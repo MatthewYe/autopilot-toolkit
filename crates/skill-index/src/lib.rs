@@ -28,7 +28,7 @@ pub enum SkillType {
 pub enum ResolutionStatus {
     /// The file exists.
     Resolved,
-    /// The failed-entry state (CONTEXT.md): the provenance points at a file
+    /// The failed-entry state (GLOSSARY.md): the provenance points at a file
     /// (or a directory) that does not exist. The entry is still returned,
     /// with its reason.
     Missing { reason: String },
@@ -44,7 +44,7 @@ pub enum SkillFileKind {
     AgentDefinition,
 }
 
-/// One Skill file an Expected-set entry owns (CONTEXT.md).
+/// One Skill file an Expected-set entry owns (GLOSSARY.md).
 ///
 /// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a
 /// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying

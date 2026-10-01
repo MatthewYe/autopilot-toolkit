@@ -1008,7 +1008,7 @@ fn validate_domain_document_artifacts(
         let safe_components = path
             .components()
             .all(|component| matches!(component, std::path::Component::Normal(_)));
-        let allowed = rel == "CONTEXT.md"
+        let allowed = context::GLOSSARY_PATHS.contains(&rel)
             || rel == "docs/agents/domain.md"
             || (rel.starts_with("docs/adr/") && rel.ends_with(".md"));
         if !safe_components || !allowed {

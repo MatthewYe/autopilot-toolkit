@@ -40,7 +40,7 @@ Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "
 读取以下内容建立审查基准：
 - **合约**：AGENT-BRIEF.md 或 GitHub issue body（含 AC、Out of scope、Blocked by）
 - **高层计划**：如果存在关联的 spec 或 ADR（在 issue body 中有链接），读取其全文 — 这些包含超越单条 AC 的全局约束（如输出格式要求、依赖清单、目录结构约定）
-- **领域文档**：CONTEXT.md 和 docs/adr/ — 领域词汇和架构决策
+- **领域文档**：GLOSSARY.md（不存在时读取旧版 CONTEXT.md）和 docs/adr/ — 领域词汇和架构决策
 - **兄弟模块**：如果 orchestrator 传入了已完成 sibling 模块的变更列表，阅读这些模块的代码，建立"已有模式"基准
 
 ### 2. 五维审查
@@ -68,9 +68,9 @@ Before anything else, read ~/.agents/principles/karpathy.md. Apply Principle 1 "
 
 #### 维度三：代码质量
 
-对照项目 CONTEXT.md 和 docs/adr/，并应用上游 code-review 的 Fowler 气味基线：
+对照项目 GLOSSARY.md 和 docs/adr/，并应用上游 code-review 的 Fowler 气味基线：
 
-- [ ] 命名是否使用项目领域词汇（CONTEXT.md）？
+- [ ] 命名是否使用项目领域词汇（GLOSSARY.md）？
 - [ ] 新代码是否遵循项目已有模式，而非引入新风格？
 - [ ] 接口是否小、是否可测试（接口即测试面）？
 - [ ] 是否引入了未在 AGENT-BRIEF 中声明的依赖？

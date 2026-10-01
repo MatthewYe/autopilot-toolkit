@@ -36,7 +36,7 @@ You receive task information + the implementer's changed files list (CHANGED_FIL
 Read the following to establish the review baseline:
 - **Contract**: AGENT-BRIEF.md or GitHub issue body (AC, Out of scope, Blocked by).
 - **Higher-level plan**: if the issue body links to an associated PRD or ADR, read it in full — these contain global constraints beyond individual ACs (output format requirements, dependency lists, directory structure conventions).
-- **Domain docs**: CONTEXT.md and docs/adr/ — domain vocabulary and architectural decisions.
+- **Domain docs**: GLOSSARY.md (fall back to legacy CONTEXT.md if absent) and docs/adr/ — domain vocabulary and architectural decisions.
 - **Sibling modules**: if orchestrator passed completed sibling module change lists, read those modules' code to establish the "existing pattern" baseline.
 
 ### 2. Four-axis review
@@ -62,9 +62,9 @@ Reference the TDD review baseline above:
 
 #### Axis 3: Code quality
 
-Check against project CONTEXT.md and docs/adr/:
+Check against project GLOSSARY.md and docs/adr/:
 
-- [ ] Does naming use project domain vocabulary (CONTEXT.md)?
+- [ ] Does naming use project domain vocabulary (GLOSSARY.md)?
 - [ ] Does new code follow existing project patterns rather than introducing a new style?
 - [ ] Are interfaces small and testable (interface is the test surface)?
 - [ ] Were dependencies introduced that are not declared in the AGENT-BRIEF?
