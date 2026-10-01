@@ -1,0 +1,6 @@
+{
+  "command": "run-transition",
+  "from": "init",
+  "revision": 2,
+  "to": "running"
+}

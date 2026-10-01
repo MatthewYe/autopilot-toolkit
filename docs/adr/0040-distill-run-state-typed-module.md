@@ -1,5 +1,7 @@
 # Distill run state is a typed module
 
+> Amended by [ADR 0050](0050-run-state-persistence-substrate.md) for the storage substrate: the single-consumer rejection applies to the state schema, which stays in-crate.
+
 ## Context
 
 distill-cli's run state (`state.json`) was manipulated through string-key

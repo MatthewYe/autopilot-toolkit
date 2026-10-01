@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub const DISTILL_DIR: &str = ".distill";
 pub const DISTILL_IGNORE_RULE: &str = "/.distill/";
 pub const PER_SOURCE_BYTES: u64 = 50 * 1024 * 1024;
 pub const RUN_BYTES: u64 = 256 * 1024 * 1024;
@@ -103,66 +104,21 @@ pub fn run_dir(worktree: &Path, run_id: &str) -> Result<PathBuf, String> {
     Ok(worktree.join(".distill/runs").join(run_id))
 }
 
+/// Fail closed unless `.distill/` can never become a trackable project file: the
+/// root `.gitignore` must carry the exact [`DISTILL_IGNORE_RULE`], the existing
+/// `.distill/` path must stay inside the worktree, and neither may be a symlink.
+///
+/// Thin adapter over the shared [`state_store`] substrate: `.distill` and
+/// [`DISTILL_IGNORE_RULE`] are this CLI's vocabulary, and the refusal messages
+/// stay exactly the ones distill has always printed.
 pub fn ensure_distill_ignored(worktree: &Path) -> Result<(), String> {
-    let gitignore = worktree.join(".gitignore");
-    if let Ok(meta) = fs::symlink_metadata(&gitignore) {
-        if meta.file_type().is_symlink() {
-            return Err(".gitignore must not be a symlink".to_string());
-        }
-    }
-
-    let content = match fs::read_to_string(&gitignore) {
-        Ok(content) => content,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(err) => return Err(format!("cannot read .gitignore safely: {err}")),
-    };
-    let ignored = content
-        .lines()
-        .any(|line| line.trim() == DISTILL_IGNORE_RULE);
-    if ignored {
-        ensure_distill_path_safe(worktree)?;
-        return Ok(());
-    }
-
-    if worktree.join(".distill").exists() {
-        return Err(".distill already exists before ignore is effective".to_string());
-    }
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&gitignore)
-        .map_err(|err| format!("cannot establish /.distill/ gitignore: {err}"))?;
-    if !content.is_empty() && !content.ends_with('\n') {
-        file.write_all(b"\n")
-            .map_err(|err| format!("cannot update .gitignore: {err}"))?;
-    }
-    file.write_all(format!("{DISTILL_IGNORE_RULE}\n").as_bytes())
-        .map_err(|err| format!("cannot update .gitignore: {err}"))?;
-    ensure_distill_path_safe(worktree)
+    state_store::ensure_ignored(worktree, DISTILL_DIR, DISTILL_IGNORE_RULE)
 }
 
+/// `.distill/` must be a real directory inside the worktree, never a symlink
+/// that could redirect run state elsewhere.
 pub fn ensure_distill_path_safe(worktree: &Path) -> Result<(), String> {
-    let distill = worktree.join(".distill");
-    let meta = match fs::symlink_metadata(&distill) {
-        Ok(meta) => meta,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(format!("cannot inspect .distill safely: {err}")),
-    };
-    if meta.file_type().is_symlink() {
-        return Err(".distill must not be a symlink".to_string());
-    }
-    if !meta.is_dir() {
-        return Err(".distill must be a directory".to_string());
-    }
-    let worktree =
-        fs::canonicalize(worktree).map_err(|err| format!("cannot canonicalize worktree: {err}"))?;
-    let distill =
-        fs::canonicalize(&distill).map_err(|err| format!("cannot canonicalize .distill: {err}"))?;
-    if !distill.starts_with(&worktree) {
-        return Err(".distill must stay inside the worktree".to_string());
-    }
-    Ok(())
+    state_store::ensure_path_safe(worktree, DISTILL_DIR).map(|_| ())
 }
 
 pub fn preflight_quota(
@@ -262,7 +218,7 @@ pub fn set_project_quota(worktree: &Path, bytes: u64) -> Result<Value, String> {
         ));
     }
     let path = worktree.join(".distill/quota.json");
-    atomic_write_json(&path, &json!({ "project_bytes": bytes }), false)?;
+    atomic_write_json(&path, &json!({ "project_bytes": bytes }))?;
     let event = json!({
         "schema_version": 1,
         "event_version": 1,
@@ -317,46 +273,9 @@ pub fn append_run_event(
     append_line(&path, &line)
 }
 
-pub fn atomic_write_json(path: &Path, value: &Value, create_new: bool) -> Result<(), String> {
+pub fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|err| format!("json error: {err}"))?;
-    atomic_write(path, &bytes, create_new)
-}
-
-pub fn atomic_write(path: &Path, bytes: &[u8], create_new: bool) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("cannot create {}: {err}", parent.display()))?;
-    }
-    if create_new && path.exists() {
-        return Err(format!("immutable file already exists: {}", path.display()));
-    }
-    let tmp = tmp_path(path);
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    let mut file = options
-        .open(&tmp)
-        .map_err(|err| format!("cannot create temp file {}: {err}", tmp.display()))?;
-    file.write_all(bytes)
-        .map_err(|err| format!("cannot write temp file {}: {err}", tmp.display()))?;
-    file.sync_all()
-        .map_err(|err| format!("cannot sync temp file {}: {err}", tmp.display()))?;
-    if create_new {
-        match fs::hard_link(&tmp, path) {
-            Ok(()) => {
-                fs::remove_file(&tmp).ok();
-                Ok(())
-            }
-            Err(err) => {
-                fs::remove_file(&tmp).ok();
-                Err(format!(
-                    "cannot create immutable file {}: {err}",
-                    path.display()
-                ))
-            }
-        }
-    } else {
-        fs::rename(&tmp, path).map_err(|err| format!("cannot replace {}: {err}", path.display()))
-    }
+    state_store::atomic_write(path, &bytes)
 }
 
 pub fn gzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -429,14 +348,6 @@ fn dir_usage(path: &Path) -> Result<u64, String> {
         total = total.saturating_add(dir_usage(&entry.path())?);
     }
     Ok(total)
-}
-
-fn tmp_path(path: &Path) -> PathBuf {
-    let file = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("distill");
-    path.with_file_name(format!(".{file}.{}.tmp", now_millis()))
 }
 
 fn now_millis() -> u128 {

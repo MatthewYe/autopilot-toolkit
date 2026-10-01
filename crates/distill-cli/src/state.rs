@@ -953,12 +953,10 @@ pub(crate) fn rollback_successor(worktree: &Path, successor_id: &str) -> Result<
         .map_err(|err| format!("cannot roll back successor run: {err}"))
 }
 
+/// Fail closed unless the target worktree is an existing directory whose
+/// `.distill/` state directory is safe to use.
 pub(crate) fn ensure_worktree(worktree: &Path) -> Result<(), String> {
-    if !worktree.is_dir() {
-        return Err(format!("worktree does not exist: {}", worktree.display()));
-    }
-    storage::ensure_distill_path_safe(worktree)?;
-    Ok(())
+    state_store::ensure_worktree(worktree, storage::DISTILL_DIR)
 }
 
 pub(crate) fn acquire_project_start_lock(worktree: &Path) -> Result<RunLock, String> {
@@ -1210,7 +1208,7 @@ pub(crate) fn write_state(worktree: &Path, state: &Value) -> Result<(), String> 
         return Err(format!("injected state write failure for {run_id}"));
     }
     let bytes = serialize_state(state)?;
-    storage::atomic_write(&state_path(worktree, run_id)?, &bytes, false)
+    state_store::atomic_write(&state_path(worktree, run_id)?, &bytes)
 }
 
 pub(crate) fn state_path(worktree: &Path, run_id: &str) -> Result<PathBuf, String> {
@@ -1219,7 +1217,7 @@ pub(crate) fn state_path(worktree: &Path, run_id: &str) -> Result<PathBuf, Strin
 
 pub(crate) fn write_bytes(path: &Path, bytes: &[u8], atomic: bool) -> Result<(), String> {
     if atomic {
-        return storage::atomic_write(path, bytes, false);
+        return state_store::atomic_write(path, bytes);
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("cannot create dir: {err}"))?;

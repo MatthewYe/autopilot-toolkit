@@ -48,6 +48,10 @@ _Avoid_: skill version, skill flavor
 A vendor-neutral `SKILL.md` at the root of a coupled skill directory. Based on the Kimi variant with Kimi-specific path references removed. Agents without a native variant symlink to this fallback. Describes the generic workflow and instructs the agent to adapt its native dispatch mechanism.
 _Avoid_: generic variant, default variant, universal variant
 
+**State store**:
+The shared `crates/state-store/` substrate module that the published CLIs persist run state through. It owns exactly four things: the guard that a state directory is git-ignored before anything is captured into it (the ADR 0025 rule), the guard that the directory is a real directory inside the worktree, the guard that the worktree itself is real, and the atomic file write. It owns no schema: run-state reading, state paths, and distill's lock protocol stay in their own CLIs.
+_Avoid_: storage layer, state manager, run-state crate
+
 ## Install model
 
 **SSOT** (single source of truth):
@@ -221,6 +225,22 @@ _Avoid_: orchestrator v2, spec runner
 **Spec run**:
 One resumable execution of autopilot-director over a single spec issue and its child tickets, within a specific target worktree. Its authoritative state lives in a project-local, git-ignored directory.
 _Avoid_: spec session, chat run
+
+**Outcome**:
+The three-state result of one director-cli state-machine mutation: `Applied`, `Refused`, or `RefusedWithMutation`. A mutation is a pure method on the record it belongs to — it holds its own guards, mutates in memory, and returns an Outcome; a single commit seam then decides whether the run must be persisted, so "did this command write anything?" never depends on reading twelve call sites.
+_Avoid_: result, mutation result, two-state result
+
+**RefusedWithMutation**:
+The Outcome that says a command exits non-zero *and* its incident is already recorded in the run state — "the refusal is about the next command, not this one." Four paths carry it: a review round that exhausts its cap escalates the ticket layer or the spec layer, and a Worker dispatch that fails past its retry budget escalates the ticket. It is distinct from `Refused`, which leaves the state untouched and writes nothing.
+_Avoid_: partial refusal, warning, soft failure, failure
+
+**Commit seam**:
+The one place director-cli persists run state: `transition::commit`. Record methods bump the revision, the seam writes when the revision moved, and the envelope is re-stamped with the revision it just persisted. A clean resume reports a verdict without writing because its record method never bumps.
+_Avoid_: write path, save, persist layer, transition engine
+
+**Sole writer**:
+The Director is the only writer of a Spec run, by design. There is deliberately no lock mechanism and no expected-revision guard: a concurrent writer or a stale state file is detected through the run-state revision, never prevented by locking.
+_Avoid_: single-writer lock, exclusive writer, write lock
 
 **Director**:
 The lead role in a Spec run, played by the main effective model. It dispatches Workers, runs gates, adjudicates findings, and owns all merge-adjacent decisions. Never pinned to a fast model.

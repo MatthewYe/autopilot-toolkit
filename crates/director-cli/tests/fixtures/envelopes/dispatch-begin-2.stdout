@@ -1,0 +1,8 @@
+{
+  "attempt": 2,
+  "command": "dispatch-begin",
+  "retry": false,
+  "revision": 7,
+  "ticket": 200,
+  "worker": "worker-a"
+}

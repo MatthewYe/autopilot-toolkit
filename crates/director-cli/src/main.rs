@@ -34,6 +34,7 @@ use serde_json::{json, Value};
 
 mod args;
 mod gate;
+mod records;
 mod report;
 mod state;
 mod storage;
@@ -41,6 +42,37 @@ mod transition;
 mod util;
 
 pub(crate) const CURRENT_SCHEMA_VERSION: u64 = 2;
+
+/// What one state-machine mutation did to the run state.
+///
+/// The third variant is the whole reason this type exists: four refusal paths
+/// mutate and persist state before they exit non-zero (a review round that
+/// exhausts its cap escalates the layer; a dispatch that fails past its retry
+/// budget escalates the ticket). A two-state `Result` could not say that, and
+/// the distinction is what the commit seam keys on.
+pub(crate) enum Outcome {
+    /// The mutation landed; the envelope is ready and the state must persist.
+    Applied(Value),
+    /// Nothing was touched: no revision bump, no write.
+    Refused(String),
+    /// The incident is already recorded in memory and must persist before the
+    /// refusal is surfaced — the refusal is about what happens next.
+    RefusedWithMutation(String),
+}
+
+impl std::fmt::Debug for Outcome {
+    /// `Value` has no `Debug`, so this prints the variant and the refusal text —
+    /// which is exactly what a failing assertion needs to read.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Applied(envelope) => write!(formatter, "Applied({envelope})"),
+            Self::Refused(reason) => write!(formatter, "Refused({reason:?})"),
+            Self::RefusedWithMutation(reason) => {
+                write!(formatter, "RefusedWithMutation({reason:?})")
+            }
+        }
+    }
+}
 
 fn main() {
     if let Err(err) = run() {

@@ -1,0 +1,19 @@
+{
+  "axis": "standards",
+  "command": "finding-record",
+  "disposition": null,
+  "finding": "f1",
+  "revision": 11,
+  "round": 1,
+  "verdict": {
+    "cap_exhausted": false,
+    "findings_total": 1,
+    "layer": "ticket",
+    "open_round": 1,
+    "round_cap": 3,
+    "rounds_used": 1,
+    "ticket": 200,
+    "undispositioned": 1,
+    "zero": false
+  }
+}

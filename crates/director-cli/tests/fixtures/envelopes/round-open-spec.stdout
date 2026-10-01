@@ -1,0 +1,9 @@
+{
+  "command": "round-open",
+  "layer": "spec",
+  "revision": 22,
+  "round": 1,
+  "round_cap": 3,
+  "rounds_used": 1,
+  "ticket": null
+}

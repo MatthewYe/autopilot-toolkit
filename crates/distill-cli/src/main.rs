@@ -524,7 +524,7 @@ fn purge_run(args: args::PurgeArgs) -> Result<Value, String> {
         .clone();
     storage::remove_dir_if_exists(&run_dir.join("snapshots"))?;
     storage::remove_dir_if_exists(&run_dir.join("artifacts"))?;
-    storage::atomic_write_json(&run_dir.join("tombstone.json"), &tombstone, false)?;
+    storage::atomic_write_json(&run_dir.join("tombstone.json"), &tombstone)?;
     run_state.complete_purge(&args.session_id)?;
     let event_lines = if event::event_type_exists(&args.worktree, &args.run_id, "run-purged")? {
         // Recovery of an attempt that appended the event but failed the

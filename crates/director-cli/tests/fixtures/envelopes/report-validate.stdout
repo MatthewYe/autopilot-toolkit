@@ -1,0 +1,15 @@
+{
+  "attempt": 1,
+  "command": "report-validate",
+  "report": {
+    "acceptance": 1,
+    "blockers": 0,
+    "branch": "codex/132-worker-report",
+    "commits": 1,
+    "status": "done",
+    "tests": 1
+  },
+  "revision": 5,
+  "ticket": 200,
+  "worker": "worker-a"
+}
