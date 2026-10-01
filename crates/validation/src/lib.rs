@@ -13,23 +13,59 @@ use std::collections::HashMap;
 /// OpenCode-specific fields that must NOT appear in a Reasonix SKILL.md.
 const OPENCODE_FIELDS: &[&str] = &["compatibility", "mode", "permission", "hidden", "arguments"];
 
-/// Allowed characters for the `name` field: starts with alnum, then alnum / dot / underscore / hyphen, 1-64 chars total.
+/// The DSH skill contract's optional keys.  Anything else in a `dsh` variant
+/// is either silently ignored by DSH (so writing it is a mistake) or rejected
+/// outright.
+const DSH_ALLOWED_FIELDS: &[&str] = &[
+    "name",
+    "description",
+    "whenToUse",
+    "disable-model-invocation",
+    "user-invocable",
+];
+
+/// Keys DSH silently ignores.  A `dsh` variant must not carry them: the
+/// runtime would drop the field without telling anyone, so the fix belongs in
+/// the variant source, not in the runtime.
+const DSH_IGNORED_FIELDS: &[&str] = &["runAs", "allowed-tools"];
+
+/// Legacy camelCase keys that make DSH reject the whole skill, paired with the
+/// kebab-case key that replaces them.
+const DSH_LEGACY_REPLACEMENTS: &[(&str, &str)] = &[
+    ("disableModelInvocation", "disable-model-invocation"),
+    (
+        "modelInvocable",
+        "disable-model-invocation (or user-invocable)",
+    ),
+];
+
+/// The DSH `name` contract: strict kebab-case, 1-64 chars.
+///
+/// DSH ignores any skill whose name does not match
+/// `^[a-z0-9]+(?:-[a-z0-9]+)*$` — lowercase alphanumerics joined by single
+/// hyphens, no leading/trailing/double hyphen, no underscores, dots or
+/// uppercase.
 fn name_is_valid(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.is_empty() || bytes.len() > 64 {
         return false;
     }
-    // First char must be [a-zA-Z0-9]
-    if !bytes[0].is_ascii_alphanumeric() {
-        return false;
-    }
-    // Remaining chars: [a-zA-Z0-9._-]
-    for &b in &bytes[1..] {
-        if !(b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-') {
+    let mut prev_hyphen = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'-' {
+            // A hyphen needs a segment before it and must not follow one.
+            if i == 0 || prev_hyphen {
+                return false;
+            }
+            prev_hyphen = true;
+        } else if b.is_ascii_lowercase() || b.is_ascii_digit() {
+            prev_hyphen = false;
+        } else {
             return false;
         }
     }
-    true
+    // A trailing hyphen never closes a segment.
+    !prev_hyphen
 }
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -43,6 +79,9 @@ pub enum SkillVariant {
     Codex,
     /// Kimi Code runtime (allows OpenCode-specific fields, same as Codex).
     Kimi,
+    /// DSH (DeepSeek Harness) runtime — strict kebab-case names, rejects
+    /// legacy camelCase keys, and accepts only its own field whitelist.
+    Dsh,
     /// Runtime-agnostic (rejects OpenCode-specific fields, same as Reasonix).
     Agnostic,
 }
@@ -211,7 +250,7 @@ fn strict_yaml_issues(content: &str) -> Vec<String> {
 
 /// Validate SKILL.md frontmatter content (Reasonix-compatible default).
 ///
-/// Runs `parse_frontmatter` then applies 5 validation checks.
+/// Runs `parse_frontmatter` then applies the variant's validation checks.
 /// Equivalent to `validate_skill_with_variant(content, SkillVariant::Reasonix)`.
 pub fn validate_skill(content: &str) -> ValidationResult {
     validate_skill_with_variant(content, SkillVariant::Reasonix)
@@ -219,8 +258,9 @@ pub fn validate_skill(content: &str) -> ValidationResult {
 
 /// Validate SKILL.md frontmatter content for a specific runtime variant.
 ///
-/// Codex variants skip the OpenCode-specific field check (Check 3).
-/// Reasonix and Agnostic variants include it.
+/// Codex and Kimi variants skip the OpenCode-specific field check (Check 3).
+/// Reasonix, DSH and Agnostic variants include it.  DSH additionally applies
+/// its own field whitelist and has no `runAs`/`allowed-tools` contract.
 pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> ValidationResult {
     let mut issues: Vec<String> = Vec::new();
 
@@ -247,11 +287,11 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
         issues.push("Missing required field: description".to_string());
     }
 
-    // Check 2: Name format
+    // Check 2: Name format — strict kebab-case (DSH ignores non-compliant skills)
     if let Some(name) = fields.get("name") {
         if !name.is_empty() && !name_is_valid(name) {
             issues.push(format!(
-                "Name \"{name}\" does not match pattern ^[a-zA-Z0-9][a-zA-Z0-9._-]{{0,63}}$"
+                "Name \"{name}\" does not match pattern ^[a-z0-9]+(?:-[a-z0-9]+)*$ (lowercase alphanumerics joined by single hyphens, 1-64 chars)"
             ));
         }
     }
@@ -267,20 +307,64 @@ pub fn validate_skill_with_variant(content: &str, variant: SkillVariant) -> Vali
         }
     }
 
-    // Check 4: runAs valid
-    if let Some(run_as) = fields.get("runAs") {
-        if !run_as.is_empty() && run_as != "inline" && run_as != "subagent" {
+    // Checks 4 and 5 are the Reasonix contract's alone: DSH has no
+    // runAs/allowed-tools at all, and Check 7 reports them by name.
+    if variant != SkillVariant::Dsh {
+        // Check 4: runAs valid
+        if let Some(run_as) = fields.get("runAs") {
+            if !run_as.is_empty() && run_as != "inline" && run_as != "subagent" {
+                issues.push(format!(
+                    "Invalid runAs value \"{run_as}\" — must be \"inline\" or \"subagent\""
+                ));
+            }
+        }
+
+        // Check 5: allowed-tools for subagents
+        if fields.get("runAs").is_some_and(|v| v == "subagent")
+            && fields.get("allowed-tools").is_none_or(|v| v.is_empty())
+        {
+            issues.push("runAs is \"subagent\" but allowed-tools is not defined".to_string());
+        }
+    }
+
+    // Check 6: legacy camelCase keys are fatal to DSH — it rejects the whole
+    // skill, so the key must never reach a SKILL.md in any variant.
+    for &(legacy, replacement) in DSH_LEGACY_REPLACEMENTS {
+        if fields.get(legacy).is_some_and(|v| !v.is_empty()) {
             issues.push(format!(
-                "Invalid runAs value \"{run_as}\" — must be \"inline\" or \"subagent\""
+                "Legacy camelCase field present: {legacy} — DSH rejects the whole skill; use \"{replacement}\" instead"
             ));
         }
     }
 
-    // Check 5: allowed-tools for subagents
-    if fields.get("runAs").is_some_and(|v| v == "subagent")
-        && fields.get("allowed-tools").is_none_or(|v| v.is_empty())
-    {
-        issues.push("runAs is \"subagent\" but allowed-tools is not defined".to_string());
+    // Check 7: the DSH variant field whitelist.  DSH silently ignores fields
+    // it does not know, so a field outside the whitelist is a silent no-op —
+    // the variant must be corrected rather than relying on the runtime.
+    if variant == SkillVariant::Dsh {
+        let allowed = DSH_ALLOWED_FIELDS.join(", ");
+        // Deterministic order: HashMap iteration is not stable.
+        let mut offenders: Vec<&str> = fields
+            .iter()
+            .filter(|(field, value)| {
+                !value.is_empty() && !DSH_ALLOWED_FIELDS.contains(&field.as_str())
+            })
+            .map(|(field, _)| field.as_str())
+            .collect();
+        offenders.sort_unstable();
+        for field in offenders {
+            if DSH_IGNORED_FIELDS.contains(&field) {
+                issues.push(format!(
+                    "Field \"{field}\" is silently ignored by DSH and must not be written in a dsh variant (allowed: {allowed})"
+                ));
+            } else if OPENCODE_FIELDS.contains(&field) {
+                // Already reported by Check 3 as an OpenCode-specific field.
+                continue;
+            } else {
+                issues.push(format!(
+                    "Field \"{field}\" is not part of the DSH skill contract (allowed: {allowed})"
+                ));
+            }
+        }
     }
 
     let passed = issues.is_empty();
@@ -390,14 +474,78 @@ description: A test
     }
 
     #[test]
-    fn accepts_valid_name_with_dots_and_hyphens() {
+    fn accepts_valid_kebab_case_name_with_digits() {
         assert_pass(
             "---
-name: my-skill.v2_test
+name: my-skill-v2
 description: A test
 ---
 # Test",
         );
+    }
+
+    #[test]
+    fn fails_when_name_contains_underscore() {
+        assert_fail(
+            "---
+name: my_skill
+description: A test
+---
+# Test",
+            "Name",
+        );
+    }
+
+    #[test]
+    fn fails_when_name_contains_uppercase() {
+        assert_fail(
+            "---
+name: My-Skill
+description: A test
+---
+# Test",
+            "Name",
+        );
+    }
+
+    #[test]
+    fn fails_when_name_contains_dot() {
+        assert_fail(
+            "---
+name: my-skill.v2
+description: A test
+---
+# Test",
+            "Name",
+        );
+    }
+
+    #[test]
+    fn fails_when_name_has_double_or_trailing_hyphen() {
+        for name in ["my--skill", "my-skill-", "-my-skill"] {
+            assert_fail(
+                &format!(
+                    "---
+name: {name}
+description: A test
+---
+# Test"
+                ),
+                "Name",
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_name_at_the_64_character_limit() {
+        let name = "a".repeat(64);
+        assert_pass(&format!(
+            "---
+name: {name}
+description: A test
+---
+# Test"
+        ));
     }
 
     // Check 3: No opencode fields
@@ -646,6 +794,229 @@ compatibility: \">=1.0\"
             !result.passed,
             "default validate_skill should reject opencode fields"
         );
+    }
+
+    // ── Legacy camelCase keys (fatal to DSH) ───────────────────────────
+
+    #[test]
+    fn fails_when_legacy_disable_model_invocation_is_camel_case() {
+        let result = assert_fail(
+            "---
+name: test-skill
+description: A test
+disableModelInvocation: true
+---
+# Test",
+            "disableModelInvocation",
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("disable-model-invocation")),
+            "the error must name the kebab-case replacement, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn fails_when_legacy_model_invocable_is_camel_case() {
+        let result = assert_fail(
+            "---
+name: test-skill
+description: A test
+modelInvocable: false
+---
+# Test",
+            "modelInvocable",
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("disable-model-invocation")),
+            "the error must name the kebab-case replacement, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn legacy_key_check_is_variant_independent() {
+        // The key kills the skill in DSH no matter which variant source it
+        // lands in, so every variant rejects it.
+        for variant in [
+            SkillVariant::Reasonix,
+            SkillVariant::Codex,
+            SkillVariant::Kimi,
+            SkillVariant::Dsh,
+            SkillVariant::Agnostic,
+        ] {
+            let result = validate_skill_with_variant(
+                "---
+name: test-skill
+description: A test
+disableModelInvocation: true
+---
+# Test",
+                variant,
+            );
+            assert!(
+                !result.passed,
+                "{variant:?} should reject the legacy camelCase key"
+            );
+        }
+    }
+
+    // ── DSH variant ────────────────────────────────────────────────────
+
+    #[test]
+    fn dsh_variant_accepts_its_contract_fields() {
+        let content = "---
+name: test-skill
+description: A test
+whenToUse: Use when validating DSH skills.
+disable-model-invocation: true
+user-invocable: true
+---
+# Test";
+        let result = validate_skill_with_variant(content, SkillVariant::Dsh);
+        assert!(
+            result.passed,
+            "dsh variant should accept its whitelisted fields, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_accepts_minimal_frontmatter() {
+        let result = validate_skill_with_variant(
+            "---
+name: test-skill
+description: A test
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(
+            result.passed,
+            "dsh variant should accept name + description, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_rejects_runas() {
+        let result = validate_skill_with_variant(
+            "---
+name: test-skill
+description: A test
+runAs: inline
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(
+            !result.passed,
+            "dsh variant should reject runAs, got: {:?}",
+            result.issues
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("runAs") && i.contains("ignored by DSH")),
+            "the error must explain DSH ignores runAs, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_rejects_allowed_tools() {
+        let result = validate_skill_with_variant(
+            "---
+name: test-skill
+description: A test
+allowed-tools: read, write
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(
+            !result.passed,
+            "dsh variant should reject allowed-tools, got: {:?}",
+            result.issues
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("allowed-tools") && i.contains("ignored by DSH")),
+            "the error must explain DSH ignores allowed-tools, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_rejects_unknown_field() {
+        let result = validate_skill_with_variant(
+            "---
+name: test-skill
+description: A test
+argument-hint: \"[issue]\"
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(
+            !result.passed,
+            "dsh variant should reject fields outside its contract"
+        );
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.contains("argument-hint") && i.contains("DSH skill contract")),
+            "the error must name the offending field, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_is_strict_about_opencode_fields() {
+        // dsh belongs to the strict group with reasonix: the runner's global
+        // opencode check excludes only codex/kimi, and dsh adds its own
+        // contract check on top.
+        let result = validate_skill_with_variant(
+            "---
+name: test-skill
+description: A test
+compatibility: \">=1.0\"
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(!result.passed, "dsh variant should reject opencode fields");
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| i.starts_with("OpenCode-specific field present:")),
+            "the opencode issue must keep its global-check prefix, got: {:?}",
+            result.issues
+        );
+    }
+
+    #[test]
+    fn dsh_variant_still_rejects_non_kebab_case_name() {
+        let result = validate_skill_with_variant(
+            "---
+name: test_skill
+description: A test
+---
+# Test",
+            SkillVariant::Dsh,
+        );
+        assert!(!result.passed, "dsh variant must reject underscore names");
     }
 
     // ── Strict YAML frontmatter check ─────────────────────────────────

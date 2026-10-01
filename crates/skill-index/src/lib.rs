@@ -69,8 +69,8 @@ pub struct ExpectedSetEntry {
     /// "autopilot", "upstream", or "vendor".
     pub source: String,
     pub skill_type: SkillType,
-    /// Variant directory names (e.g. ["codex", "kimi", "reasonix"]).
-    /// Empty for agnostic skills.
+    /// Variant directory names, name-sorted (e.g. ["codex", "dsh", "kimi",
+    /// "reasonix"]). Empty for agnostic skills.
     pub variants: Vec<String>,
     /// Whether a codex/agent.toml file exists (only meaningful for coupled skills).
     pub codex_agent: bool,
@@ -126,7 +126,7 @@ pub struct Manifest {
 ///
 /// Single definition of the runtime variant list; consumers (deploy)
 /// reference this const instead of hardcoding their own copies.
-pub const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "reasonix"];
+pub const RUNTIME_VARIANTS: &[&str] = &["codex", "kimi", "reasonix", "dsh"];
 
 // ── classify_skill ──────────────────────────────────────────────────────────
 
@@ -461,9 +461,31 @@ mod tests {
             "---\nname: test\n---\n",
         )
         .unwrap();
+        std::fs::create_dir(tmp.path().join("dsh")).unwrap();
+        std::fs::write(
+            tmp.path().join("dsh").join("SKILL.md"),
+            "---\nname: test\n---\n",
+        )
+        .unwrap();
         let (skill_type, variants, codex_agent) = classify_skill(tmp.path());
         assert_eq!(skill_type, SkillType::Coupled);
-        assert_eq!(variants, vec!["kimi", "reasonix"]);
+        assert_eq!(variants, vec!["dsh", "kimi", "reasonix"]);
+        assert!(!codex_agent);
+    }
+
+    #[test]
+    fn classify_coupled_skill_recognizes_dsh_variant() {
+        // A dsh variant directory is a known runtime variant.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("dsh")).unwrap();
+        std::fs::write(
+            tmp.path().join("dsh").join("SKILL.md"),
+            "---\nname: test\n---\n",
+        )
+        .unwrap();
+        let (skill_type, variants, codex_agent) = classify_skill(tmp.path());
+        assert_eq!(skill_type, SkillType::Coupled);
+        assert_eq!(variants, vec!["dsh"]);
         assert!(!codex_agent);
     }
 
@@ -835,7 +857,13 @@ mod tests {
 
         assert_eq!(
             variants,
-            vec![None, Some("codex"), Some("kimi"), Some("reasonix")],
+            vec![
+                None,
+                Some("codex"),
+                Some("kimi"),
+                Some("reasonix"),
+                Some("dsh")
+            ],
             "root fallback first, then variants in runtime order"
         );
     }
@@ -983,7 +1011,7 @@ mod tests {
                 "autopilot-orchestrator",
                 "autopilot",
                 SkillType::Coupled,
-                &["codex", "kimi", "reasonix"],
+                &["codex", "kimi", "reasonix", "dsh"],
                 false,
             ),
             entry(
@@ -1013,7 +1041,8 @@ mod tests {
 
         let orch = &manifest.skills["autopilot-orchestrator"];
         assert_eq!(orch.skill_type, "coupled");
-        assert_eq!(orch.variants.len(), 3);
+        assert_eq!(orch.variants.len(), 4);
+        assert!(orch.variants.contains(&"dsh".to_string()));
         assert!(!orch.codex_agent);
 
         let impler = &manifest.skills["autopilot-implementer"];

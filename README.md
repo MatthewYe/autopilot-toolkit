@@ -13,7 +13,9 @@ curl -sSL https://github.com/MatthewYe/autopilot-toolkit/releases/latest/downloa
 ```
 
 Installs all skills to `~/.agents/skills/`, auto-detects your agent runtimes,
-and configures runtime support files.
+and configures runtime support files. DSH (DeepSeek Harness) discovers the same
+directory — see [docs/agents/runtimes/dsh.md](docs/agents/runtimes/dsh.md) for
+its discovery rules, frontmatter contract, and runtime-router selection.
 
 ## Uninstall
 
