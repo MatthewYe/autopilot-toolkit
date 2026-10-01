@@ -540,5 +540,5 @@ The final user-facing message opens with a `## Plain summary` section, followed 
 
 - 6–10 short sentences of plain prose, one idea per sentence.
 - State, in order: what changed, what passed, what remains, and the next decision for the user.
-- Use the target repo's `CONTEXT.md` ubiquitous language; a reader who never watched the run must follow it.
+- Use the target repo's glossary vocabulary (`GLOSSARY.md`, falling back to legacy `CONTEXT.md` if absent); a reader who never watched the run must follow it.
 - Keep internal names out of this section — phase names, `FINAL_ACCEPTANCE_REPORT`, `suggestions.json`, `DIRECT_REVIEW`. They belong in the structured sections below it.

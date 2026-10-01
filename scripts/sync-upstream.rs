@@ -49,7 +49,7 @@ const BUCKET_DIRS: &[&str] = &["engineering", "productivity", "misc"];
 /// implicitly: a skill ships only when its name is listed here. Remove a
 /// name once upstream graduates it into a stable bucket (the stable entry
 /// wins either way) or drops it (the lock entry becomes an orphan).
-const IN_PROGRESS_ALLOWLIST: &[&str] = &["implement-spec", "loop-me", "retro"];
+const IN_PROGRESS_ALLOWLIST: &[&str] = &["loop-me"];
 
 type SkillMap = BTreeMap<String, serde_json::Value>;
 
@@ -350,7 +350,7 @@ fn main() {
     fs::create_dir_all(&upstream_dir).expect("cannot create upstream dir");
 
     // Copy everything except .git
-    copy_dir_except_git(&clone_dir, &upstream_dir);
+    copy_dir_except_git(&clone_dir, &upstream_dir).expect("cannot copy upstream tree");
 
     // ── 6. Write updated lock file ─────────────────────────────────────
 
@@ -418,13 +418,14 @@ fn main() {
 
 // ── File copy helpers ──────────────────────────────────────────────────────
 
-fn copy_dir_except_git(src: &Path, dst: &Path) {
+fn copy_dir_except_git(src: &Path, dst: &Path) -> std::io::Result<()> {
     if !src.is_dir() {
-        return;
+        return Ok(());
     }
-    fs::create_dir_all(dst).ok();
+    fs::create_dir_all(dst)?;
 
-    for entry in fs::read_dir(src).into_iter().flatten().flatten() {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         if name_str == ".git" {
@@ -433,10 +434,49 @@ fn copy_dir_except_git(src: &Path, dst: &Path) {
         let src_path = entry.path();
         let dst_path = dst.join(&*name_str);
 
-        if src_path.is_dir() {
-            copy_dir_except_git(&src_path, &dst_path);
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            std::os::unix::fs::symlink(fs::read_link(&src_path)?, &dst_path)?;
+        } else if file_type.is_dir() {
+            copy_dir_except_git(&src_path, &dst_path)?;
         } else {
-            fs::copy(&src_path, &dst_path).ok();
+            fs::copy(&src_path, &dst_path)?;
         }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upstream_copy_preserves_symlinks_and_excludes_git_metadata() {
+        let n = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let root = env::temp_dir().join(format!("upstream-copy-test-{}-{n}", process::id()));
+        let src = root.join("source");
+        let dst = root.join("snapshot");
+        fs::create_dir_all(src.join(".git")).unwrap();
+        fs::create_dir_all(src.join("skills/example")).unwrap();
+        fs::write(src.join("CLAUDE.md"), "# Instructions\n").unwrap();
+        fs::write(src.join("skills/example/SKILL.md"), "# Example\n").unwrap();
+        std::os::unix::fs::symlink("CLAUDE.md", src.join("AGENTS.md")).unwrap();
+
+        copy_dir_except_git(&src, &dst).unwrap();
+
+        assert_eq!(
+            fs::read_link(dst.join("AGENTS.md")).unwrap(),
+            Path::new("CLAUDE.md")
+        );
+        assert_eq!(
+            fs::read(dst.join("AGENTS.md")).unwrap(),
+            b"# Instructions\n"
+        );
+        assert_eq!(
+            fs::read(dst.join("skills/example/SKILL.md")).unwrap(),
+            b"# Example\n"
+        );
+        assert!(!dst.join(".git").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }

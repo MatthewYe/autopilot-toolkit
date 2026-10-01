@@ -679,7 +679,10 @@ mod tests {
             "codebase-design",
             "domain-modeling",
             "implement",
-            "resolving-merge-conflicts",
+            "implement-spec",
+            "pr",
+            "retro",
+            "loop-me",
             "grill-me",
             "grilling",
             "handoff",
@@ -702,6 +705,12 @@ mod tests {
                 name, entry.skill_type
             );
             assert!(!entry.codex_agent, "'{}' should not be codex_agent", name);
+        }
+
+        assert!(!manifest.skills.contains_key("resolving-merge-conflicts"));
+        assert!(!skills_dir.join("resolving-merge-conflicts").exists());
+        for name in ["implement-spec", "pr", "retro"] {
+            assert!(skills_dir.join(name).join("agents/openai.yaml").is_file());
         }
 
         // Verify upstream skill dirs exist as flat directories in skills/

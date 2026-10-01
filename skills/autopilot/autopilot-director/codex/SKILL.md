@@ -7,7 +7,8 @@ Execute one autopilot-director **Spec run**: drive a spec issue and its child
 tickets to a single Spec PR. Every state transition goes through the `director`
 CLI; a change the CLI cannot record did not happen.
 
-Vocabulary lives in `CONTEXT.md` ("Autopilot Director"); the decisions behind
+Vocabulary lives in `GLOSSARY.md` ("Autopilot Director"), falling back to legacy
+`CONTEXT.md` if absent; the decisions behind
 it are ADR 0046 (role-pinned models), ADR 0047 (one Spec PR, one commit per
 ticket) and ADR 0048 (two-axis gate, absolute-zero bar, escalation).
 

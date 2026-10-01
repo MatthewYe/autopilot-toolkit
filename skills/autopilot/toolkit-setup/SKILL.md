@@ -27,14 +27,29 @@ logic manually.
    and `skills/vendor/`.
 2. Inspect `git status --short`. Report existing changes, but do not discard or
    overwrite them.
-3. Run:
+3. Migrate the domain glossary in this `PROJECT_ROOT` before deployment:
+   - Only `CONTEXT.md` exists: rename it to `GLOSSARY.md` without changing its
+     contents, using `git mv` when tracked. Update active references in this
+     checkout's agent instructions, domain configuration, skills, and source
+     comments. Preserve historical ADRs, reports, and saved run evidence.
+     Record `Glossary: MIGRATED`.
+   - Only `GLOSSARY.md` exists: leave it in place and record `Glossary: UNCHANGED`.
+   - Neither exists: create neither file and record `Glossary: ABSENT`.
+   - Both exist: preserve both files, report their exact paths, and record
+     `Glossary: CONFLICT`. Continue independent installation checks, but the
+     final result is `FAILED` until the conflict is resolved.
+   Apply this migration only to the current toolkit checkout. Legacy names
+   in compatibility readers remain intentional; prefer `GLOSSARY.md` and
+   fall back to `CONTEXT.md` when the new file is absent. Do not leave a
+   symlink alias or migrate other projects.
+4. Run:
 
    ```bash
    rust-script "$PROJECT_ROOT/deploy.rs" dev
    rust-script "$PROJECT_ROOT/deploy.rs" link-principles "$PROJECT_ROOT/principles"
    ```
 
-4. Enumerate the Expected set through the toolkit's own enumerator
+5. Enumerate the Expected set through the toolkit's own enumerator
    (`skill-index`'s `discover_skills`, reaching it via `deploy.rs` output or a
    small `rust-script` probe). Read each entry's facts from that enumeration —
    its Skill source, its Skill files and their kinds, and any missing skill
@@ -42,9 +57,9 @@ logic manually.
    files and a directory scan. Do not hardcode the list. Vendor directories
    without a `.vendor-lock.json` entry are orphans — report them, do not
    install them.
-5. Verify every enumerated entry resolves all its Skill files, and that every
+6. Verify every enumerated entry resolves all its Skill files, and that every
    expected shared entry is a valid directory or symlink.
-6. For every Skill file whose kind is an agent definition (`agent.toml`),
+7. For every Skill file whose kind is an agent definition (`agent.toml`),
    check the codex agent link rather than an instruction file. For every entry
    that owns runtime variant skill files, verify:
    - the installed tree contains exactly one file named `SKILL.md`;
@@ -53,9 +68,9 @@ logic manually.
      `runtime/<variant>/INSTRUCTIONS.md`;
    - no same-name entry exists in the Codex or Reasonix exclusive skill
      directory.
-7. For every enumerated agent definition, verify the corresponding
+8. For every enumerated agent definition, verify the corresponding
    `~/.codex/agents/<skill>.toml` link.
-8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to
+9. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to
    `$PROJECT_ROOT/principles`.
 
 If `deploy.rs dev` reports a real-directory or real-file conflict, do not
@@ -80,6 +95,7 @@ Return a compact report containing:
 TOOLKIT_SETUP_REPORT
 Expected: <count>
 Actions: <dev/link-principles actions>
+Glossary: MIGRATED|UNCHANGED|ABSENT|CONFLICT
 Routers: <count passed>, <count failed>
 Codex agents: <count passed>, <count failed>
 Principles: PASS|FAIL

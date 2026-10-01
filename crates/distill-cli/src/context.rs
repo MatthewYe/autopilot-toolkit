@@ -5,6 +5,8 @@ use std::process::Command;
 
 use crate::util::stable_hash;
 
+pub(crate) const GLOSSARY_PATHS: &[&str] = &["GLOSSARY.md", "CONTEXT.md"];
+
 pub(crate) fn capture_context_baseline(worktree: &Path) -> Result<Value, String> {
     let status = git_output(worktree, &["status", "--short"]).unwrap_or_default();
     Ok(json!({
@@ -48,10 +50,8 @@ fn domain_document_hashes(worktree: &Path) -> Result<Vec<Value>, String> {
 }
 
 pub(crate) fn domain_document_paths(worktree: &Path) -> Result<Vec<String>, String> {
-    let mut paths = vec![
-        "CONTEXT.md".to_string(),
-        "docs/agents/domain.md".to_string(),
-    ];
+    let mut paths: Vec<String> = GLOSSARY_PATHS.iter().map(|path| path.to_string()).collect();
+    paths.push("docs/agents/domain.md".to_string());
     let adr_dir = worktree.join("docs/adr");
     if adr_dir.is_dir() {
         for entry in

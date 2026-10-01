@@ -64,7 +64,7 @@ dispatch prompt 还可能传入 AGENT-BRIEF 中各 AC 的 **Seam 标注**。Seam
 1. **本地 issue**：读取 `<issue_dir>/issue.md` 了解问题背景，读取 `<issue_dir>/AGENT-BRIEF.md` 获取合约（Acceptance Criteria）
 2. **GitHub Issue**：调用方已传入合约文本（包含 AC 和 What to build）。如传入 GitHub issue 号，可用 `Bash` 运行 `gh issue view <N> --json body` 补读完整背景
 3. 如果不熟悉相关代码区域，上探一层抽象，了解模块和调用方
-4. 阅读项目的 CONTEXT.md 和 docs/adr/ 了解领域词汇和已做决策
+4. 阅读项目的 GLOSSARY.md（不存在时读取旧版 CONTEXT.md）和 docs/adr/ 了解领域词汇和已做决策
 5. 检查 AGENT-BRIEF 中各 AC 是否带有 `Seam:` 或 `Seam(inferred):` 标注，理解每个标注指定的测试边界
 
 ### 第二步：逐条实施（TDD 循环）

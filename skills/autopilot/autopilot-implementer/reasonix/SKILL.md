@@ -72,7 +72,7 @@ Subagent 无法调用 `/tdd` 或 `/diagnosing-bugs`，通过 `read_file` 加载�
 1. **本地 issue**：以调用方传入的 `contract` 为权威合约，并读取 `issue_file` 补充背景；仅对旧目录式 issue 回退读取 `<issue_dir>/issue.md` 和 `<issue_dir>/AGENT-BRIEF.md`
 2. **GitHub Issue**：调用方已传入合约文本（包含 AC 和 What to build）。如传入 GitHub issue 号，可用 `TODO: reasonix equivalent for GitHub CLI — gh issue view <N> --json body` 补读完整背景
 3. 如果不熟悉相关代码区域，上探一层抽象，了解模块和调用方
-4. 阅读项目的 CONTEXT.md 和 docs/adr/ 了解领域词汇和已做决策
+4. 阅读项目的 GLOSSARY.md（不存在时读取旧版 CONTEXT.md）和 docs/adr/ 了解领域词汇和已做决策
 5. 检查 AGENT-BRIEF 中各 AC 是否带有 `Seam:` 或 `Seam(inferred):` 标注，理解每个标注指定的测试边界
 
 ### 第二步：逐条实施（TDD 循环）

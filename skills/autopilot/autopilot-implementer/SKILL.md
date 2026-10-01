@@ -57,7 +57,7 @@ Also check for `REFACTORING: true`:
 1. **Local issue**: read `<issue_dir>/issue.md` for background, `<issue_dir>/AGENT-BRIEF.md` for contract (Acceptance Criteria).
 2. **GitHub Issue**: contract text (AC and What to build) is passed inline. If a GitHub issue number is given, use `gh issue view <N> --json body` for full background.
 3. If unfamiliar with the relevant code area, go up one abstraction level to understand the module and its callers.
-4. Read the project's CONTEXT.md and docs/adr/ for domain vocabulary and architectural decisions.
+4. Read the project's GLOSSARY.md (fall back to legacy CONTEXT.md if absent) and docs/adr/ for domain vocabulary and architectural decisions.
 5. Check each AC in the AGENT-BRIEF for `Seam:` or `Seam(inferred):` annotations; understand the specified test boundary for each.
 
 ### Step 2: Implement per AC (TDD cycle)

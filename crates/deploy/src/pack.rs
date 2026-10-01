@@ -178,7 +178,7 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Refuse to pack while the Expected set contains failed entries (CONTEXT.md).
+/// Refuse to pack while the Expected set contains failed entries (GLOSSARY.md).
 ///
 /// `pack` is strict where `dev` is lenient: a tarball that silently omits a
 /// locked skill would ship a manifest that disagrees with the sources, so the
