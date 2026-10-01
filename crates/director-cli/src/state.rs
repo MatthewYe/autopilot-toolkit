@@ -413,7 +413,7 @@ pub(crate) fn write_state(worktree: &Path, state: &mut RunState) -> Result<(), S
     state.schema_version = CURRENT_SCHEMA_VERSION;
     state.worktree = Some(storage::capture_fingerprint(worktree)?);
     let bytes = serde_json::to_vec_pretty(state).map_err(|err| format!("json error: {err}"))?;
-    storage::atomic_write(&state_path(worktree), &bytes)
+    state_store::atomic_write(&state_path(worktree), &bytes)
 }
 
 /// The typed gate: state that does not match the schema fails closed.

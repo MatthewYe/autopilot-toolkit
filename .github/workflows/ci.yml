@@ -74,7 +74,7 @@ jobs:
         with:
           components: rustfmt
       - name: Check rust-script formatting
-        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs
+        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs crates/state-store/src/lib.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs
 
   clippy:
     name: clippy

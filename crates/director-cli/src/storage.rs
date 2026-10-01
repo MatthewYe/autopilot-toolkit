@@ -1,11 +1,17 @@
 //! Project-local state storage: the `.director/` directory, the exact
 //! `.gitignore` rule that must protect it, and atomic writes.
+//!
+//! The `.director/` hygiene guards and the atomic write itself live in the
+//! shared `state-store` substrate; this module binds them to this CLI's
+//! directory name and rule, and keeps the git fingerprinting that the
+//! director's resume protocol owns.
 
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::{ErrorKind, Write};
 use std::path::Path;
 use std::process::Command;
+
+/// The state directory this CLI keeps its run state in.
+pub const DIRECTOR_DIR: &str = ".director";
 
 /// The one rule that makes `.director/` effectively ignored.
 pub const DIRECTOR_IGNORE_RULE: &str = "/.director/";
@@ -92,107 +98,24 @@ fn git_rev_parse(worktree: &Path, args: &[&str]) -> Result<String, String> {
 /// the root `.gitignore` must carry the exact [`DIRECTOR_IGNORE_RULE`], the
 /// existing `.director/` path must stay inside the worktree, and neither may
 /// be a symlink.
+///
+/// Thin adapter over the shared [`state_store`] substrate: `.director` and
+/// [`DIRECTOR_IGNORE_RULE`] are this CLI's vocabulary, and the refusal messages
+/// stay exactly the ones the director has always printed.
 pub fn ensure_director_ignored(worktree: &Path) -> Result<(), String> {
-    let gitignore = worktree.join(".gitignore");
-    if let Ok(meta) = fs::symlink_metadata(&gitignore) {
-        if meta.file_type().is_symlink() {
-            return Err(".gitignore must not be a symlink".to_string());
-        }
-    }
-
-    let content = match fs::read_to_string(&gitignore) {
-        Ok(content) => content,
-        Err(err) if err.kind() == ErrorKind::NotFound => String::new(),
-        Err(err) => return Err(format!("cannot read .gitignore safely: {err}")),
-    };
-    let ignored = content
-        .lines()
-        .any(|line| line.trim() == DIRECTOR_IGNORE_RULE);
-    if ignored {
-        return ensure_director_path_safe(worktree);
-    }
-
-    if worktree.join(".director").exists() {
-        return Err(".director already exists before ignore is effective".to_string());
-    }
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&gitignore)
-        .map_err(|err| format!("cannot establish {DIRECTOR_IGNORE_RULE} gitignore: {err}"))?;
-    if !content.is_empty() && !content.ends_with('\n') {
-        file.write_all(b"\n")
-            .map_err(|err| format!("cannot update .gitignore: {err}"))?;
-    }
-    file.write_all(format!("{DIRECTOR_IGNORE_RULE}\n").as_bytes())
-        .map_err(|err| format!("cannot update .gitignore: {err}"))?;
-    ensure_director_path_safe(worktree)
+    state_store::ensure_ignored(worktree, DIRECTOR_DIR, DIRECTOR_IGNORE_RULE)
 }
 
-/// `.director/` must be a real directory inside the worktree, never a symlink
-/// that could redirect run state elsewhere.
-pub fn ensure_director_path_safe(worktree: &Path) -> Result<(), String> {
-    let director = worktree.join(".director");
-    let meta = match fs::symlink_metadata(&director) {
-        Ok(meta) => meta,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(format!("cannot inspect .director safely: {err}")),
-    };
-    if meta.file_type().is_symlink() {
-        return Err(".director must not be a symlink".to_string());
-    }
-    if !meta.is_dir() {
-        return Err(".director must be a directory".to_string());
-    }
-    // Canonicalize both sides: comparison stays sound under symlinked roots
-    // (e.g. macOS `/var` → `/private/var`) and still catches a `.director/`
-    // that resolves out of the worktree.
-    let worktree =
-        fs::canonicalize(worktree).map_err(|err| format!("cannot canonicalize worktree: {err}"))?;
-    let director = fs::canonicalize(&director)
-        .map_err(|err| format!("cannot canonicalize .director: {err}"))?;
-    if !director.starts_with(&worktree) {
-        return Err(".director must stay inside the worktree".to_string());
-    }
-    Ok(())
-}
-
-/// Fail closed unless the target worktree is an existing directory.
+/// Fail closed unless the target worktree is an existing directory whose
+/// `.director/` state directory is safe to use.
 pub fn ensure_worktree(worktree: &Path) -> Result<(), String> {
-    if !worktree.is_dir() {
-        return Err(format!("worktree does not exist: {}", worktree.display()));
-    }
-    ensure_director_path_safe(worktree)
-}
-
-/// Write `bytes` to `path` via a temp file plus rename so a crash can never
-/// leave a half-written state file.
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("cannot create {}: {err}", parent.display()))?;
-    }
-    let tmp = path.with_extension("json.tmp");
-    let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    let mut file = options
-        .open(&tmp)
-        .map_err(|err| format!("cannot create temp file {}: {err}", tmp.display()))?;
-    file.write_all(bytes)
-        .map_err(|err| format!("cannot write temp file {}: {err}", tmp.display()))?;
-    file.sync_all()
-        .map_err(|err| format!("cannot sync temp file {}: {err}", tmp.display()))?;
-    drop(file);
-    fs::rename(&tmp, path).map_err(|err| {
-        fs::remove_file(&tmp).ok();
-        format!("cannot replace {}: {err}", path.display())
-    })
+    state_store::ensure_worktree(worktree, DIRECTOR_DIR)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn ignore_rule_is_established_exactly_once() {

@@ -264,7 +264,7 @@ fn publish_item(
             return Err("frozen publication payload changed for stable operation".to_string());
         }
     } else {
-        storage::atomic_write(&payload_path, &payload_bytes, false)?;
+        state_store::atomic_write(&payload_path, &payload_bytes)?;
     }
 
     if let Some(record) = read_record(worktree, run_id, &item.operation_id)? {
@@ -654,12 +654,11 @@ fn fake_publish(
         fs::write(&path, item.body.as_bytes()).map_err(|err| {
             PublishFailure::Unavailable(format!("cannot write fake tracker artifact: {err}"))
         })?;
-        storage::atomic_write(
+        state_store::atomic_write(
             &worktree
                 .join(".fake-tracker/hashes")
                 .join(format!("{artifact_id}.sha256")),
             sha256_hex(item.body.as_bytes()).as_bytes(),
-            false,
         )
         .map_err(PublishFailure::Unavailable)?;
         append_fake_log(worktree, item)?;
@@ -840,7 +839,7 @@ fn write_record(
     operation_id: &str,
     record: &Value,
 ) -> Result<(), String> {
-    storage::atomic_write_json(&record_path(worktree, run_id, operation_id), record, false)
+    storage::atomic_write_json(&record_path(worktree, run_id, operation_id), record)
 }
 
 fn record_path(worktree: &Path, run_id: &str, operation_id: &str) -> PathBuf {
