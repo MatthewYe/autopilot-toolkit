@@ -1,0 +1,7 @@
+{
+  "command": "ticket-transition",
+  "from": "reviewing",
+  "revision": 20,
+  "ticket": 201,
+  "to": "done"
+}

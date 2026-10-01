@@ -1,0 +1,10 @@
+{
+  "attempt": 2,
+  "command": "dispatch-finish",
+  "outcome": "failed",
+  "reason": "cargo cannot run offline",
+  "retry_remaining": true,
+  "revision": 8,
+  "ticket": 200,
+  "worker": "worker-a"
+}

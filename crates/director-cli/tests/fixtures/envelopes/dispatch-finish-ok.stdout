@@ -1,0 +1,8 @@
+{
+  "attempt": 1,
+  "command": "dispatch-finish",
+  "outcome": "ok",
+  "revision": 6,
+  "ticket": 200,
+  "worker": "worker-a"
+}

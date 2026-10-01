@@ -1,0 +1,6 @@
+{
+  "command": "run-transition",
+  "from": "running",
+  "revision": 21,
+  "to": "spec-gating"
+}

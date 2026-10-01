@@ -224,7 +224,6 @@ fn validate(report: &WorkerReport) -> Result<(), String> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

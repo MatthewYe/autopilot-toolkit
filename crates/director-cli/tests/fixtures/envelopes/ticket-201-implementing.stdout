@@ -1,0 +1,7 @@
+{
+  "command": "ticket-transition",
+  "from": "pending",
+  "revision": 16,
+  "ticket": 201,
+  "to": "implementing"
+}

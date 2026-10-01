@@ -1,0 +1,15 @@
+{
+  "command": "gate",
+  "revision": 13,
+  "verdict": {
+    "cap_exhausted": false,
+    "findings_total": 1,
+    "layer": "ticket",
+    "open_round": null,
+    "round_cap": 3,
+    "rounds_used": 1,
+    "ticket": 200,
+    "undispositioned": 0,
+    "zero": true
+  }
+}
