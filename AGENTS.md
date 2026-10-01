@@ -75,6 +75,7 @@ crates/deploy/         # dev symlinks, tarball pack/release, coupled-skill stagi
 crates/validation/     # frontmatter parsing + validation library (strict YAML + field checks)
 crates/validation-runner/ # validation run over the Expected set + report
 crates/skill-check/    # upstream + vendor skill hash verification (scripts/check.rs)
+crates/upstream-sync/  # upstream replacement workflow (scripts/sync-upstream.rs thin CLI)
 crates/git-utils/      # git tree hashing for skill folders
 crates/distill-cli/    # precompiled Distill CLI (offline runner)
 crates/director-cli/   # precompiled Director CLI; layering mirrors distill-cli (read its state/transition first)
