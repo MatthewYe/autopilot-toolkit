@@ -19,6 +19,7 @@ cache_dirs=(
 names=(
   deploy check run env-check sync-upstream
   test_build test_install test_toolkit_setup test_check test_github_verify test_kimi_distill
+  test_sync_upstream
 )
 
 removed=0

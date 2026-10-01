@@ -186,56 +186,46 @@ pub fn check_skills(project_root: &Path) -> Result<CheckReport, String> {
 
 /// Write an updated `.skill-lock.json` with new skill folder hashes.
 ///
-/// Reads the current lock file, updates the `skillFolderHash` fields
-/// listed in `updated`, and writes the result back.  Preserves all
-/// other fields and formatting.
+/// Loads the typed lock, applies each `skillFolderHash` update via
+/// `SkillLock::set_folder_hash` (which leaves `updatedAt` untouched), and
+/// writes the byte-stable serialization back. All other fields and the
+/// file's formatting are preserved.
 pub fn write_updated_lockfile(
     project_root: &Path,
     updated: &BTreeMap<String, String>,
 ) -> Result<(), String> {
-    write_updated_hashes(&project_root.join(shared::SKILL_LOCK_FILE), updated)
+    let mut lock = shared::load_skill_lock_at(project_root)?;
+    for (name, hash) in updated {
+        lock.set_folder_hash(name, hash)?;
+    }
+    write_lock_bytes(project_root, shared::SKILL_LOCK_FILE, &lock)
 }
 
 /// Write an updated `.vendor-lock.json` with new skill folder hashes.
 ///
-/// Reads the current lock file, updates the `skillFolderHash` fields
-/// listed in `updated`, and writes the result back.  Preserves all
-/// other fields and formatting.
+/// Loads the typed lock, applies each `skillFolderHash` update via
+/// `SkillLock::set_folder_hash` (which leaves `updatedAt` untouched), and
+/// writes the byte-stable serialization back. All other fields and the
+/// file's formatting are preserved.
 pub fn write_updated_vendor_lockfile(
     project_root: &Path,
     updated: &BTreeMap<String, String>,
 ) -> Result<(), String> {
-    write_updated_hashes(&project_root.join(shared::VENDOR_LOCK_FILE), updated)
+    let mut lock = shared::load_vendor_lock_at(project_root)?;
+    for (name, hash) in updated {
+        lock.set_folder_hash(name, hash)?;
+    }
+    write_lock_bytes(project_root, shared::VENDOR_LOCK_FILE, &lock)
 }
 
-fn write_updated_hashes(
-    lock_path: &Path,
-    updated: &BTreeMap<String, String>,
+fn write_lock_bytes(
+    project_root: &Path,
+    file_name: &str,
+    lock: &shared::SkillLock,
 ) -> Result<(), String> {
-    let content =
-        fs::read_to_string(lock_path).map_err(|e| format!("cannot read {:?}: {}", lock_path, e))?;
-
-    let mut data: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("invalid JSON: {}", e))?;
-
-    if let Some(skills) = data.get_mut("skills").and_then(|s| s.as_object_mut()) {
-        for (name, new_hash) in updated {
-            if let Some(skill) = skills.get_mut(name) {
-                if let Some(obj) = skill.as_object_mut() {
-                    obj.insert(
-                        "skillFolderHash".to_string(),
-                        serde_json::Value::String(new_hash.clone()),
-                    );
-                }
-            }
-        }
-    }
-
-    let updated_json = serde_json::to_string_pretty(&data).unwrap_or_default();
-    fs::write(lock_path, updated_json + "\n")
-        .map_err(|e| format!("cannot write {:?}: {}", lock_path, e))?;
-
-    Ok(())
+    let lock_path = project_root.join(file_name);
+    fs::write(&lock_path, lock.to_bytes())
+        .map_err(|e| format!("cannot write {:?}: {}", lock_path, e))
 }
 
 /// Determine if any result is a Fail.
@@ -729,6 +719,104 @@ mod tests {
                 name == "show-me" && matches!(result, CheckResult::Fail(_))
             }),
             "non-github vendor entry with mismatched hash must fail"
+        );
+    }
+
+    // ── write_updated_lockfile / write_updated_vendor_lockfile ─────────
+
+    #[test]
+    fn write_updated_lockfile_updates_hash_and_preserves_everything_else() {
+        let tmp = make_temp_dir();
+        let root = tmp.path();
+
+        let original = r#"{
+  "version": 4,
+  "skills": {
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/mattpocock/skills.git",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "skillFolderHash": "TODO-recalculated",
+      "pluginName": "mattpocock-skills",
+      "installedAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z"
+    }
+  },
+  "dismissed": {}
+}
+"#;
+        fs::write(root.join(".skill-lock.json"), original).expect("write lockfile");
+
+        let mut updated = BTreeMap::new();
+        updated.insert("tdd".to_string(), "newhash123".to_string());
+        write_updated_lockfile(root, &updated).expect("write_updated_lockfile");
+
+        let written = fs::read_to_string(root.join(".skill-lock.json")).expect("read back");
+        let expected = original.replace("TODO-recalculated", "newhash123");
+        assert_eq!(
+            written, expected,
+            "only skillFolderHash may change; bytes otherwise identical"
+        );
+    }
+
+    #[test]
+    fn write_updated_lockfile_unknown_skill_is_error() {
+        let tmp = make_temp_dir();
+        let root = tmp.path();
+        write_lockfile(
+            root,
+            &serde_json::json!({
+                "tdd": {
+                    "sourceType": "github",
+                    "skillPath": "skills/engineering/tdd/SKILL.md",
+                    "skillFolderHash": "abc"
+                }
+            }),
+        );
+
+        let mut updated = BTreeMap::new();
+        updated.insert("nope".to_string(), "x".to_string());
+        let err = write_updated_lockfile(root, &updated).unwrap_err();
+        assert!(err.contains("nope"), "error should name the skill: {}", err);
+    }
+
+    #[test]
+    fn write_updated_vendor_lockfile_keeps_alphabetical_vendor_format() {
+        let tmp = make_temp_dir();
+        let root = tmp.path();
+
+        let original = r#"{
+  "skills": {
+    "show-me": {
+      "installedAt": "2026-09-09T00:00:00.000Z",
+      "license": "MIT",
+      "pluginName": "show-me",
+      "pluginVersion": "1.0.1",
+      "skillFolderHash": "TODO-recalculated",
+      "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+      "source": "humanlayer/skills",
+      "sourceCommit": "3c2629142c5d437428269b1b722b08c0b87f574d",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/humanlayer/skills.git",
+      "updatedAt": "2026-09-09T00:00:00.000Z",
+      "vendorPath": "skills/vendor/show-me"
+    }
+  },
+  "version": 1
+}
+"#;
+        fs::write(root.join(".vendor-lock.json"), original).expect("write vendor lockfile");
+
+        let mut updated = BTreeMap::new();
+        updated.insert("show-me".to_string(), "newhash456".to_string());
+        write_updated_vendor_lockfile(root, &updated).expect("write_updated_vendor_lockfile");
+
+        let written = fs::read_to_string(root.join(".vendor-lock.json")).expect("read back");
+        let expected = original.replace("TODO-recalculated", "newhash456");
+        assert_eq!(
+            written, expected,
+            "only skillFolderHash may change; vendor alphabetical format preserved"
         );
     }
 

@@ -194,11 +194,11 @@ The vendored copy of `mattpocock/skills` under `skills/upstream/`. A full direct
 _Avoid_: upstream vendor, skills submodule
 
 **In-progress allowlist**:
-`IN_PROGRESS_ALLOWLIST` in `scripts/sync-upstream.rs` — the names of upstream beta skills under `skills/in-progress/` that ship anyway, tracked in `.skill-lock.json` like any other upstream skill. Membership is explicit: an unlisted in-progress skill is never picked up. A name that graduates into a stable bucket resolves itself on the next sync; a name missing at the synced ref fails the sync before anything is replaced, so a stale ref cannot orphan it.
+`IN_PROGRESS_ALLOWLIST` in the `crates/upstream-sync` crate (the entry script `scripts/sync-upstream.rs` is a thin CLI) — the names of upstream beta skills under `skills/in-progress/` that ship anyway, tracked in `.skill-lock.json` like any other upstream skill. Membership is explicit: an unlisted in-progress skill is never picked up. A name that graduates into a stable bucket resolves itself on the next sync; a name missing at the synced ref fails the sync before anything is replaced, so a stale ref cannot orphan it.
 _Avoid_: beta skills, unreleased skills
 
 **Upstream replacement**:
-The sync operation that deletes the current `skills/upstream/` and copies in a newer upstream ref's content, then recomputes all `skillFolderHash` values. Performed by `scripts/sync-upstream.rs`, which requires an explicit ref and has no default.
+The sync operation that deletes the current `skills/upstream/` and copies in a newer upstream ref's content, then recomputes all `skillFolderHash` values. Performed by the `crates/upstream-sync` crate, with `scripts/sync-upstream.rs` as its thin CLI entry, which requires an explicit ref and has no default.
 _Avoid_: upstream update, skills refresh
 
 **Review axis** (or review dimension):
