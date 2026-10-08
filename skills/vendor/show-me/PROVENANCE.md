@@ -3,15 +3,24 @@
 - Upstream: [humanlayer/skills](https://github.com/humanlayer/skills)
 - Source path: `plugins/show-me/skills/show-me/SKILL.md`
 - Plugin: `show-me` v1.0.1
-- Pinned commit: `3c2629142c5d437428269b1b722b08c0b87f574d`
+- Pinned commit: `ca7c8088db69e315a8b2deea43820270457f8f3c`
+- Updated: 2026-10-08 (UTC)
 - License: MIT
 
 ## Modifications
 
-Vendored verbatim except for the final HTML-open step, which originally used
+Vendored verbatim except for the final HTML-open step, which upstream writes as
 Claude Code's `Bash(open path/to/show-me-{description}.html)` syntax. It now
 asks the agent to open the rendered file in a browser or file-preview view, so
 the skill stays runtime-agnostic.
+
+Everything else is adopted from upstream as-is, including the changes picked up
+in the 2026-10-08 update:
+
+- `disable-model-invocation: true` in the SKILL.md frontmatter (adopted from
+  upstream, not local).
+- `agents/openai.yaml` (`policy.allow_implicit_invocation: false`), included
+  verbatim.
 
 ## License
 
