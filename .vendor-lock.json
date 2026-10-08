@@ -5,13 +5,13 @@
       "license": "MIT",
       "pluginName": "show-me",
       "pluginVersion": "1.0.1",
-      "skillFolderHash": "6826c96329a4184febc7ecd1fb741411b41c3754",
+      "skillFolderHash": "b65794bffc420495cbecac1ebf5acfae905bd882",
       "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
       "source": "humanlayer/skills",
-      "sourceCommit": "3c2629142c5d437428269b1b722b08c0b87f574d",
+      "sourceCommit": "ca7c8088db69e315a8b2deea43820270457f8f3c",
       "sourceType": "github",
       "sourceUrl": "https://github.com/humanlayer/skills.git",
-      "updatedAt": "2026-09-09T00:00:00.000Z",
+      "updatedAt": "2026-10-08T02:36:27.000Z",
       "vendorPath": "skills/vendor/show-me"
     }
   },
