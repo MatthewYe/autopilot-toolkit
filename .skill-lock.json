@@ -6,10 +6,10 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/mattpocock/skills.git",
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
-      "skillFolderHash": "8ab83b2d681b3a343b869e0840535ecf832a17b5",
+      "skillFolderHash": "da068f2392e1144469cbc602ffff96ef47881a88",
       "pluginName": "mattpocock-skills",
       "installedAt": "2026-06-25T06:37:28.000Z",
-      "updatedAt": "2026-10-01T05:09:50.351Z"
+      "updatedAt": "2026-10-08T02:32:09.994Z"
     },
     "code-review": {
       "source": "mattpocock/skills",
