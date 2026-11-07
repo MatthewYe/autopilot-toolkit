@@ -1,6 +1,6 @@
 //! Upstream sync — replaces the vendored upstream snapshot
 //! (`skills/upstream/`) with a pinned ref of mattpocock/skills and rewrites
-//! `.skill-lock.json` accordingly.
+//! `.skill-lock.json` and `.upstream-pin.json` accordingly.
 //!
 //! Migrated from `scripts/sync-upstream.rs`. Uses `shared::SkillLock` as the
 //! source-of-truth lock model (merge rules live in
@@ -10,6 +10,12 @@
 //! Public API:
 //! - `sync_upstream(project_root, upstream_ref, repo_url, now)` → `Result<SyncOutcome, String>`
 //! - `sync_upstream_with_options(..., options)` → same, with `--force` support
+//!
+//! The pin: after every gate passes, the sync writes `.upstream-pin.json`
+//! recording the requested ref, its kind (tag/branch/commit), the resolved
+//! commit, the upstream `package.json` version, and the sync timestamp. Tag
+//! refs are the default; a branch or commit ref is refused unless
+//! `SyncOptions::reason` explains why (the reason is persisted in the pin).
 //!
 //! Failure atomicity: before mutating anything, the sync snapshots
 //! `skills/upstream/`, `.skill-lock.json`, and `.upstream-pin.json` into a
@@ -35,7 +41,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use shared::{LockFlavor, LockedSkill, SkillLock};
+use shared::{
+    LockFlavor, LockedSkill, SkillLock, UpstreamPin, UpstreamRefKind, UPSTREAM_PIN_FILE,
+    UPSTREAM_PIN_SCHEMA_VERSION,
+};
 
 /// Default upstream repository. Entry points may override it (tests inject a
 /// local fixture repo; the CLI honors `AUTOPILOT_UPSTREAM_REPO`).
@@ -84,6 +93,13 @@ pub struct SyncOptions {
     /// it will overwrite are reported in [`SyncOutcome::forced_overwrites`].
     /// The pre-sync state is still backed up and restored if a gate fails.
     pub force: bool,
+    /// Why a non-tag ref is being pinned (`--reason` in the CLI). Required
+    /// when the ref is a branch or a commit; persisted in `.upstream-pin.json`
+    /// so the exception stays auditable.
+    pub reason: Option<String>,
+    /// Override the pin's `syncedAt` timestamp (tests pass a fixed value for
+    /// deterministic pins). When `None` the sync stamps the current UTC time.
+    pub synced_at: Option<String>,
 }
 
 /// Everything an entry point needs to render the sync report.
@@ -110,6 +126,8 @@ pub struct SyncOutcome {
     /// Paths a `--force` run overwrote (empty unless local changes were
     /// present and `SyncOptions::force` was set).
     pub forced_overwrites: Vec<String>,
+    /// The pin written to `.upstream-pin.json` after all gates passed.
+    pub pin: UpstreamPin,
     /// Post-sync self-check results, formatted one per line.
     pub check_lines: Vec<String>,
     /// Path of the written lock file.
@@ -141,14 +159,18 @@ pub fn sync_upstream(
 ///
 /// Steps: check preconditions (a dirty worktree or untracked files under
 /// `skills/upstream/` are refused unless `force` is set) → clone the ref into
-/// a temp dir → discover skills → load the existing lock (missing file starts
-/// a fresh one; an unparseable one is a hard error) → merge via
+/// a temp dir → classify the ref and read the upstream version → discover
+/// skills → load the existing lock (missing file starts a fresh one; an
+/// unparseable one is a hard error) → merge via
 /// `SkillLock::replace_skills` → snapshot the pre-sync state → replace the
 /// upstream tree → write the byte-stable lock → run the skill check
 /// in-process (any FAIL **or** SKIP fails the sync) → run the full validation
-/// suite. If any gate fails, the snapshot is restored and the error is
-/// returned: a failed sync leaves the project byte-identical to its pre-sync
-/// state.
+/// suite → write `.upstream-pin.json`. If any gate fails, the snapshot is
+/// restored and the error is returned: a failed sync leaves the project
+/// byte-identical to its pre-sync state.
+///
+/// A non-tag ref (branch or commit SHA) is refused unless
+/// `SyncOptions::reason` explains it; the reason lands in the pin.
 ///
 /// `now` is the timestamp used for new/changed lock entries. The temp clone
 /// and the snapshot are removed on every path, success or failure (unless the
@@ -175,6 +197,23 @@ pub fn sync_upstream_with_options(
 
     // 1. Fetch upstream at the pinned ref (temp clone, cleaned up on drop).
     let (clone, resolved_commit) = clone_at_ref(repo_url, upstream_ref)?;
+
+    // 1b. Classify the ref (tag/branch/commit) and read the upstream version
+    //     now, so an invalid pin precondition fails before anything is
+    //     rewritten. Only release tags are pinned without an explanation.
+    let ref_kind = classify_upstream_ref(repo_url, upstream_ref)?;
+    let reason = normalize_reason(options.reason.as_deref());
+    if ref_kind != UpstreamRefKind::Tag && reason.is_none() {
+        return Err(format!(
+            "refusing to pin non-tag upstream ref '{}' (a {}): pass --reason \"...\" so the pin records why this ref was chosen",
+            upstream_ref, ref_kind
+        ));
+    }
+    let upstream_version = read_upstream_version(clone.path())?;
+    let synced_at = match &options.synced_at {
+        Some(value) => value.clone(),
+        None => chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    };
 
     // 2. Discover skills from the clone — before anything is replaced, so
     //    an allowlisted skill missing at this ref fails the sync cleanly.
@@ -283,6 +322,23 @@ pub fn sync_upstream_with_options(
             ));
         }
 
+        // 5e. Record the pin last: the tree, lock, and validation are all
+        //     verified at this point, so the pin never describes a bad state.
+        let pin = UpstreamPin {
+            schema_version: UPSTREAM_PIN_SCHEMA_VERSION,
+            source: UPSTREAM_SOURCE.to_string(),
+            source_url: repo_url.to_string(),
+            ref_name: upstream_ref.to_string(),
+            ref_kind,
+            resolved_commit: resolved_commit.clone(),
+            version: upstream_version,
+            synced_at,
+            reason,
+        };
+        let pin_path = project_root.join(UPSTREAM_PIN_FILE);
+        fs::write(&pin_path, pin.to_bytes())
+            .map_err(|e| format!("cannot write {}: {}", pin_path.display(), e))?;
+
         Ok(SyncOutcome {
             upstream_ref: upstream_ref.to_string(),
             repo_url: repo_url.to_string(),
@@ -294,6 +350,7 @@ pub fn sync_upstream_with_options(
             removed,
             allowlist_notes,
             forced_overwrites,
+            pin,
             check_lines,
             lock_path,
             upstream_dir,
@@ -538,6 +595,87 @@ fn copy_dir_except_git(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+// ── Ref classification and pin metadata ────────────────────────────────────
+
+/// Classify `upstream_ref` against the remote's advertised refs: an exact
+/// tag, an exact branch, or a full 40-character commit SHA.
+///
+/// The pin records the kind so `scripts/check.rs` can enforce the release-tag
+/// default (`refKind == "tag"` pins need no `reason` and must agree with the
+/// vendored `package.json` version).
+fn classify_upstream_ref(repo_url: &str, upstream_ref: &str) -> Result<UpstreamRefKind, String> {
+    let output = Command::new("git")
+        .args(["ls-remote", "--heads", "--tags", repo_url])
+        .output()
+        .map_err(|e| format!("cannot run git ls-remote for {}: {}", repo_url, e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cannot list refs of {}: {}",
+            repo_url,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let tag_ref = format!("refs/tags/{}", upstream_ref);
+    let branch_ref = format!("refs/heads/{}", upstream_ref);
+    let mut is_tag = false;
+    let mut is_branch = false;
+    for line in stdout.lines() {
+        // Lines are "<sha>\t<refname>"; peeled tag entries end in "^{}" and
+        // must not count as the tag itself.
+        let Some((_, refname)) = line.split_once('\t') else {
+            continue;
+        };
+        if refname == tag_ref {
+            is_tag = true;
+        } else if refname == branch_ref {
+            is_branch = true;
+        }
+    }
+    if is_tag {
+        Ok(UpstreamRefKind::Tag)
+    } else if is_branch {
+        Ok(UpstreamRefKind::Branch)
+    } else if is_full_sha(upstream_ref) {
+        Ok(UpstreamRefKind::Commit)
+    } else {
+        Err(format!(
+            "cannot classify upstream ref '{}': not a tag or branch of {}, and not a full 40-character commit SHA",
+            upstream_ref, repo_url
+        ))
+    }
+}
+
+/// True when `value` is a full lowercase 40-character commit SHA.
+fn is_full_sha(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Trim an optional reason; empty strings count as absent.
+fn normalize_reason(reason: Option<&str>) -> Option<String> {
+    reason
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Read the upstream plugin version from `package.json` in the clone. The pin
+/// records it; for tag pins `scripts/check.rs` compares it with the vendored
+/// `skills/upstream/package.json`.
+fn read_upstream_version(clone: &Path) -> Result<String, String> {
+    let path = clone.join("package.json");
+    let bytes = fs::read(&path).map_err(|e| format!("cannot read {}: {}", path.display(), e))?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("cannot parse {}: {}", path.display(), e))?;
+    json.get("version")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{} has no string `version` field", path.display()))
 }
 
 // ── Preconditions ──────────────────────────────────────────────────────────
@@ -846,6 +984,26 @@ mod tests {
         )
     }
 
+    /// Write a minimal upstream `package.json`; the pin records its version.
+    fn write_package_json(repo: &Path, version: &str) {
+        let body = format!(
+            "{{\n  \"name\": \"fixture-skills\",\n  \"version\": \"{}\"\n}}\n",
+            version
+        );
+        fs::write(repo.join("package.json"), body).expect("write package.json");
+    }
+
+    /// Run git and return its trimmed stdout.
+    fn git_output(dir: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git failed to start");
+        assert!(output.status.success(), "git {:?} failed in {:?}", args, dir);
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
     /// Stage, commit, and tag (`v1`) the fixture repo.
     fn commit_fixture(repo: &Path) {
         git(repo, &["add", "-A"]);
@@ -886,6 +1044,7 @@ mod tests {
             "skills/in-progress/loop-me",
             &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
         );
+        write_package_json(repo, "1.0.0");
         commit_fixture(repo);
     }
 
@@ -910,6 +1069,7 @@ mod tests {
             "skills/in-progress/loop-me",
             &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
         );
+        write_package_json(repo, "1.0.0");
         commit_fixture(repo);
     }
 
@@ -1331,7 +1491,12 @@ mod tests {
         let repo = TempDir::new().unwrap();
         fs::create_dir_all(repo.path()).unwrap();
         git(repo.path(), &["init", "--quiet"]);
-        write_skill(repo.path(), "skills/engineering/skill-a", "# A\n");
+        write_skill(
+            repo.path(),
+            "skills/engineering/skill-a",
+            &fixture_skill_md("skill-a", "Fixture skill A.", "Skill A"),
+        );
+        write_package_json(repo.path(), "1.0.0");
         git(repo.path(), &["add", "-A"]);
         git(
             repo.path(),
@@ -1478,7 +1643,10 @@ mod tests {
             "v1",
             repo.path().to_str().unwrap(),
             NOW,
-            &SyncOptions { force: true },
+            &SyncOptions {
+                force: true,
+                ..Default::default()
+            },
         )
         .expect("forced sync should succeed");
 
@@ -1525,5 +1693,134 @@ mod tests {
             project.path().join("skills/upstream/UNTRACKED.md").exists(),
             "a refused sync must not delete untracked files"
         );
+    }
+
+    // ── Upstream pin ────────────────────────────────────────────────────
+
+    #[test]
+    fn sync_writes_pin_for_tag() {
+        let repo = TempDir::new().unwrap();
+        make_fixture_repo(repo.path());
+        let project = TempDir::new().unwrap();
+        make_project_root(project.path());
+        let synced_at = "2026-11-07T10:00:00Z";
+
+        let outcome = sync_upstream_with_options(
+            project.path(),
+            "v1",
+            repo.path().to_str().unwrap(),
+            NOW,
+            &SyncOptions {
+                synced_at: Some(synced_at.to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("sync should succeed");
+
+        let pin_path = project.path().join(".upstream-pin.json");
+        let bytes = fs::read(&pin_path).expect("pin file written");
+        assert_eq!(bytes.last(), Some(&b'\n'), "pin ends with a newline");
+        let pin = shared::UpstreamPin::parse(&bytes).expect("parse pin");
+        assert_eq!(pin.schema_version, shared::UPSTREAM_PIN_SCHEMA_VERSION);
+        assert_eq!(pin.source, UPSTREAM_SOURCE);
+        assert_eq!(pin.source_url, repo.path().to_str().unwrap());
+        assert_eq!(pin.ref_name, "v1");
+        assert_eq!(pin.ref_kind, UpstreamRefKind::Tag);
+        assert_eq!(pin.resolved_commit, outcome.resolved_commit);
+        assert_eq!(pin.version, "1.0.0");
+        assert_eq!(pin.synced_at, synced_at);
+        assert_eq!(pin.reason, None, "tag pins need no reason");
+        assert_eq!(outcome.pin, pin, "outcome carries the written pin");
+    }
+
+    #[test]
+    fn sync_requires_reason_for_non_tag_ref() {
+        let repo = TempDir::new().unwrap();
+        make_fixture_repo(repo.path());
+        git(repo.path(), &["checkout", "--quiet", "-b", "feature"]);
+        let project = TempDir::new().unwrap();
+        make_project_root(project.path());
+
+        let err =
+            sync_upstream(project.path(), "feature", repo.path().to_str().unwrap(), NOW).unwrap_err();
+        assert!(
+            err.contains("refusing to pin non-tag upstream ref 'feature'"),
+            "{}",
+            err
+        );
+        assert!(err.contains("--reason"), "{}", err);
+        assert!(
+            project.path().join("skills/upstream/STALE.md").exists(),
+            "a refused pin must not touch the tree"
+        );
+        assert!(!project.path().join(".upstream-pin.json").exists());
+
+        let outcome = sync_upstream_with_options(
+            project.path(),
+            "feature",
+            repo.path().to_str().unwrap(),
+            NOW,
+            &SyncOptions {
+                reason: Some("feature carries the next release candidate".to_string()),
+                synced_at: Some("2026-11-07T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("a non-tag ref with a reason should sync");
+        assert_eq!(outcome.pin.ref_kind, UpstreamRefKind::Branch);
+        assert_eq!(outcome.pin.ref_name, "feature");
+        assert_eq!(
+            outcome.pin.reason.as_deref(),
+            Some("feature carries the next release candidate")
+        );
+    }
+
+    #[test]
+    fn classify_upstream_ref_classifies_tag_branch_and_commit() {
+        let repo = TempDir::new().unwrap();
+        make_fixture_repo(repo.path());
+        git(repo.path(), &["checkout", "--quiet", "-b", "feature"]);
+        let repo_url = repo.path().to_str().unwrap();
+
+        assert_eq!(
+            classify_upstream_ref(repo_url, "v1").unwrap(),
+            UpstreamRefKind::Tag
+        );
+        assert_eq!(
+            classify_upstream_ref(repo_url, "feature").unwrap(),
+            UpstreamRefKind::Branch
+        );
+        let sha = git_output(repo.path(), &["rev-parse", "HEAD"]);
+        assert_eq!(
+            classify_upstream_ref(repo_url, &sha).unwrap(),
+            UpstreamRefKind::Commit
+        );
+        let err = classify_upstream_ref(repo_url, "no-such-ref").unwrap_err();
+        assert!(err.contains("cannot classify upstream ref"), "{}", err);
+    }
+
+    #[test]
+    fn sync_fails_when_upstream_has_no_package_json() {
+        let repo = TempDir::new().unwrap();
+        fs::create_dir_all(repo.path()).unwrap();
+        git(repo.path(), &["init", "--quiet"]);
+        write_skill(
+            repo.path(),
+            "skills/engineering/skill-a",
+            &fixture_skill_md("skill-a", "Fixture skill A.", "Skill A"),
+        );
+        write_skill(
+            repo.path(),
+            "skills/in-progress/loop-me",
+            &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
+        );
+        commit_fixture(repo.path());
+        let project = TempDir::new().unwrap();
+        make_project_root(project.path());
+
+        let err = sync_upstream(project.path(), "v1", repo.path().to_str().unwrap(), NOW)
+            .unwrap_err();
+        assert!(err.contains("package.json"), "{}", err);
+        assert!(!project.path().join(".upstream-pin.json").exists());
     }
 }

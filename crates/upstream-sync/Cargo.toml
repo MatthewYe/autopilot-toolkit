@@ -9,6 +9,7 @@ shared = { path = "../shared" }
 skill-check = { path = "../skill-check" }
 validation-runner = { path = "../validation-runner" }
 serde_json = "1"
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

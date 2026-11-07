@@ -8,6 +8,7 @@
 //!
 //! Public API:
 //! - `check_skills(project_root)` → `Result<CheckReport, String>`
+//! - `check_upstream_pin(project_root)` → `Result<Option<(String, CheckResult)>, String>`
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -282,6 +283,162 @@ pub fn determine_exit_code(results: &[(String, CheckResult)], found_github: bool
     } else {
         0
     }
+}
+
+// ── Upstream pin ───────────────────────────────────────────────────────────
+
+/// Check name used for the `.upstream-pin.json` result line.
+pub const UPSTREAM_PIN_CHECK_NAME: &str = "upstream-pin";
+
+/// Verify `.upstream-pin.json` when the project tracks an upstream snapshot.
+///
+/// Returns `Ok(None)` when the project has neither a pin file nor a vendored
+/// `skills/upstream/package.json`, so synthetic projects without an upstream
+/// tree keep their old behavior. Once either exists, verification is
+/// enforced: a missing pin is a failure, not a skip.
+pub fn check_upstream_pin(project_root: &Path) -> Result<Option<(String, CheckResult)>, String> {
+    let pin_path = project_root.join(shared::UPSTREAM_PIN_FILE);
+    let upstream_package_json = project_root
+        .join("skills")
+        .join("upstream")
+        .join("package.json");
+    if !pin_path.is_file() && !upstream_package_json.is_file() {
+        return Ok(None);
+    }
+    Ok(Some((
+        UPSTREAM_PIN_CHECK_NAME.to_string(),
+        evaluate_upstream_pin(project_root),
+    )))
+}
+
+fn evaluate_upstream_pin(project_root: &Path) -> CheckResult {
+    match evaluate_upstream_pin_inner(project_root) {
+        Ok(()) => CheckResult::Pass,
+        Err(message) => CheckResult::Fail(message),
+    }
+}
+
+fn evaluate_upstream_pin_inner(project_root: &Path) -> Result<(), String> {
+    let pin_path = project_root.join(shared::UPSTREAM_PIN_FILE);
+    let bytes = fs::read(&pin_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!(
+                "missing {} (run scripts/sync-upstream.rs to write it; never hand-edit)",
+                shared::UPSTREAM_PIN_FILE
+            )
+        } else {
+            format!("cannot read {}: {}", pin_path.display(), e)
+        }
+    })?;
+    let pin = shared::UpstreamPin::parse(&bytes)?;
+
+    if pin.schema_version != shared::UPSTREAM_PIN_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported schemaVersion {} (expected {})",
+            pin.schema_version,
+            shared::UPSTREAM_PIN_SCHEMA_VERSION
+        ));
+    }
+    if !is_lowercase_hex_40(&pin.resolved_commit) {
+        return Err(format!(
+            "resolvedCommit must be 40 lowercase hex characters, got {:?}",
+            pin.resolved_commit
+        ));
+    }
+    if !is_utc_iso8601(&pin.synced_at) {
+        return Err(format!(
+            "syncedAt must be an ISO-8601 UTC timestamp ending in Z, got {:?}",
+            pin.synced_at
+        ));
+    }
+    if pin.ref_name.trim().is_empty() {
+        return Err("`ref` must not be empty".to_string());
+    }
+    if pin.source.trim().is_empty() {
+        return Err("`source` must not be empty".to_string());
+    }
+    if pin.source_url.trim().is_empty() {
+        return Err("`sourceUrl` must not be empty".to_string());
+    }
+    if pin.ref_kind != shared::UpstreamRefKind::Tag
+        && pin
+            .reason
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+    {
+        return Err(format!(
+            "refKind {:?} requires a non-empty reason so the exception is auditable",
+            pin.ref_kind
+        ));
+    }
+
+    // README documents the pin for humans; the machine facts must agree with
+    // it, so a sync that forgets the prose cannot land unnoticed.
+    let readme_path = project_root.join("README.md");
+    let readme = fs::read_to_string(&readme_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "cannot verify the pin: README.md is missing".to_string()
+        } else {
+            format!("cannot read {}: {}", readme_path.display(), e)
+        }
+    })?;
+    if !readme.contains(&pin.ref_name) {
+        return Err(format!(
+            "README.md does not mention the pinned ref {:?} (update the prose after a sync)",
+            pin.ref_name
+        ));
+    }
+    if !readme.contains(&pin.resolved_commit) {
+        return Err(format!(
+            "README.md does not mention the pinned commit {}",
+            pin.resolved_commit
+        ));
+    }
+
+    // A tag pin mirrors a released upstream package.json; a mismatch means
+    // the vendored tree and the pin come from different commits.
+    if pin.ref_kind == shared::UpstreamRefKind::Tag {
+        let package_json = project_root
+            .join("skills")
+            .join("upstream")
+            .join("package.json");
+        let bytes = fs::read(&package_json).map_err(|e| {
+            format!(
+                "cannot compare the tag pin with {}: {}",
+                package_json.display(),
+                e
+            )
+        })?;
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("cannot parse {}: {}", package_json.display(), e))?;
+        let version = json
+            .get("version")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| format!("{} has no string `version` field", package_json.display()))?;
+        if version != pin.version {
+            return Err(format!(
+                "pin version {:?} does not match skills/upstream/package.json version {:?}",
+                pin.version, version
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// True for exactly 40 lowercase hex characters (a full commit SHA).
+fn is_lowercase_hex_40(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// True for an RFC 3339 timestamp that is UTC (`Z` suffix).
+fn is_utc_iso8601(value: &str) -> bool {
+    value.ends_with('Z') && chrono::DateTime::parse_from_rfc3339(value).is_ok()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -992,5 +1149,155 @@ mod tests {
         assert_eq!(lock.skills.len(), 2);
         assert_eq!(lock.skills[0].source_type, "local");
         assert_eq!(lock.skills[1].source_type, "github");
+    }
+    // ── upstream pin ────────────────────────────────────────────────────
+
+    const PIN_COMMIT: &str = "d1478fcb140db0b93c0c8df17bcfd311844749d0";
+
+    fn sample_tag_pin() -> shared::UpstreamPin {
+        shared::UpstreamPin {
+            schema_version: shared::UPSTREAM_PIN_SCHEMA_VERSION,
+            source: "mattpocock/skills".to_string(),
+            source_url: "https://github.com/mattpocock/skills.git".to_string(),
+            ref_name: "v1.3.2".to_string(),
+            ref_kind: shared::UpstreamRefKind::Tag,
+            resolved_commit: PIN_COMMIT.to_string(),
+            version: "1.3.2".to_string(),
+            synced_at: "2026-11-07T10:00:00Z".to_string(),
+            reason: None,
+        }
+    }
+
+    fn write_upstream_package(dir: &Path, version: &str) {
+        let path = dir.join("skills/upstream/package.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "{{\n  \"name\": \"mattpocock-skills\",\n  \"version\": \"{}\"\n}}\n",
+                version
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_readme(dir: &Path, ref_name: &str, commit: &str) {
+        fs::write(
+            dir.join("README.md"),
+            format!(
+                "# Fixture\n\nThe upstream snapshot is pinned to release {} `{}`.\n",
+                ref_name, commit
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_pin(dir: &Path, pin: &shared::UpstreamPin) {
+        fs::write(dir.join(shared::UPSTREAM_PIN_FILE), pin.to_bytes()).unwrap();
+    }
+
+    fn pin_result(dir: &Path) -> CheckResult {
+        check_upstream_pin(dir)
+            .expect("pin check should not hard-error")
+            .expect("pin check should be triggered")
+            .1
+    }
+
+    #[test]
+    fn pin_check_skipped_without_upstream_snapshot() {
+        let dir = make_temp_dir();
+        assert_eq!(check_upstream_pin(dir.path()).unwrap(), None);
+    }
+
+    #[test]
+    fn pin_check_fails_when_pin_missing() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.2");
+        write_readme(dir.path(), "v1.3.2", PIN_COMMIT);
+        match pin_result(dir.path()) {
+            CheckResult::Fail(message) => {
+                assert!(message.contains("missing .upstream-pin.json"), "{}", message)
+            }
+            other => panic!("expected Fail, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pin_check_passes_for_valid_tag_pin() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.2");
+        write_readme(dir.path(), "v1.3.2", PIN_COMMIT);
+        write_pin(dir.path(), &sample_tag_pin());
+        assert_eq!(pin_result(dir.path()), CheckResult::Pass);
+    }
+
+    #[test]
+    fn pin_check_fails_when_readme_omits_the_commit() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.2");
+        fs::write(dir.path().join("README.md"), "pinned to v1.3.2\n").unwrap();
+        write_pin(dir.path(), &sample_tag_pin());
+        match pin_result(dir.path()) {
+            CheckResult::Fail(message) => assert!(
+                message.contains("does not mention the pinned commit"),
+                "{}",
+                message
+            ),
+            other => panic!("expected Fail, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pin_check_fails_when_tag_version_mismatches_the_tree() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.3");
+        write_readme(dir.path(), "v1.3.2", PIN_COMMIT);
+        write_pin(dir.path(), &sample_tag_pin());
+        match pin_result(dir.path()) {
+            CheckResult::Fail(message) => assert!(
+                message.contains("does not match skills/upstream/package.json"),
+                "{}",
+                message
+            ),
+            other => panic!("expected Fail, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pin_check_fails_when_pin_is_malformed() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.2");
+        write_readme(dir.path(), "v1.3.2", PIN_COMMIT);
+        fs::write(
+            dir.path().join(shared::UPSTREAM_PIN_FILE),
+            "{\"schemaVersion\": 1, \"surprise\": true}\n",
+        )
+        .unwrap();
+        match pin_result(dir.path()) {
+            CheckResult::Fail(message) => {
+                assert!(message.contains("malformed upstream pin"), "{}", message)
+            }
+            other => panic!("expected Fail, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pin_check_requires_reason_for_non_tag_pins() {
+        let dir = make_temp_dir();
+        write_upstream_package(dir.path(), "1.3.3");
+        write_readme(dir.path(), "main", PIN_COMMIT);
+        let mut pin = sample_tag_pin();
+        pin.ref_name = "main".to_string();
+        pin.ref_kind = shared::UpstreamRefKind::Branch;
+        pin.version = "1.3.3".to_string();
+        write_pin(dir.path(), &pin);
+        match pin_result(dir.path()) {
+            CheckResult::Fail(message) => assert!(message.contains("requires a non-empty reason"), "{}", message),
+            other => panic!("expected Fail, got {:?}", other),
+        }
+
+        pin.reason = Some("main carries the 1.3.3 release candidate".to_string());
+        write_pin(dir.path(), &pin);
+        assert_eq!(pin_result(dir.path()), CheckResult::Pass);
     }
 }
