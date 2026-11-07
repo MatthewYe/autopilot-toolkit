@@ -151,6 +151,36 @@ ref and the full commit, and a tag pin's `version` matches
 failure, not a skip. The bootstrap pin in this repository was produced by
 running the sync, not typed.
 
+## Scheduled drift check
+
+A sync is still a manual, reviewable act, but nobody should have to remember to
+look for a new upstream release. `.github/workflows/upstream-drift.yml` runs
+every Monday at 09:00 UTC and can be dispatched by hand:
+
+```bash
+gh workflow run upstream-drift.yml
+gh workflow run upstream-drift.yml -f simulate_tag=v1.3.3   # exercise the drift path
+```
+
+The job reads `.upstream-pin.json`, asks upstream for its tags
+(`git ls-remote --tags --refs`), keeps the newest `vMAJOR.MINOR.PATCH` release,
+and compares its version with the pin's `version`. It never clones the snapshot,
+runs a sync, commits, or merges — the only side effect is a GitHub issue.
+
+| Situation | What the workflow does |
+| --- | --- |
+| pin is current (or ahead) | closes the single open `upstream drift:` issue, if any; nothing else |
+| a newer release exists | opens one issue labelled `enhancement`, or updates it in place; closes duplicates |
+| check cannot run (missing pin, no release tags) | fails the job — it is a pin/tag problem to fix, not drift |
+
+The tracking issue is a reminder, not an action: work through the Procedure above
+on a clean branch and open a normal sync PR. The issue closes itself on the next
+run after the pin catches up. Its title always starts with `upstream drift:`;
+that prefix is how the workflow finds the issue again, so do not rename it. The
+`simulate_tag` input bypasses the network and feeds the tag straight into the
+comparison — it is the supported way to test the issue path without waiting for a
+real release.
+
 ## Failure and rollback semantics
 
 | Failure | Behavior |

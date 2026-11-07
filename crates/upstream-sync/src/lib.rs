@@ -10,6 +10,9 @@
 //! Public API:
 //! - `sync_upstream(project_root, upstream_ref, repo_url, now)` → `Result<SyncOutcome, String>`
 //! - `sync_upstream_with_options(..., options)` → same, with `--force` support
+//! - [`drift`] (behind `scripts/upstream-drift.rs`) → compares the committed
+//!   pin with the newest upstream release tag; the scheduled check that turns
+//!   drift into a GitHub issue lives in `.github/workflows/upstream-drift.yml`
 //!
 //! The pin: after every gate passes, the sync writes `.upstream-pin.json`
 //! recording the requested ref, its kind (tag/branch/commit), the resolved
@@ -45,6 +48,8 @@ use shared::{
     LockFlavor, LockedSkill, SkillLock, UpstreamPin, UpstreamRefKind, UPSTREAM_PIN_FILE,
     UPSTREAM_PIN_SCHEMA_VERSION,
 };
+
+pub mod drift;
 
 /// Default upstream repository. Entry points may override it (tests inject a
 /// local fixture repo; the CLI honors `AUTOPILOT_UPSTREAM_REPO`).

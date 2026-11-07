@@ -1,0 +1,94 @@
+name: upstream drift
+
+on:
+  schedule:
+    # Weekly on Monday, 09:00 UTC. The sync itself stays manual; this only
+    # surfaces a new upstream release in a tracking issue.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      simulate_tag:
+        description: "Pretend this upstream tag is the newest release (e.g. v1.3.3)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check upstream drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install rust-script
+        run: cargo install rust-script
+
+      - name: Compare the pin with the newest upstream release tag
+        id: drift
+        env:
+          SIMULATE_TAG: ${{ inputs.simulate_tag }}
+        run: |
+          args=(--json)
+          if [ -n "${SIMULATE_TAG}" ]; then
+            args+=(--tag "${SIMULATE_TAG}")
+          fi
+          rust-script scripts/upstream-drift.rs "${args[@]}" > drift.json
+          cat drift.json
+          {
+            echo "drifted=$(jq -r .drifted drift.json)"
+            echo "title=$(jq -r .title drift.json)"
+          } >> "$GITHUB_OUTPUT"
+          jq -r .body drift.json > drift-body.md
+
+      - name: Ensure the check never mutates the working tree
+        run: git diff --exit-code
+
+      - name: Open or update the single drift issue
+        if: steps.drift.outputs.drifted == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="${{ steps.drift.outputs.title }}"
+          mapfile -t numbers < <(
+            gh issue list --state open --label enhancement --limit 100 \
+              --json number,title \
+              --jq '.[] | select(.title | startswith("upstream drift:")) | .number'
+          )
+          if [ "${#numbers[@]}" -eq 0 ]; then
+            gh issue create --title "$title" --body-file drift-body.md --label enhancement
+            echo "opened a new upstream drift issue: $title"
+          else
+            keep="${numbers[0]}"
+            gh issue edit "$keep" --title "$title" --body-file drift-body.md
+            echo "updated upstream drift issue #$keep"
+            # Drift bookkeeping lives in exactly one open issue.
+            for number in "${numbers[@]:1}"; do
+              gh issue close "$number" \
+                --comment "Duplicate of #$keep: the upstream drift check keeps a single open tracking issue."
+              echo "closed duplicate drift issue #$number"
+            done
+          fi
+
+      - name: Close the drift issue once the pin catches up
+        if: steps.drift.outputs.drifted == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mapfile -t numbers < <(
+            gh issue list --state open --label enhancement --limit 100 \
+              --json number,title \
+              --jq '.[] | select(.title | startswith("upstream drift:")) | .number'
+          )
+          for number in "${numbers[@]}"; do
+            gh issue close "$number" \
+              --comment "The pinned upstream snapshot is current again; the scheduled upstream drift check is closing this issue."
+            echo "closed resolved upstream drift issue #$number"
+          done
