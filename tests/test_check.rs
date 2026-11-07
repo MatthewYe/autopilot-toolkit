@@ -515,13 +515,18 @@ mod tests {
         write_lockfile(root, &skills);
 
         let (stdout, _stderr, code) = run_check(&check_script_path(), root);
-        // No github skills with valid paths → behaves like no github skills
-        assert_eq!(code, 0, "should exit 0, stdout: {}", stdout);
+        // A skipped check fails closed: the hash was never verified, so the
+        // gate must not pass silently.
+        assert_eq!(code, 1, "SKIP must fail the check, stdout: {}", stdout);
         assert!(
             stdout
                 .contains("SKIP: bad-skill — unexpected skillPath format: not-a-valid-skill-path"),
             "should contain SKIP line, got: {}",
             stdout
+        );
+        assert!(
+            !stdout.contains("ALL PASS"),
+            "should not contain ALL PASS on a skipped check"
         );
     }
 }

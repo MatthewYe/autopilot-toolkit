@@ -18,10 +18,15 @@
 //! allowlisted skill fails the sync before the tree or the lock is touched.
 //!
 //! Usage:
-//!   rust-script scripts/sync-upstream.rs <REF>
+//!   rust-script scripts/sync-upstream.rs [--force] <REF>
 //!
 //! REF is required: a release tag, branch, or commit SHA. There is no
 //! default, because a ref that predates an allowlisted skill would orphan it.
+//!
+//! --force proceeds even when the git worktree is dirty or `skills/upstream/`
+//! holds untracked files (which the sync would overwrite or delete). The
+//! overwritten paths are printed. Either way, the sync snapshots the
+//! pre-sync state first and restores it if any post-sync gate fails.
 //!
 //! Environment:
 //!   AUTOPILOT_UPSTREAM_REPO — override the upstream repo URL (tests point
@@ -31,10 +36,13 @@ use std::env;
 use std::process;
 
 fn usage() -> ! {
-    eprintln!("Usage: rust-script scripts/sync-upstream.rs <REF>");
+    eprintln!("Usage: rust-script scripts/sync-upstream.rs [--force] <REF>");
     eprintln!();
     eprintln!("REF is a required mattpocock/skills release tag, branch, or commit SHA.");
     eprintln!("There is no default: a ref that predates an allowlisted skill would orphan it.");
+    eprintln!();
+    eprintln!("  --force  proceed despite local changes in the worktree; the paths the");
+    eprintln!("           sync overwrites are printed. A failed sync still rolls back.");
     eprintln!();
     eprintln!("Environment:");
     eprintln!(
@@ -45,11 +53,29 @@ fn usage() -> ! {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let tag = match args.get(1) {
-        Some(tag) if !tag.trim().is_empty() => tag.clone(),
+    let mut force = false;
+    let mut ref_arg: Option<String> = None;
+    for arg in env::args().skip(1) {
+        match arg.as_str() {
+            "--force" => force = true,
+            unknown if unknown.starts_with("--") => {
+                eprintln!("Unknown flag: {}", unknown);
+                usage();
+            }
+            other => {
+                if ref_arg.is_some() {
+                    eprintln!("Unexpected extra argument: {}", other);
+                    usage();
+                }
+                ref_arg = Some(other.to_string());
+            }
+        }
+    }
+    let tag = match ref_arg {
+        Some(tag) if !tag.trim().is_empty() => tag,
         _ => usage(),
     };
+    let options = upstream_sync::SyncOptions { force };
 
     let project_root = shared::project_root();
     let repo_url = env::var("AUTOPILOT_UPSTREAM_REPO")
@@ -62,9 +88,17 @@ fn main() {
     println!("Project root: {}", project_root.display());
     println!("\nFetching {} ({}):", repo_url, tag);
 
-    match upstream_sync::sync_upstream(&project_root, &tag, &repo_url, &now) {
+    match upstream_sync::sync_upstream_with_options(&project_root, &tag, &repo_url, &now, &options)
+    {
         Ok(outcome) => {
             println!("  resolved to commit {}", outcome.resolved_commit);
+
+            if !outcome.forced_overwrites.is_empty() {
+                println!("\nwarning: --force overwrote local changes:");
+                for path in &outcome.forced_overwrites {
+                    println!("  ! {}", path);
+                }
+            }
 
             println!("\nDiscovered {} skills:", outcome.discovered.len());
             for skill in &outcome.discovered {

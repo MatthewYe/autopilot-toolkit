@@ -16,7 +16,7 @@ rust-script deploy.rs distill-artifacts       # Build Distill CLI for release pl
 rust-script deploy.rs director-artifacts      # Build Director CLI for release platforms
 rust-script deploy.rs release                 # Pack + push to GitHub Releases
 rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
-rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot (tag/branch/commit)
+rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot (tag/branch/commit); atomic — restores on any gate failure, refuses a dirty worktree unless --force
 rust-script scripts/check.rs                  # Verify upstream + vendor skill hashes
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
@@ -27,6 +27,7 @@ rust-script --test tests/test_install.rs      # integration tests for deploy.rs
 rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
 rust-script --test tests/test_check.rs
+rust-script --test tests/test_sync_upstream.rs
 ```
 
 No build step — skills are consumed directly from the source tree by the agent runtime.

@@ -593,6 +593,7 @@ dependencies = [
  "shared",
  "skill-check",
  "tempfile",
+ "validation-runner",
 ]
 
 [[package]]
