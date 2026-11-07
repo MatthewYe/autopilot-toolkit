@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 pub const SKILL_LOCK_FILE: &str = ".skill-lock.json";
 /// Vendor skill lock (third-party skills under `skills/vendor/`).
 pub const VENDOR_LOCK_FILE: &str = ".vendor-lock.json";
+/// Upstream pin: the ref the vendored upstream snapshot was synced to.
+pub const UPSTREAM_PIN_FILE: &str = ".upstream-pin.json";
 
 // ── .skill-lock.json types ─────────────────────────────────────────────────
 

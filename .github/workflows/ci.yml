@@ -41,6 +41,8 @@ jobs:
         run: rust-script --test tests/test_github_verify.rs
       - name: Run check tests
         run: rust-script --test tests/test_check.rs
+      - name: Run sync-upstream tests
+        run: rust-script --test tests/test_sync_upstream.rs
       - name: Run Kimi distill tests
         run: rust-script --test tests/test_kimi_distill.rs
 
@@ -74,7 +76,7 @@ jobs:
         with:
           components: rustfmt
       - name: Check rust-script formatting
-        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs crates/state-store/src/lib.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs
+        run: rustfmt --check deploy.rs validation/run.rs crates/validation/src/lib.rs crates/skill-index/src/lib.rs crates/state-store/src/lib.rs scripts/check.rs scripts/env-check.rs scripts/sync-upstream.rs tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs tests/test_sync_upstream.rs
 
   clippy:
     name: clippy
@@ -111,7 +113,8 @@ jobs:
             echo "::endgroup::"
           done
           for f in tests/test_build.rs tests/test_install.rs tests/test_toolkit_setup.rs \
-                   tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs; do
+                   tests/test_check.rs tests/test_github_verify.rs tests/test_kimi_distill.rs \
+                   tests/test_sync_upstream.rs; do
             echo "::group::clippy $f"
             tmpdir=$(mktemp -d)
             rust-script --package --pkg-path "$tmpdir" "$f"

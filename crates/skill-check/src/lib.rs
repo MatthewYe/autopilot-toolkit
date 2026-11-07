@@ -235,6 +235,15 @@ pub fn any_fail(results: &[(String, CheckResult)]) -> bool {
         .any(|(_, r)| matches!(r, CheckResult::Fail(_)))
 }
 
+/// Determine if any result is a hard failure for a gate: a `Fail`, or a
+/// `Skip` (a check that could not run is not evidence that the tree is
+/// good, so it must not pass a gate silently).
+pub fn any_not_pass(results: &[(String, CheckResult)]) -> bool {
+    results
+        .iter()
+        .any(|(_, r)| matches!(r, CheckResult::Fail(_) | CheckResult::Skip(_)))
+}
+
 /// Format a single check result line, matching the bash script output exactly.
 pub fn format_result(name: &str, result: &CheckResult) -> String {
     match result {
@@ -258,12 +267,17 @@ pub fn format_result(name: &str, result: &CheckResult) -> String {
 }
 
 /// Determine the exit code from results.
-/// Returns 0 when all pass (or no github skills), 1 when any FAIL.
+///
+/// Returns 0 when every check passed, or when there was no github/vendor
+/// skill to check at all (nothing to verify is not a failure). Returns 1 for
+/// any `Fail` **or** `Skip`: a check that could not run (e.g. an unexpected
+/// `skillPath` format) is fail-closed so a broken tree cannot pass the gate
+/// by being skipped.
 pub fn determine_exit_code(results: &[(String, CheckResult)], found_github: bool) -> i32 {
     if !found_github {
         return 0;
     }
-    if any_fail(results) {
+    if any_not_pass(results) {
         1
     } else {
         0
@@ -924,6 +938,20 @@ mod tests {
         let results = vec![
             ("a".to_string(), CheckResult::Pass),
             ("b".to_string(), CheckResult::Fail("oops".to_string())),
+        ];
+        assert_eq!(determine_exit_code(&results, true), 1);
+    }
+
+    #[test]
+    fn exit_code_one_when_any_skip() {
+        // A skipped check means a hash could not be verified; that is not
+        // evidence the tree is good, so the gate is fail-closed.
+        let results = vec![
+            ("a".to_string(), CheckResult::Pass),
+            (
+                "b".to_string(),
+                CheckResult::Skip("unexpected skillPath format: bad/path".to_string()),
+            ),
         ];
         assert_eq!(determine_exit_code(&results, true), 1);
     }

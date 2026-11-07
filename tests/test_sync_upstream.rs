@@ -66,14 +66,28 @@ fn actual_project_root() -> PathBuf {
 /// Run scripts/sync-upstream.rs with PROJECT_ROOT and
 /// AUTOPILOT_UPSTREAM_REPO pointed at the fixtures.
 fn run_sync(script: &Path, project: &Path, repo: &Path, ref_: &str) -> (String, String, i32) {
-    assert!(script.exists(), "sync-upstream.rs not found at {:?}", script);
+    run_sync_args(script, project, repo, &[ref_])
+}
+
+/// Run scripts/sync-upstream.rs with explicit CLI args (e.g. `--force`).
+fn run_sync_args(
+    script: &Path,
+    project: &Path,
+    repo: &Path,
+    args: &[&str],
+) -> (String, String, i32) {
+    assert!(
+        script.exists(),
+        "sync-upstream.rs not found at {:?}",
+        script
+    );
 
     let output = Command::new("rust-script")
         // `-f`: the cache ignores path-dependency changes (`crates/*`,
         // upstream rust-script#122).
         .arg("-f")
         .arg(script)
-        .arg(ref_)
+        .args(args)
         .env("PROJECT_ROOT", project)
         .env("AUTOPILOT_UPSTREAM_REPO", repo)
         .output()
@@ -118,13 +132,49 @@ fn commit_all(repo: &Path) {
     );
 }
 
+/// A valid SKILL.md body: the sync now runs the full validation gate, so the
+/// integration fixtures need frontmatter that passes it.
+fn fixture_skill_md(name: &str, description: &str, heading: &str) -> String {
+    format!(
+        "---\nname: {}\ndescription: {}\n---\n# {}\n",
+        name, description, heading
+    )
+}
+
 /// Fixture upstream repo: skill-a (engineering) + allowlisted loop-me
 /// (in-progress), tagged v1.
 fn make_fixture_repo(repo: &Path) {
     fs::create_dir_all(repo).expect("create repo dir");
     git(repo, &["init", "--quiet"]);
-    write_skill(repo, "skills/engineering/skill-a", "# Skill A\n");
-    write_skill(repo, "skills/in-progress/loop-me", "# Loop Me\n");
+    write_skill(
+        repo,
+        "skills/engineering/skill-a",
+        &fixture_skill_md("skill-a", "Fixture skill A.", "Skill A"),
+    );
+    write_skill(
+        repo,
+        "skills/in-progress/loop-me",
+        &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
+    );
+    commit_all(repo);
+    git(repo, &["tag", "v1"]);
+}
+
+/// Fixture upstream repo whose skill-a has no frontmatter, so the post-sync
+/// validation gate fails and the sync must roll back.
+fn make_fixture_repo_with_invalid_skill(repo: &Path) {
+    fs::create_dir_all(repo).expect("create repo dir");
+    git(repo, &["init", "--quiet"]);
+    write_skill(
+        repo,
+        "skills/engineering/skill-a",
+        "# Skill A without frontmatter\n",
+    );
+    write_skill(
+        repo,
+        "skills/in-progress/loop-me",
+        &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
+    );
     commit_all(repo);
     git(repo, &["tag", "v1"]);
 }
@@ -144,6 +194,13 @@ fn make_project(project: &Path) {
     );
 }
 
+/// Turn the fixture project root into a git worktree whose current tree is
+/// committed (so the dirty-tree precondition can be exercised).
+fn init_project_git(project: &Path) {
+    git(project, &["init", "--quiet"]);
+    commit_all(project);
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -161,14 +218,23 @@ mod tests {
         let project = TempDir::new("sync-it-project");
         make_project(project.path());
 
-        let (stdout, stderr, code) = run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
-        assert_eq!(code, 0, "sync should exit 0, stdout: {} stderr: {}", stdout, stderr);
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(
+            code, 0,
+            "sync should exit 0, stdout: {} stderr: {}",
+            stdout, stderr
+        );
         assert!(
             stdout.contains("Sync complete — all checks PASS."),
             "should report success, got: {}",
             stdout
         );
-        assert!(stdout.contains("+ skill-a"), "should list added skill, got: {}", stdout);
+        assert!(
+            stdout.contains("+ skill-a"),
+            "should list added skill, got: {}",
+            stdout
+        );
         assert!(
             stdout.contains("in-progress allowlist: shipping loop-me"),
             "should carry the allowlist note, got: {}",
@@ -177,7 +243,9 @@ mod tests {
 
         // Tree replaced.
         let upstream = project.path().join("skills/upstream");
-        assert!(upstream.join("skills/engineering/skill-a/SKILL.md").is_file());
+        assert!(upstream
+            .join("skills/engineering/skill-a/SKILL.md")
+            .is_file());
         assert!(
             !upstream.join("skills/engineering/stale-skill").exists(),
             "stale tree must be replaced"
@@ -185,8 +253,16 @@ mod tests {
 
         // Lock written with both skills.
         let lock = fs::read_to_string(project.path().join(".skill-lock.json")).unwrap();
-        assert!(lock.contains("\"skill-a\""), "lock should contain skill-a: {}", lock);
-        assert!(lock.contains("\"loop-me\""), "lock should contain loop-me: {}", lock);
+        assert!(
+            lock.contains("\"skill-a\""),
+            "lock should contain skill-a: {}",
+            lock
+        );
+        assert!(
+            lock.contains("\"loop-me\""),
+            "lock should contain loop-me: {}",
+            lock
+        );
         assert!(
             lock.contains("skills/in-progress/loop-me/SKILL.md"),
             "loop-me should keep its in-progress path: {}",
@@ -197,9 +273,16 @@ mod tests {
         let before = fs::read(project.path().join(".skill-lock.json")).unwrap();
         let (stdout2, stderr2, code2) =
             run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
-        assert_eq!(code2, 0, "second sync should exit 0: {} {}", stdout2, stderr2);
+        assert_eq!(
+            code2, 0,
+            "second sync should exit 0: {} {}",
+            stdout2, stderr2
+        );
         let after = fs::read(project.path().join(".skill-lock.json")).unwrap();
-        assert_eq!(before, after, "same-ref re-sync must produce an empty lock diff");
+        assert_eq!(
+            before, after,
+            "same-ref re-sync must produce an empty lock diff"
+        );
     }
 
     #[test]
@@ -215,8 +298,13 @@ mod tests {
         make_project(project.path());
         let lock_before = fs::read(project.path().join(".skill-lock.json")).unwrap();
 
-        let (stdout, stderr, code) = run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
-        assert_eq!(code, 1, "missing allowlisted skill must fail: {} {}", stdout, stderr);
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(
+            code, 1,
+            "missing allowlisted skill must fail: {} {}",
+            stdout, stderr
+        );
         assert!(
             stderr.contains("loop-me"),
             "stderr should name the missing allowlisted skill: {}",
@@ -239,8 +327,13 @@ mod tests {
         make_project(project.path());
         fs::write(project.path().join(".skill-lock.json"), "{ not json").unwrap();
 
-        let (stdout, stderr, code) = run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
-        assert_eq!(code, 1, "malformed lock must be a hard error: {} {}", stdout, stderr);
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(
+            code, 1,
+            "malformed lock must be a hard error: {} {}",
+            stdout, stderr
+        );
         assert!(
             stderr.contains("unparseable lock"),
             "stderr should identify the lock problem: {}",
@@ -267,5 +360,115 @@ mod tests {
             "usage should document the repo override: {}",
             stderr
         );
+    }
+
+    // ── Failure atomicity ────────────────────────────────────────────────
+
+    #[test]
+    fn sync_rolls_back_when_validation_gate_fails() {
+        let repo = TempDir::new("sync-it-repo-invalid");
+        make_fixture_repo_with_invalid_skill(repo.path());
+        let project = TempDir::new("sync-it-project-invalid");
+        make_project(project.path());
+        let lock_before = fs::read(project.path().join(".skill-lock.json")).unwrap();
+        let stale = project
+            .path()
+            .join("skills/upstream/skills/engineering/stale-skill/SKILL.md");
+        let stale_before = fs::read(&stale).unwrap();
+
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(
+            code, 1,
+            "a failed validation gate must exit 1: {} {}",
+            stdout, stderr
+        );
+        assert!(
+            stderr.contains("post-sync validation failed"),
+            "stderr should name the failed gate: {}",
+            stderr
+        );
+        assert!(
+            stderr.contains("pre-sync state restored"),
+            "stderr should report the rollback: {}",
+            stderr
+        );
+
+        // Pre-sync state restored byte-identically (the error is recoverable
+        // by rerunning after fixing the upstream ref).
+        assert_eq!(fs::read(&stale).unwrap(), stale_before);
+        assert_eq!(
+            fs::read(project.path().join(".skill-lock.json")).unwrap(),
+            lock_before
+        );
+        assert!(
+            !project.path().join(".upstream-pin.json").exists(),
+            "a rolled-back sync must not leave a pin behind"
+        );
+    }
+
+    #[test]
+    fn sync_refuses_dirty_worktree() {
+        let repo = TempDir::new("sync-it-repo-dirty");
+        make_fixture_repo(repo.path());
+        let project = TempDir::new("sync-it-project-dirty");
+        make_project(project.path());
+        init_project_git(project.path());
+        let stale = project
+            .path()
+            .join("skills/upstream/skills/engineering/stale-skill/SKILL.md");
+        fs::write(&stale, "locally edited\n").unwrap();
+
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(
+            code, 1,
+            "a dirty worktree must be refused: {} {}",
+            stdout, stderr
+        );
+        assert!(stderr.contains("refusing to sync"), "{}", stderr);
+        assert!(stderr.contains("stale-skill"), "{}", stderr);
+        assert_eq!(
+            fs::read_to_string(&stale).unwrap(),
+            "locally edited\n",
+            "a refused sync must not touch local edits"
+        );
+    }
+
+    #[test]
+    fn sync_force_overwrites_dirty_worktree() {
+        let repo = TempDir::new("sync-it-repo-force");
+        make_fixture_repo(repo.path());
+        let project = TempDir::new("sync-it-project-force");
+        make_project(project.path());
+        init_project_git(project.path());
+        let stale = project
+            .path()
+            .join("skills/upstream/skills/engineering/stale-skill/SKILL.md");
+        fs::write(&stale, "locally edited\n").unwrap();
+
+        let (stdout, stderr, code) = run_sync_args(
+            &sync_script_path(),
+            project.path(),
+            repo.path(),
+            &["--force", "v1"],
+        );
+        assert_eq!(
+            code, 0,
+            "--force sync should succeed: {} {}",
+            stdout, stderr
+        );
+        assert!(
+            stdout.contains("warning: --force overwrote local changes"),
+            "should warn about overwritten local changes: {}",
+            stdout
+        );
+        assert!(stdout.contains("stale-skill"), "{}", stdout);
+        assert!(
+            stdout.contains("Sync complete — all checks PASS."),
+            "{}",
+            stdout
+        );
+        assert!(!stale.exists(), "forced sync replaces the stale tree");
     }
 }
