@@ -18,6 +18,7 @@ rust-script deploy.rs release                 # Pack + push to GitHub Releases
 rust-script deploy.rs link-principles <src>   # Ensure ~/.agents/principles symlink
 rust-script scripts/sync-upstream.rs <ref>    # Replace vendored upstream snapshot and write .upstream-pin.json; atomic — restores on failure, dirty tree refused unless --force, non-tag refs need --reason
 rust-script scripts/check.rs                  # Verify upstream + vendor skill hashes and the upstream pin
+rust-script scripts/upstream-drift.rs          # Compare the pin with the newest upstream release tag (weekly in CI)
 rust-script validation/run.rs                 # validate all SKILL.md frontmatter (all variants)
 rust-script --test validation/run.rs          # runner unit tests
 cargo test                                    # unit + integration tests across the tooling crates
@@ -28,6 +29,7 @@ rust-script --test tests/test_toolkit_setup.rs
 rust-script --test tests/test_github_verify.rs
 rust-script --test tests/test_check.rs
 rust-script --test tests/test_sync_upstream.rs
+rust-script --test tests/test_upstream_drift.rs
 ```
 
 No build step — skills are consumed directly from the source tree by the agent runtime.
