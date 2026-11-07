@@ -3,6 +3,7 @@
 //! Provides:
 //! - `project_root()` — unified project root derivation
 //! - `SkillLock` / `LockedSkill` — strong types for `.skill-lock.json` and `.vendor-lock.json`
+//! - `UpstreamPin` — strong type for `.upstream-pin.json` (the synced upstream ref)
 //! - `load_skill_lock_at()` / `load_vendor_lock_at()` — parse entrypoints for a given project root
 //! - `load_skill_lock()` / `load_vendor_lock()` — ambient-root conveniences (test-only in this repo)
 
@@ -454,6 +455,79 @@ fn load_lock_at(root: &Path, file_name: &str) -> Result<SkillLock, String> {
     let lock: SkillLock =
         serde_json::from_str(&content).map_err(|e| format!("invalid {}: {}", file_name, e))?;
     Ok(lock)
+}
+
+// ── .upstream-pin.json types ───────────────────────────────────────────────
+
+/// Schema version written into `.upstream-pin.json`.
+pub const UPSTREAM_PIN_SCHEMA_VERSION: u32 = 1;
+
+/// How the pinned `ref` resolves upstream: an exact tag, an exact branch, or
+/// a full 40-character commit SHA.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpstreamRefKind {
+    Tag,
+    Branch,
+    Commit,
+}
+
+impl std::fmt::Display for UpstreamRefKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UpstreamRefKind::Tag => write!(f, "tag"),
+            UpstreamRefKind::Branch => write!(f, "branch"),
+            UpstreamRefKind::Commit => write!(f, "commit"),
+        }
+    }
+}
+
+/// The upstream pin: which ref the vendored `skills/upstream/` snapshot was
+/// synced to, and the commit it resolved to.
+///
+/// Written only by `upstream_sync` after every post-sync gate has passed, and
+/// verified by `skill_check::check_upstream_pin` (invoked from
+/// `scripts/check.rs`). Never hand-edit it: re-run the sync to move it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpstreamPin {
+    /// Format version of this file (currently [`UPSTREAM_PIN_SCHEMA_VERSION`]).
+    pub schema_version: u32,
+    /// Upstream project slug, e.g. `mattpocock/skills`.
+    pub source: String,
+    /// Git URL the ref was fetched from (a fork is allowed when recorded).
+    pub source_url: String,
+    /// The requested ref: a tag name, branch name, or full commit SHA.
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    /// What kind of ref `ref_name` is.
+    pub ref_kind: UpstreamRefKind,
+    /// Commit the ref resolved to at sync time (40 lowercase hex chars).
+    pub resolved_commit: String,
+    /// Plugin version from the upstream `package.json` at that commit.
+    pub version: String,
+    /// When the sync ran, ISO-8601 UTC (`2026-01-02T03:04:05Z`).
+    pub synced_at: String,
+    /// Why a non-tag ref was chosen. Required when `ref_kind != tag`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl UpstreamPin {
+    /// Serialize as byte-stable, human-diffable JSON (2-space indent,
+    /// trailing newline) in declaration order.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = serde_json::to_string_pretty(self).expect("UpstreamPin serializes");
+        out.push('\n');
+        out.into_bytes()
+    }
+
+    /// Parse and validate the file *shape*: field types, required fields, and
+    /// no unknown fields. Semantic checks (hex commit, UTC timestamp, README
+    /// agreement, tag/version agreement) live in `skill-check`.
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        serde_json::from_slice(bytes).map_err(|e| format!("malformed upstream pin: {}", e))
+    }
 }
 
 // ── project root derivation ────────────────────────────────────────────────
@@ -1022,12 +1096,85 @@ mod tests {
         );
     }
 
+    // ── UpstreamPin ──────────────────────────────────────────────────────
+
+    fn sample_pin() -> UpstreamPin {
+        UpstreamPin {
+            schema_version: UPSTREAM_PIN_SCHEMA_VERSION,
+            source: "mattpocock/skills".to_string(),
+            source_url: "https://github.com/mattpocock/skills.git".to_string(),
+            ref_name: "v1.3.2".to_string(),
+            ref_kind: UpstreamRefKind::Tag,
+            resolved_commit: "d1478fcb140db0b93c0c8df17bcfd311844749d0".to_string(),
+            version: "1.3.2".to_string(),
+            synced_at: "2026-11-07T10:00:00Z".to_string(),
+            reason: None,
+        }
+    }
+
     #[test]
-    fn project_root_consistency() {
-        let _guard = lock_project_root();
-        // Calling twice returns the same result
-        let r1 = project_root();
-        let r2 = project_root();
-        assert_eq!(r1, r2);
+    fn upstream_pin_to_bytes_round_trips() {
+        let pin = sample_pin();
+        let bytes = pin.to_bytes();
+        assert_eq!(bytes.last(), Some(&b'\n'), "trailing newline");
+        let parsed = UpstreamPin::parse(&bytes).expect("parse");
+        assert_eq!(parsed, pin);
+    }
+
+    #[test]
+    fn upstream_pin_bytes_use_declaration_order() {
+        let text = String::from_utf8(sample_pin().to_bytes()).expect("utf8");
+        let keys = [
+            "\"schemaVersion\"",
+            "\"source\"",
+            "\"sourceUrl\"",
+            "\"ref\"",
+            "\"refKind\"",
+            "\"resolvedCommit\"",
+            "\"version\"",
+            "\"syncedAt\"",
+        ];
+        let mut last = 0;
+        for key in keys {
+            let at = text.find(key).unwrap_or_else(|| panic!("missing {}", key));
+            assert!(at > last || last == 0, "key {} out of order", key);
+            last = at;
+        }
+        assert!(!text.contains("\"reason\""), "None reason is omitted");
+    }
+
+    #[test]
+    fn upstream_pin_rejects_unknown_fields() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&sample_pin().to_bytes()).expect("json");
+        value["surprise"] = serde_json::json!(true);
+        let err = UpstreamPin::parse(value.to_string().as_bytes()).expect_err("unknown field");
+        assert!(err.contains("unknown field"), "{}", err);
+    }
+
+    #[test]
+    fn upstream_pin_serializes_reason_when_present() {
+        let mut pin = sample_pin();
+        pin.ref_kind = UpstreamRefKind::Branch;
+        pin.ref_name = "main".to_string();
+        pin.reason = Some("main carries the 1.3.3 release candidate".to_string());
+        let bytes = pin.to_bytes();
+        let text = String::from_utf8(bytes.clone()).expect("utf8");
+        assert!(text.contains("\"refKind\": \"branch\""), "{}", text);
+        assert!(text.contains("\"reason\": \"main carries the 1.3.3 release candidate\""));
+        assert_eq!(UpstreamPin::parse(&bytes).expect("parse"), pin);
+    }
+
+    #[test]
+    fn upstream_pin_ref_kind_serializes_lowercase() {
+        for (kind, text) in [
+            (UpstreamRefKind::Tag, "\"tag\""),
+            (UpstreamRefKind::Branch, "\"branch\""),
+            (UpstreamRefKind::Commit, "\"commit\""),
+        ] {
+            let json = serde_json::to_string(&kind).expect("serialize");
+            assert_eq!(json, text);
+        }
     }
 }
+

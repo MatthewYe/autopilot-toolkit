@@ -529,4 +529,141 @@ mod tests {
             "should not contain ALL PASS on a skipped check"
         );
     }
+    // ═══════════════════════════════════════════════════════════════════════
+    // Upstream pin checks
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const PIN_COMMIT: &str = "d1478fcb140db0b93c0c8df17bcfd311844749d0";
+
+    fn write_readme(dir: &Path, ref_name: &str, commit: &str) {
+        fs::write(
+            dir.join("README.md"),
+            format!(
+                "# Fixture\n\nThe upstream snapshot is pinned to release {} `{}`.\n",
+                ref_name, commit
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_upstream_package(dir: &Path, version: &str) {
+        let path = dir.join("skills/upstream/package.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "{{\n  \"name\": \"mattpocock-skills\",\n  \"version\": \"{}\"\n}}\n",
+                version
+            ),
+        )
+        .unwrap();
+    }
+
+    fn tag_pin(version: &str) -> serde_json::Value {
+        serde_json::json!({
+            "schemaVersion": 1,
+            "source": "mattpocock/skills",
+            "sourceUrl": "https://github.com/mattpocock/skills.git",
+            "ref": "v1.3.2",
+            "refKind": "tag",
+            "resolvedCommit": PIN_COMMIT,
+            "version": version,
+            "syncedAt": "2026-11-07T10:00:00Z"
+        })
+    }
+
+    fn write_pin(dir: &Path, pin: &serde_json::Value) {
+        fs::write(
+            dir.join(".upstream-pin.json"),
+            serde_json::to_string_pretty(pin).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+
+    fn pin_fixture(prefix: &str, package_version: &str) -> TempDir {
+        let tmp = TempDir::new(prefix);
+        write_lockfile(tmp.path(), &serde_json::json!({}));
+        write_upstream_package(tmp.path(), package_version);
+        write_readme(tmp.path(), "v1.3.2", PIN_COMMIT);
+        tmp
+    }
+
+    #[test]
+    fn fail_when_pin_is_missing() {
+        let tmp = pin_fixture("check-test-pin-missing", "1.3.2");
+        let (stdout, _stderr, code) = run_check(&check_script_path(), tmp.path());
+        assert_eq!(code, 1, "missing pin must fail, stdout: {}", stdout);
+        assert!(
+            stdout.contains("FAIL: upstream-pin — missing .upstream-pin.json"),
+            "should name the missing pin, got: {}",
+            stdout
+        );
+        assert!(
+            !stdout.contains("ALL PASS"),
+            "missing pin must not report ALL PASS, got: {}",
+            stdout
+        );
+    }
+
+    #[test]
+    fn pass_with_valid_tag_pin() {
+        let tmp = pin_fixture("check-test-pin-pass", "1.3.2");
+        write_pin(tmp.path(), &tag_pin("1.3.2"));
+        let (stdout, _stderr, code) = run_check(&check_script_path(), tmp.path());
+        assert_eq!(code, 0, "valid pin should pass, stdout: {}", stdout);
+        assert!(
+            stdout.contains("PASS: upstream-pin"),
+            "should contain the pin PASS line, got: {}",
+            stdout
+        );
+        assert!(
+            stdout.contains("ALL PASS"),
+            "should contain ALL PASS, got: {}",
+            stdout
+        );
+    }
+
+    #[test]
+    fn fail_when_readme_omits_the_pin_commit() {
+        let tmp = pin_fixture("check-test-pin-readme", "1.3.2");
+        fs::write(tmp.path().join("README.md"), "pinned to v1.3.2\n").unwrap();
+        write_pin(tmp.path(), &tag_pin("1.3.2"));
+        let (stdout, _stderr, code) = run_check(&check_script_path(), tmp.path());
+        assert_eq!(code, 1, "README disagreement must fail, stdout: {}", stdout);
+        assert!(
+            stdout.contains("does not mention the pinned commit"),
+            "should name the README mismatch, got: {}",
+            stdout
+        );
+    }
+
+    #[test]
+    fn fail_when_tag_pin_version_mismatches_the_tree() {
+        let tmp = pin_fixture("check-test-pin-version", "1.3.3");
+        write_pin(tmp.path(), &tag_pin("1.3.2"));
+        let (stdout, _stderr, code) = run_check(&check_script_path(), tmp.path());
+        assert_eq!(code, 1, "version mismatch must fail, stdout: {}", stdout);
+        assert!(
+            stdout.contains("does not match skills/upstream/package.json"),
+            "should name the version mismatch, got: {}",
+            stdout
+        );
+    }
+
+    #[test]
+    fn fail_when_pin_is_malformed() {
+        let tmp = pin_fixture("check-test-pin-malformed", "1.3.2");
+        fs::write(
+            tmp.path().join(".upstream-pin.json"),
+            "{\"schemaVersion\": 1, \"surprise\": true}\n",
+        )
+        .unwrap();
+        let (stdout, _stderr, code) = run_check(&check_script_path(), tmp.path());
+        assert_eq!(code, 1, "malformed pin must fail, stdout: {}", stdout);
+        assert!(
+            stdout.contains("FAIL: upstream-pin — malformed upstream pin"),
+            "should name the malformed pin, got: {}",
+            stdout
+        );
+    }
 }

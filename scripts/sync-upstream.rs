@@ -18,10 +18,15 @@
 //! allowlisted skill fails the sync before the tree or the lock is touched.
 //!
 //! Usage:
-//!   rust-script scripts/sync-upstream.rs [--force] <REF>
+//!   rust-script scripts/sync-upstream.rs [--force] [--reason <WHY>] <REF>
 //!
 //! REF is required: a release tag, branch, or commit SHA. There is no
 //! default, because a ref that predates an allowlisted skill would orphan it.
+//!
+//! A release tag is the default pin. A branch or commit SHA must be paired
+//! with --reason "why"; the reason is recorded in .upstream-pin.json so the
+//! exception stays auditable. After every gate passes, the sync writes the
+//! pin (ref, kind, resolved commit, upstream version, sync timestamp).
 //!
 //! --force proceeds even when the git worktree is dirty or `skills/upstream/`
 //! holds untracked files (which the sync would overwrite or delete). The
@@ -36,13 +41,15 @@ use std::env;
 use std::process;
 
 fn usage() -> ! {
-    eprintln!("Usage: rust-script scripts/sync-upstream.rs [--force] <REF>");
+    eprintln!("Usage: rust-script scripts/sync-upstream.rs [--force] [--reason <WHY>] <REF>");
     eprintln!();
     eprintln!("REF is a required mattpocock/skills release tag, branch, or commit SHA.");
     eprintln!("There is no default: a ref that predates an allowlisted skill would orphan it.");
     eprintln!();
-    eprintln!("  --force  proceed despite local changes in the worktree; the paths the");
-    eprintln!("           sync overwrites are printed. A failed sync still rolls back.");
+    eprintln!("  --force        proceed despite local changes in the worktree; the paths the");
+    eprintln!("                 sync overwrites are printed. A failed sync still rolls back.");
+    eprintln!("  --reason <WHY> why a branch or commit SHA is pinned instead of a release tag.");
+    eprintln!("                 Required for non-tag refs; recorded in .upstream-pin.json.");
     eprintln!();
     eprintln!("Environment:");
     eprintln!(
@@ -54,10 +61,19 @@ fn usage() -> ! {
 
 fn main() {
     let mut force = false;
+    let mut reason: Option<String> = None;
     let mut ref_arg: Option<String> = None;
-    for arg in env::args().skip(1) {
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--force" => force = true,
+            "--reason" => match args.next() {
+                Some(value) if !value.trim().is_empty() => reason = Some(value),
+                _ => {
+                    eprintln!("Missing value for --reason");
+                    usage();
+                }
+            },
             unknown if unknown.starts_with("--") => {
                 eprintln!("Unknown flag: {}", unknown);
                 usage();
@@ -75,7 +91,11 @@ fn main() {
         Some(tag) if !tag.trim().is_empty() => tag,
         _ => usage(),
     };
-    let options = upstream_sync::SyncOptions { force };
+    let options = upstream_sync::SyncOptions {
+        force,
+        reason,
+        synced_at: None,
+    };
 
     let project_root = shared::project_root();
     let repo_url = env::var("AUTOPILOT_UPSTREAM_REPO")
@@ -92,6 +112,10 @@ fn main() {
     {
         Ok(outcome) => {
             println!("  resolved to commit {}", outcome.resolved_commit);
+            println!(
+                "\nPinned {} to {} (upstream version {})",
+                outcome.pin.ref_name, outcome.pin.resolved_commit, outcome.pin.version
+            );
 
             if !outcome.forced_overwrites.is_empty() {
                 println!("\nwarning: --force overwrote local changes:");
@@ -130,6 +154,10 @@ fn main() {
 
             println!("\nReplaced {}", outcome.upstream_dir.display());
             println!("  written {}", outcome.lock_path.display());
+            println!(
+                "  written {}",
+                project_root.join(shared::UPSTREAM_PIN_FILE).display()
+            );
 
             println!("\n=== Post-sync check ===");
             for line in &outcome.check_lines {

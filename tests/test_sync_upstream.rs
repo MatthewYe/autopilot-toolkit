@@ -141,6 +141,19 @@ fn fixture_skill_md(name: &str, description: &str, heading: &str) -> String {
     )
 }
 
+/// Write a minimal upstream package.json; the sync records its version in
+/// the pin (and the fixture validation gate does not care about it).
+fn write_package_json(repo: &Path, version: &str) {
+    fs::write(
+        repo.join("package.json"),
+        format!(
+            "{{\n  \"name\": \"fixture-skills\",\n  \"version\": \"{}\"\n}}\n",
+            version
+        ),
+    )
+    .expect("write package.json");
+}
+
 /// Fixture upstream repo: skill-a (engineering) + allowlisted loop-me
 /// (in-progress), tagged v1.
 fn make_fixture_repo(repo: &Path) {
@@ -156,6 +169,7 @@ fn make_fixture_repo(repo: &Path) {
         "skills/in-progress/loop-me",
         &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
     );
+    write_package_json(repo, "1.0.0");
     commit_all(repo);
     git(repo, &["tag", "v1"]);
 }
@@ -175,6 +189,7 @@ fn make_fixture_repo_with_invalid_skill(repo: &Path) {
         "skills/in-progress/loop-me",
         &fixture_skill_md("loop-me", "Fixture in-progress skill.", "Loop Me"),
     );
+    write_package_json(repo, "1.0.0");
     commit_all(repo);
     git(repo, &["tag", "v1"]);
 }
@@ -290,7 +305,12 @@ mod tests {
         let repo = TempDir::new("sync-it-repo-noallow");
         fs::create_dir_all(repo.path()).unwrap();
         git(repo.path(), &["init", "--quiet"]);
-        write_skill(repo.path(), "skills/engineering/skill-a", "# Skill A\n");
+        write_skill(
+            repo.path(),
+            "skills/engineering/skill-a",
+            &fixture_skill_md("skill-a", "Fixture skill A.", "Skill A"),
+        );
+        write_package_json(repo.path(), "1.0.0");
         commit_all(repo.path());
         git(repo.path(), &["tag", "v1"]);
 
@@ -470,5 +490,87 @@ mod tests {
             stdout
         );
         assert!(!stale.exists(), "forced sync replaces the stale tree");
+    }
+    // ── Upstream pin ────────────────────────────────────────────────────
+
+    #[test]
+    fn sync_writes_and_reports_the_pin() {
+        let repo = TempDir::new("sync-it-repo-pin");
+        make_fixture_repo(repo.path());
+        let project = TempDir::new("sync-it-project-pin");
+        make_project(project.path());
+
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "v1");
+        assert_eq!(code, 0, "sync should exit 0: {} {}", stdout, stderr);
+        assert!(
+            stdout.contains("Pinned v1 to "),
+            "CLI should report the pin: {}",
+            stdout
+        );
+
+        let pin_text = fs::read_to_string(project.path().join(".upstream-pin.json"))
+            .expect("sync writes .upstream-pin.json");
+        let pin: serde_json::Value = serde_json::from_str(&pin_text).expect("pin is JSON");
+        assert_eq!(pin["schemaVersion"], 1);
+        assert_eq!(pin["source"], "mattpocock/skills");
+        assert_eq!(pin["ref"], "v1");
+        assert_eq!(pin["refKind"], "tag");
+        assert_eq!(pin["version"], "1.0.0");
+        let commit = pin["resolvedCommit"].as_str().expect("resolvedCommit");
+        assert_eq!(commit.len(), 40, "full commit SHA: {}", commit);
+        assert!(
+            pin["syncedAt"].as_str().expect("syncedAt").ends_with('Z'),
+            "syncedAt must be a UTC timestamp: {}",
+            pin["syncedAt"]
+        );
+    }
+
+    #[test]
+    fn sync_requires_reason_for_non_tag_ref() {
+        let repo = TempDir::new("sync-it-repo-branch");
+        make_fixture_repo(repo.path());
+        git(repo.path(), &["checkout", "--quiet", "-b", "feature"]);
+        let project = TempDir::new("sync-it-project-branch");
+        make_project(project.path());
+
+        let (stdout, stderr, code) =
+            run_sync(&sync_script_path(), project.path(), repo.path(), "feature");
+        assert_eq!(
+            code, 1,
+            "a non-tag ref without --reason must be refused: {} {}",
+            stdout, stderr
+        );
+        assert!(
+            stderr.contains("refusing to pin non-tag upstream ref 'feature'"),
+            "{}",
+            stderr
+        );
+        assert!(stderr.contains("--reason"), "{}", stderr);
+        assert!(
+            !project.path().join(".upstream-pin.json").exists(),
+            "a refused pin must not write the pin file"
+        );
+
+        let (stdout, stderr, code) = run_sync_args(
+            &sync_script_path(),
+            project.path(),
+            repo.path(),
+            &[
+                "--reason",
+                "feature carries the next release candidate",
+                "feature",
+            ],
+        );
+        assert_eq!(
+            code, 0,
+            "a non-tag ref with --reason should sync: {} {}",
+            stdout, stderr
+        );
+        let pin_text = fs::read_to_string(project.path().join(".upstream-pin.json")).unwrap();
+        let pin: serde_json::Value = serde_json::from_str(&pin_text).unwrap();
+        assert_eq!(pin["ref"], "feature");
+        assert_eq!(pin["refKind"], "branch");
+        assert_eq!(pin["reason"], "feature carries the next release candidate");
     }
 }

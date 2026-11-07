@@ -5,16 +5,18 @@ How to replace the vendored snapshot at `skills/upstream/` with a newer
 maintainer or an agent running a one-shot sync. The design is recorded in
 [ADR 0037](../adr/0037-upstream-sync-full-replacement.md) (verbatim replacement),
 [ADR 0043](../adr/0043-upstream-sync-explicit-ref-and-in-progress-allowlist.md)
-(explicit ref and the `in-progress` allowlist), and
+(explicit ref and the `in-progress` allowlist),
 [ADR 0053](../adr/0053-upstream-sync-failure-atomicity.md) (atomic failure
-handling; this runbook is its operating procedure).
+handling; this runbook is its operating procedure), and
+[ADR 0052](../adr/0052-upstream-pin-and-drift-check.md) (`.upstream-pin.json`,
+the machine-verifiable record of the synced ref).
 
-The sync replaces two things wholesale: the `skills/upstream/` tree and
-`.skill-lock.json`. It does not touch `skills/vendor/` or `skills/autopilot/`
-(third-party skills follow [vendor-updates.md](vendor-updates.md), ADR 0051).
-Since ADR 0053 the sync is all-or-nothing: the pre-sync tree, lock, and pin are
-snapshotted to a temp directory first and restored byte-for-byte if any
-post-sync gate fails.
+The sync replaces two things wholesale — the `skills/upstream/` tree and
+`.skill-lock.json` — and writes a third: `.upstream-pin.json`. It does not touch
+`skills/vendor/` or `skills/autopilot/` (third-party skills follow
+[vendor-updates.md](vendor-updates.md), ADR 0051). Since ADR 0053 the sync is
+all-or-nothing: the pre-sync tree, lock, and pin are snapshotted to a temp
+directory first and restored byte-for-byte if any post-sync gate fails.
 
 ## When to use this
 
@@ -55,7 +57,8 @@ the source URL.
    ```
 
 2. Sync to it. The script prints the resolved commit, every discovered skill, the
-   `in-progress` allowlist notes, and the added/updated/removed lists:
+   `in-progress` allowlist notes, the added/updated/removed lists, and the pin it
+   wrote:
 
    ```bash
    rust-script scripts/sync-upstream.rs <ref>
@@ -64,12 +67,22 @@ the source URL.
    In a sandboxed session use
    `bash scripts/sandboxed-rust-script.sh scripts/sync-upstream.rs <ref>`.
    To overwrite dirty or untracked local files on purpose, add `--force`
-   (anywhere after the script path).
+   (anywhere after the script path). A branch or commit SHA is refused unless
+   paired with `--reason "…"`, because a non-tag pin records an exception that
+   must stay auditable:
+
+   ```bash
+   rust-script scripts/sync-upstream.rs --reason "main carries the 1.3.3 release candidate" main
+   ```
+
+   Prefer a release tag. A non-tag ref is a deliberate, temporary exception —
+   the next release sync should move back to a tag.
 
 3. Wait for the post-sync gates. The build runs the hash check
    (`crates/skill-check`) and the full validation suite (`validation/run.rs`) in
-   process, against the tree and lock it just wrote. A failure restores the
-   pre-sync state and exits non-zero — the working tree is still on the previous
+   process, against the tree and lock it just wrote. Only after both pass does it
+   write `.upstream-pin.json`. A failure restores the pre-sync state (tree, lock,
+   and pin) and exits non-zero — the working tree is still on the previous
    snapshot, so nothing is half-synced.
 
 4. If the validation gate fails on the **documented inventory**, update the
@@ -92,22 +105,51 @@ the source URL.
    | --- | --- |
    | `skills/upstream/` | verbatim upstream files: added/removed skills, changed content |
    | `.skill-lock.json` | one entry per discovered skill; `skillFolderHash`, `updatedAt` |
+   | `.upstream-pin.json` | `ref`, `refKind`, `resolvedCommit`, upstream `version`, `syncedAt` |
+   | `README.md` | the prose pin must mention the new `ref` and full `resolvedCommit` |
    | `docs` inventory counts | only when the skill count changed (step 4) |
 
-   `git diff --stat skills/upstream .skill-lock.json` should match the
-   added/updated/removed lists printed by the script.
+   `git diff --stat skills/upstream .skill-lock.json .upstream-pin.json` should
+   match the added/updated/removed lists printed by the script, and the README
+   sentence must be updated to the same ref/commit. `scripts/check.rs` fails the
+   PR if it is not.
 
 6. Verify and open a PR. The sync is complete only when the repository gates pass
    and the resolved commit is recorded in the PR body:
 
    ```bash
-   rust-script scripts/check.rs      # ALL PASS
+   rust-script scripts/check.rs      # ALL PASS, including the upstream pin
    rust-script validation/run.rs     # exit 0
    rust-script --test tests/test_sync_upstream.rs
    ```
 
-   Commit `skills/upstream/` and `.skill-lock.json` together, open a PR with the
-   issue it closes, and paste the resolved commit printed in step 2.
+   Commit `skills/upstream/`, `.skill-lock.json`, and `.upstream-pin.json`
+   together, open a PR with the issue it closes, and paste the resolved commit
+   printed in step 2.
+
+## The upstream pin
+
+`.upstream-pin.json` is written by the sync, never by hand (ADR 0052):
+
+| field | meaning |
+| --- | --- |
+| `schemaVersion` | always `1` for this format |
+| `source` | `mattpocock/skills` |
+| `sourceUrl` | clone URL the sync used (`AUTOPILOT_UPSTREAM_REPO` for a fork run) |
+| `ref` | the ref asked for: release tag, branch name, or commit |
+| `refKind` | `tag` (preferred), `branch`, or `commit` |
+| `resolvedCommit` | full 40-character commit the ref resolved to |
+| `version` | upstream `package.json` version at that commit |
+| `syncedAt` | UTC timestamp of the successful sync |
+| `reason` | required for `branch` and `commit` pins |
+
+`scripts/check.rs` enforces the record end to end: the JSON parses with unknown
+fields rejected, `resolvedCommit` is 40 lowercase hex characters, `syncedAt` is
+RFC 3339 UTC, `refKind != tag` carries a `reason`, `README.md` mentions both the
+ref and the full commit, and a tag pin's `version` matches
+`skills/upstream/package.json`. A missing pin next to a vendored tree is a
+failure, not a skip. The bootstrap pin in this repository was produced by
+running the sync, not typed.
 
 ## Failure and rollback semantics
 
@@ -115,6 +157,7 @@ the source URL.
 | --- | --- |
 | tracked files dirty, or untracked files under `skills/upstream/` | refused before cloning; lists the paths; `--force` proceeds |
 | unknown ref / clone error | no local changes yet; exits non-zero |
+| branch or commit ref without `--reason` | refused before cloning; no local changes |
 | malformed `.skill-lock.json` | refused before cloning; no local changes |
 | allowlisted `in-progress` skill missing at the ref | no local changes |
 | post-sync hash check fails, or a check skips | tree + lock + pin restored; exits non-zero |
@@ -130,6 +173,13 @@ successful sync.
 
 - Do not edit `.skill-lock.json` by hand — the sync rewrites it and
   `scripts/check.rs` verifies the hashes. A hand-edit fails CI.
+- Do not edit `.upstream-pin.json` by hand either. If the pin disagrees with the
+  tree or the README, re-run the sync (or fix the README and re-run the sync);
+  `scripts/check.rs` fails a hand-edited pin whose commit, ref, or version does
+  not match the synced state.
+- Update `README.md` in the same PR. The check requires the pinned ref and the
+  full `resolvedCommit` to appear there; prose drift fails CI even when the pin
+  file is correct.
 - Do not add upstream fixes locally. The snapshot is verbatim by design; send the
   fix upstream, then sync the tag that contains it (ADR 0037).
 - Do not use `--force` to carry local edits into a release PR. It exists for
