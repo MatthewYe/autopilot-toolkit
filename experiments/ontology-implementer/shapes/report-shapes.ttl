@@ -1,0 +1,193 @@
+@prefix ar: <https://example.org/autopilot/implementer#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# The gate checks the implementer report contract, not whether the code is good.
+# Exit code 2 from the CLI is "not determined" and must be treated as failure.
+
+ar:ReportSchemaShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:property [
+        sh:path ar:forTask ; sh:minCount 1 ; sh:maxCount 1 ; sh:class ar:Task ;
+        sh:message "a report targets exactly one task"
+    ] ;
+    sh:property [
+        sh:path ar:hasPlan ; sh:minCount 1 ; sh:maxCount 1 ; sh:class ar:ImplementationPlan ;
+        sh:message "a report carries exactly one implementation plan"
+    ] ;
+    sh:property [
+        sh:path ar:status ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:in ( ar:DONE ar:UNVERIFIED ar:BLOCKED ar:NEEDS_CONTEXT ) ;
+        sh:message "a report claims exactly one known status"
+    ] ;
+    sh:property [
+        sh:path ar:round ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ;
+        sh:message "a report records its round"
+    ] ;
+    sh:property [
+        sh:path ar:toolchain ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:boolean ;
+        sh:message "a report records whether the toolchain was available"
+    ] ;
+    sh:property [
+        sh:path ar:hasAc ; sh:minCount 1 ;
+        sh:message "a report records at least one acceptance criterion"
+    ] ;
+    sh:property [
+        sh:path ar:changedFile ; sh:minCount 1 ;
+        sh:message "a report records at least one changed file"
+    ] .
+
+# Every clause in the injected plan must have a check.  A report that silently
+# skips a clause cannot pass even if its prose looks complete.
+ar:ClauseCoverageShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "the report has no check for an injected clause"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?clause WHERE {
+  $this ar:hasPlan ?plan .
+  ?plan ar:injectsClause ?clause .
+  FILTER NOT EXISTS {
+    $this ar:hasCheck ?check .
+    ?check ar:checkClause ?clause .
+  }
+}
+"""
+    ] .
+
+# DONE requires executed passing evidence for every AC and an available toolchain.
+ar:DoneEvidenceShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "DONE requires every acceptance criterion to pass"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?ac WHERE {
+  $this ar:status ar:DONE ; ar:hasAc ?ac .
+  FILTER NOT EXISTS { ?ac ar:acStatus "pass" }
+}
+"""
+    ] ;
+    sh:sparql [
+        sh:message "DONE cannot carry an unexecuted test"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?ac WHERE {
+  $this ar:status ar:DONE ; ar:hasAc ?ac .
+  ?ac ar:verificationMethod "not-run" .
+}
+"""
+    ] .
+
+# A TOOLCHAIN: unavailable run must not claim DONE.
+ar:ToolchainShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "a report with an unavailable toolchain cannot be DONE"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this WHERE {
+  $this ar:toolchain false ; ar:status ar:DONE .
+}
+"""
+    ] .
+
+# UNVERIFIED must say how each AC was verified.
+ar:UnverifiedMethodShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "an UNVERIFIED AC has no verification method"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?ac WHERE {
+  $this ar:status ar:UNVERIFIED ; ar:hasAc ?ac .
+  FILTER NOT EXISTS {
+    ?ac ar:verificationMethod ?method .
+    FILTER(STRLEN(STR(?method)) > 0 && STR(?method) != "not-run")
+  }
+}
+"""
+    ] .
+
+# BLOCKED must show the two-hypothesis budget was actually spent.
+ar:BlockedShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "BLOCKED before two diagnosis hypotheses were tried"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this WHERE {
+  $this ar:status ar:BLOCKED ; ar:hypotheses ?n .
+  FILTER(?n < 2)
+}
+"""
+    ] .
+
+# NEEDS_CONTEXT must name the missing fact.
+ar:NeedsContextShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "NEEDS_CONTEXT has no named missing fact"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this WHERE {
+  $this ar:status ar:NEEDS_CONTEXT .
+  FILTER NOT EXISTS {
+    $this ar:missingContext ?fact .
+    FILTER(STRLEN(STR(?fact)) > 0)
+  }
+}
+"""
+    ] .
+
+# Every production change needs declared TDD evidence.
+ar:TddEvidenceShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "a production change has no TDD evidence"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?file WHERE {
+  $this ar:changedFile ?file .
+  ?file ar:changedKind "production" .
+  FILTER NOT EXISTS { ?file ar:hasTestEvidence true }
+}
+"""
+    ] .
+
+# Retry scope is runtime-conditioned: canonical fixes Critical only; DSH fixes
+# Critical and Important.  The canonical/DSH prose drift becomes data.
+ar:RetryScopeShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "retry scope does not match the task runtime"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this WHERE {
+  $this ar:forTask ?task ; ar:round ?round ; ar:retryScope ?scope .
+  ?task ar:runtime ?runtime .
+  FILTER(?round > 1)
+  FILTER((?runtime = "canonical" && ?scope != ar:CriticalOnly) ||
+         (?runtime = "dsh" && ?scope != ar:CriticalAndImportant))
+}
+"""
+    ] .
+
+# Spec-linked work must map ACs back to the spec and record deliberate changes.
+ar:SpecMappingShape a sh:NodeShape ;
+    sh:targetClass ar:Report ;
+    sh:sparql [
+        sh:message "spec-linked report has no spec mapping"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this WHERE {
+  $this ar:forTask ?task .
+  ?task ar:specLinked true .
+  FILTER NOT EXISTS {
+    $this ar:specMapping ?mapping .
+    FILTER(STRLEN(STR(?mapping)) > 0)
+  }
+}
+"""
+    ] .

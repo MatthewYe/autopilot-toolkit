@@ -1,0 +1,30 @@
+{
+  "unit": "mean characters per task across T122-T126",
+  "arms": {
+    "none": {
+      "full": 0.0,
+      "ids": 0.0,
+      "compact": 0.0,
+      "hybrid": 0.0
+    },
+    "generic": {
+      "full": 20418.0,
+      "ids": 426.0,
+      "compact": 478.0,
+      "hybrid": 2817.0
+    },
+    "keyword": {
+      "full": 1990.2,
+      "ids": 56.8,
+      "compact": 55.0,
+      "hybrid": 659.8
+    },
+    "ontology": {
+      "full": 9463.4,
+      "ids": 218.4,
+      "compact": 242.2,
+      "hybrid": 1749.2
+    }
+  },
+  "note": "hybrid = full clause text + context path/line pointer, no context body; compact = clause ids + context titles; ids = ids only."
+}

@@ -1,0 +1,27 @@
+flowchart TD
+    A["✅ 目标：把 implementer 的约束/上下文层本体化"] --> B{"是否需要改变模型行为？"}
+    B -- "否，只要契约" --> C["✅ Phase 0：只上报告 gate"]
+    B -- "是" --> D{"是否有稳定 clause inventory？"}
+    D -- "否" --> E["先冻结 prose，建 inventory 与 sourceAnchor"]
+    E --> D
+    D -- "是" --> F{"任务事实是否可观测？"}
+    F -- "否" --> G["先加 task fact 采集：source/runtime/round/risk/changeKind"]
+    G --> F
+    F -- "是" --> H{"是否有 merged PR 可回放？"}
+    H -- "否" --> I["shadow + 人工标注，不声称因果"]
+    H -- "是" --> J{"风险是否可接受？"}
+    J -- "低：docs/skill" --> K["✅ Phase 1：selection shadow"]
+    J -- "高：data-loss/API" --> L["✅ Phase 0 gate + Phase 2 回放"]
+    K --> M{"selection 是否稳定？"}
+    L --> M
+    M -- "否" --> N["缩窄 clause / 加 runtime 条件 / 补 context"]
+    N --> M
+    M -- "是" --> O{"Phase 2 是否优于 baseline？"}
+    O -- "否" --> P["停止：保留 gate，放弃注入"]
+    O -- "是" --> Q["✅ Phase 3：新 ticket shadow"]
+    Q --> R{"人工评价是否不差？"}
+    R -- "否" --> P
+    R -- "是" --> S["✅ Phase 4：低风险 canary"]
+    S --> T{"gate/retry/human finding 是否恶化？"}
+    T -- "是" --> U["回滚到 prose fallback"]
+    T -- "否" --> V["扩大范围，但仍人工 merge"]

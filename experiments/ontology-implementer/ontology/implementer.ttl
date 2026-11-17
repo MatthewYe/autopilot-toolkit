@@ -1,0 +1,400 @@
+@prefix ar: <https://example.org/autopilot/implementer#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ar:Clause a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:Guardrail a owl:Class ; rdfs:subClassOf ar:Clause .
+ar:ReportContract a owl:Class ; rdfs:subClassOf ar:Clause .
+ar:JudgementRule a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:Task a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:ContextSource a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:ImplementationPlan a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:Report a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:Check a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:Status a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:AcResult a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:ChangedFile a owl:Class ; rdfs:subClassOf owl:Thing .
+ar:clauseId a owl:ObjectProperty .
+ar:axis a owl:ObjectProperty .
+ar:text a owl:ObjectProperty .
+ar:sourceAnchor a owl:ObjectProperty .
+ar:keyword a owl:ObjectProperty .
+ar:defaultCheck a owl:ObjectProperty .
+ar:whenSource a owl:ObjectProperty .
+ar:whenRuntime a owl:ObjectProperty .
+ar:whenSpecLinked a owl:ObjectProperty .
+ar:whenMultiModule a owl:ObjectProperty .
+ar:whenUnverified a owl:ObjectProperty .
+ar:whenRound a owl:ObjectProperty .
+ar:whenRefactoring a owl:ObjectProperty .
+ar:whenSuggestions a owl:ObjectProperty .
+ar:whenToolchain a owl:ObjectProperty .
+ar:whenRisk a owl:ObjectProperty .
+ar:whenChangeKind a owl:ObjectProperty .
+ar:scope a owl:ObjectProperty .
+ar:forTask a owl:ObjectProperty .
+ar:injectsClause a owl:ObjectProperty .
+ar:injectsContext a owl:ObjectProperty .
+ar:hasClause a owl:ObjectProperty .
+ar:hasContext a owl:ObjectProperty .
+ar:taskId a owl:ObjectProperty .
+ar:title a owl:ObjectProperty .
+ar:source a owl:ObjectProperty .
+ar:runtime a owl:ObjectProperty .
+ar:changeKind a owl:ObjectProperty .
+ar:risk a owl:ObjectProperty .
+ar:goldClause a owl:ObjectProperty .
+ar:goldContext a owl:ObjectProperty .
+ar:charCount a owl:ObjectProperty .
+ar:excerpt a owl:ObjectProperty .
+ar:sourcePath a owl:ObjectProperty .
+ar:sourceStart a owl:ObjectProperty .
+ar:sourceEnd a owl:ObjectProperty .
+ar:hasCheck a owl:ObjectProperty .
+ar:checkClause a owl:ObjectProperty .
+ar:status a owl:ObjectProperty .
+ar:round a owl:ObjectProperty .
+ar:toolchain a owl:ObjectProperty .
+ar:acStatus a owl:ObjectProperty .
+ar:hasAc a owl:ObjectProperty .
+ar:verificationMethod a owl:ObjectProperty .
+ar:changedFile a owl:ObjectProperty .
+ar:changedKind a owl:ObjectProperty .
+ar:tddEvidence a owl:ObjectProperty .
+ar:selfReview a owl:ObjectProperty .
+ar:hypotheses a owl:ObjectProperty .
+ar:missingContext a owl:ObjectProperty .
+ar:retryScope a owl:ObjectProperty .
+ar:summary a owl:ObjectProperty .
+ar:specLinked a owl:ObjectProperty .
+ar:multiModule a owl:ObjectProperty .
+ar:refactoring a owl:ObjectProperty .
+ar:suggestions a owl:ObjectProperty .
+ar:unverified a owl:ObjectProperty .
+ar:I01 a ar:Guardrail ;
+  ar:clauseId "I01" ;
+  ar:axis "TDD" ;
+  ar:text "No production code without a failing test first." ;
+  ar:defaultCheck "tdd_evidence" ;
+  ar:sourceAnchor "SKILL.md Step 2 iron rule" ;
+  ar:scope "ReviewScope" .
+ar:I02 a ar:Guardrail ;
+  ar:clauseId "I02" ;
+  ar:axis "TDD" ;
+  ar:text "Tests assert observable behavior, not internal structure." ;
+  ar:defaultCheck "test_review" ;
+  ar:sourceAnchor "SKILL.md TDD" ;
+  ar:scope "ReviewScope" .
+ar:I03 a ar:Guardrail ;
+  ar:clauseId "I03" ;
+  ar:axis "TDD" ;
+  ar:text "Mock only at system boundaries; never mock own types." ;
+  ar:defaultCheck "test_review" ;
+  ar:sourceAnchor "SKILL.md TDD" ;
+  ar:scope "ReviewScope" .
+ar:I04 a ar:Guardrail ;
+  ar:clauseId "I04" ;
+  ar:axis "TDD" ;
+  ar:text "Run RED, then GREEN, then REFACTOR; do not skip RED." ;
+  ar:defaultCheck "tdd_evidence" ;
+  ar:sourceAnchor "SKILL.md TDD" ;
+  ar:scope "ReviewScope" .
+ar:I05 a ar:Guardrail ;
+  ar:clauseId "I05" ;
+  ar:axis "TDD" ;
+  ar:text "Every acceptance criterion has at least one test." ;
+  ar:defaultCheck "ac_coverage" ;
+  ar:sourceAnchor "SKILL.md Step 2" ;
+  ar:scope "ReviewScope" .
+ar:I06 a ar:Guardrail ;
+  ar:clauseId "I06" ;
+  ar:axis "Context" ;
+  ar:text "Read the issue or AGENT-BRIEF before editing." ;
+  ar:defaultCheck "context_read" ;
+  ar:sourceAnchor "SKILL.md Step 1" ;
+  ar:scope "ReviewScope" .
+ar:I07 a ar:Guardrail ;
+  ar:clauseId "I07" ;
+  ar:axis "Context" ;
+  ar:text "Read GLOSSARY.md (fallback CONTEXT.md)." ;
+  ar:defaultCheck "context_read" ;
+  ar:sourceAnchor "SKILL.md Step 1" ;
+  ar:scope "ReviewScope" .
+ar:I08 a ar:Guardrail ;
+  ar:clauseId "I08" ;
+  ar:axis "Context" ;
+  ar:text "Read the linked spec/PRD/ADR before editing." ;
+  ar:defaultCheck "context_read" ;
+  ar:sourceAnchor "SKILL.md Step 1" ;
+  ar:scope "ReviewScope" .
+ar:I08 ar:whenSpecLinked "true" .
+ar:I09 a ar:Guardrail ;
+  ar:clauseId "I09" ;
+  ar:axis "Context" ;
+  ar:text "Check Seam annotations and stay inside the named seam." ;
+  ar:defaultCheck "context_read" ;
+  ar:sourceAnchor "SKILL.md Step 1" ;
+  ar:scope "ReviewScope" .
+ar:I10 a ar:Guardrail ;
+  ar:clauseId "I10" ;
+  ar:axis "Context" ;
+  ar:text "Resolve CROSS_ISSUE_SUGGESTIONS in SUGGESTION_RESOLUTIONS." ;
+  ar:defaultCheck "suggestion_resolution" ;
+  ar:sourceAnchor "SKILL.md Step 2.5" ;
+  ar:scope "ReviewScope" .
+ar:I10 ar:whenSuggestions "true" .
+ar:I11 a ar:Guardrail ;
+  ar:clauseId "I11" ;
+  ar:axis "Retry" ;
+  ar:text "Retry mode: fix only the Critical findings (canonical)." ;
+  ar:defaultCheck "retry_scope" ;
+  ar:sourceAnchor "SKILL.md retry mode" ;
+  ar:scope "ReviewScope" .
+ar:I11 ar:whenRound "retry" .
+ar:I11 ar:whenRuntime "canonical" .
+ar:I12 a ar:Guardrail ;
+  ar:clauseId "I12" ;
+  ar:axis "Retry" ;
+  ar:text "Retry mode: fix all Critical and Important findings (DSH)." ;
+  ar:defaultCheck "retry_scope" ;
+  ar:sourceAnchor "dsh/SKILL.md retry mode" ;
+  ar:scope "ReviewScope" .
+ar:I12 ar:whenRound "retry" .
+ar:I12 ar:whenRuntime "dsh" .
+ar:I13 a ar:Guardrail ;
+  ar:clauseId "I13" ;
+  ar:axis "Retry" ;
+  ar:text "Retry mode: do not redo already-passed acceptance criteria." ;
+  ar:defaultCheck "retry_scope" ;
+  ar:sourceAnchor "SKILL.md retry mode" ;
+  ar:scope "ReviewScope" .
+ar:I13 ar:whenRound "retry" .
+ar:I14 a ar:Guardrail ;
+  ar:clauseId "I14" ;
+  ar:axis "Retry" ;
+  ar:text "Retry mode: no new features." ;
+  ar:defaultCheck "retry_scope" ;
+  ar:sourceAnchor "SKILL.md retry mode" ;
+  ar:scope "ReviewScope" .
+ar:I14 ar:whenRound "retry" .
+ar:I15 a ar:Guardrail ;
+  ar:clauseId "I15" ;
+  ar:axis "Refactoring" ;
+  ar:text "REFACTORING preserves behavior; skip RED for new code but run existing tests before and after." ;
+  ar:defaultCheck "refactoring_evidence" ;
+  ar:sourceAnchor "SKILL.md REFACTORING" ;
+  ar:scope "ReviewScope" .
+ar:I15 ar:whenRefactoring "true" .
+ar:I16 a ar:Guardrail ;
+  ar:clauseId "I16" ;
+  ar:axis "Diagnosis" ;
+  ar:text "After at most two diagnosis hypotheses, report BLOCKED instead of guessing." ;
+  ar:defaultCheck "diagnosis" ;
+  ar:sourceAnchor "SKILL.md diagnosis" ;
+  ar:scope "ReviewScope" .
+ar:I17 a ar:Guardrail ;
+  ar:clauseId "I17" ;
+  ar:axis "SelfReview" ;
+  ar:text "Self-review runs the full test suite." ;
+  ar:defaultCheck "self_review" ;
+  ar:sourceAnchor "SKILL.md Step 2.5" ;
+  ar:scope "ReviewScope" .
+ar:I18 a ar:Guardrail ;
+  ar:clauseId "I18" ;
+  ar:axis "SelfReview" ;
+  ar:text "Self-review checks acceptance-criteria coverage." ;
+  ar:defaultCheck "self_review" ;
+  ar:sourceAnchor "SKILL.md Step 2.5" ;
+  ar:scope "ReviewScope" .
+ar:I19 a ar:Guardrail ;
+  ar:clauseId "I19" ;
+  ar:axis "SelfReview" ;
+  ar:text "Self-review checks scope creep." ;
+  ar:defaultCheck "self_review" ;
+  ar:sourceAnchor "SKILL.md Step 2.5" ;
+  ar:scope "ReviewScope" .
+ar:I20 a ar:Guardrail ;
+  ar:clauseId "I20" ;
+  ar:axis "Report" ;
+  ar:text "CHANGED_FILES lists every contract-referenced file; mark unedited files (pre-existing)." ;
+  ar:defaultCheck "changed_files" ;
+  ar:sourceAnchor "SKILL.md report" ;
+  ar:scope "ReviewScope" .
+ar:I21 a ar:Guardrail ;
+  ar:clauseId "I21" ;
+  ar:axis "Report" ;
+  ar:text "Report starts IMPLEMENTER_REPORT: and carries ROUND, STATUS, SUGGESTION_RESOLUTIONS, SELF_REVIEW, CHANGED_FILES, SUMMARY." ;
+  ar:defaultCheck "report_schema" ;
+  ar:sourceAnchor "SKILL.md report" ;
+  ar:scope "ReviewScope" .
+ar:I22 a ar:Guardrail ;
+  ar:clauseId "I22" ;
+  ar:axis "Report" ;
+  ar:text "DONE only if every acceptance criterion has executed passing evidence." ;
+  ar:defaultCheck "status_evidence" ;
+  ar:sourceAnchor "SKILL.md status" ;
+  ar:scope "ReviewScope" .
+ar:I23 a ar:Guardrail ;
+  ar:clauseId "I23" ;
+  ar:axis "Report" ;
+  ar:text "TOOLCHAIN: unavailable caps STATUS at UNVERIFIED." ;
+  ar:defaultCheck "status_evidence" ;
+  ar:sourceAnchor "SKILL.md status" ;
+  ar:scope "ReviewScope" .
+ar:I23 ar:whenToolchain "unavailable" .
+ar:I24 a ar:Guardrail ;
+  ar:clauseId "I24" ;
+  ar:axis "Report" ;
+  ar:text "UNVERIFIED annotates each acceptance criterion with its verification method." ;
+  ar:defaultCheck "status_evidence" ;
+  ar:sourceAnchor "SKILL.md status" ;
+  ar:scope "ReviewScope" .
+ar:I24 ar:whenUnverified "true" .
+ar:I25 a ar:Guardrail ;
+  ar:clauseId "I25" ;
+  ar:axis "Diagnosis" ;
+  ar:text "BLOCKED names the blocking fact after two failed hypotheses." ;
+  ar:defaultCheck "diagnosis" ;
+  ar:sourceAnchor "SKILL.md status" ;
+  ar:scope "ReviewScope" .
+ar:I26 a ar:Guardrail ;
+  ar:clauseId "I26" ;
+  ar:axis "Diagnosis" ;
+  ar:text "NEEDS_CONTEXT names the missing fact; do not guess." ;
+  ar:defaultCheck "diagnosis" ;
+  ar:sourceAnchor "SKILL.md status" ;
+  ar:scope "ReviewScope" .
+ar:I27 a ar:Guardrail ;
+  ar:clauseId "I27" ;
+  ar:axis "Guardrail" ;
+  ar:text "Do not modify scope or acceptance criteria." ;
+  ar:defaultCheck "guardrail" ;
+  ar:sourceAnchor "SKILL.md prohibited" ;
+  ar:scope "ReviewScope" .
+ar:I28 a ar:Guardrail ;
+  ar:clauseId "I28" ;
+  ar:axis "Guardrail" ;
+  ar:text "Do not guess a fix; diagnose before editing." ;
+  ar:defaultCheck "guardrail" ;
+  ar:sourceAnchor "SKILL.md prohibited" ;
+  ar:scope "ReviewScope" .
+ar:I29 a ar:Guardrail ;
+  ar:clauseId "I29" ;
+  ar:axis "Quality" ;
+  ar:text "Run the type-check/lint for changed Rust code." ;
+  ar:defaultCheck "typecheck" ;
+  ar:sourceAnchor "SKILL.md Step 2" ;
+  ar:scope "ReviewScope" .
+ar:I29 ar:whenChangeKind "rust-crate" .
+ar:I30 a ar:Guardrail ;
+  ar:clauseId "I30" ;
+  ar:axis "Context" ;
+  ar:text "Read sibling modules named in CHANGED_FILES." ;
+  ar:defaultCheck "context_read" ;
+  ar:sourceAnchor "SKILL.md Step 1" ;
+  ar:scope "ReviewScope" .
+ar:I30 ar:whenMultiModule "true" .
+ar:I31 a ar:Guardrail ;
+  ar:clauseId "I31" ;
+  ar:axis "Risk" ;
+  ar:text "For data-loss or rollback work, add a restore/rollback test." ;
+  ar:defaultCheck "risk_test" ;
+  ar:sourceAnchor "SKILL.md scope" ;
+  ar:scope "ReviewScope" .
+ar:I31 ar:whenRisk "data-loss" .
+ar:I32 a ar:Guardrail ;
+  ar:clauseId "I32" ;
+  ar:axis "Risk" ;
+  ar:text "For API-contract changes, update every caller and doc." ;
+  ar:defaultCheck "risk_contract" ;
+  ar:sourceAnchor "SKILL.md scope" ;
+  ar:scope "ReviewScope" .
+ar:I32 ar:whenRisk "api-contract" .
+ar:I33 a ar:Guardrail ;
+  ar:clauseId "I33" ;
+  ar:axis "Risk" ;
+  ar:text "For behavior-preservation work, keep existing outputs and list deliberate changes." ;
+  ar:defaultCheck "risk_contract" ;
+  ar:sourceAnchor "SKILL.md scope" ;
+  ar:scope "ReviewScope" .
+ar:I33 ar:whenRisk "behavior-preservation" .
+ar:I34 a ar:Guardrail ;
+  ar:clauseId "I34" ;
+  ar:axis "Guardrail" ;
+  ar:text "Do not add undeclared dependencies." ;
+  ar:defaultCheck "guardrail" ;
+  ar:sourceAnchor "SKILL.md prohibited" ;
+  ar:scope "ReviewScope" .
+ar:I35 a ar:Guardrail ;
+  ar:clauseId "I35" ;
+  ar:axis "Runtime" ;
+  ar:text "DSH: use scripts/sandboxed-rust-script.sh and respect workspace-write." ;
+  ar:defaultCheck "runtime" ;
+  ar:sourceAnchor "dsh/SKILL.md sandbox" ;
+  ar:scope "ReviewScope" .
+ar:I35 ar:whenRuntime "dsh" .
+ar:I36 a ar:Guardrail ;
+  ar:clauseId "I36" ;
+  ar:axis "Runtime" ;
+  ar:text "DSH: run scripts/refresh-rs-cache.sh after crates/* changes." ;
+  ar:defaultCheck "runtime" ;
+  ar:sourceAnchor "dsh/SKILL.md sandbox" ;
+  ar:scope "ReviewScope" .
+ar:I36 ar:whenRuntime "dsh" .
+ar:I36 ar:whenChangeKind "rust-crate" .
+ar:I37 a ar:Guardrail ;
+  ar:clauseId "I37" ;
+  ar:axis "Spec" ;
+  ar:text "Spec-linked work maps each AC to the spec and records deliberate behavior changes." ;
+  ar:defaultCheck "spec_mapping" ;
+  ar:sourceAnchor "orchestrator spec contract" ;
+  ar:scope "ReviewScope" .
+ar:I37 ar:whenSpecLinked "true" .
+ar:R1 a ar:JudgementRule ; ar:clauseId "R1" ; ar:text "TDD gate" .
+ar:R1 ar:citesClause ar:I01 .
+ar:R1 ar:citesClause ar:I02 .
+ar:R1 ar:citesClause ar:I03 .
+ar:R1 ar:citesClause ar:I04 .
+ar:R1 ar:citesClause ar:I05 .
+ar:R2 a ar:JudgementRule ; ar:clauseId "R2" ; ar:text "Context gate" .
+ar:R2 ar:citesClause ar:I06 .
+ar:R2 ar:citesClause ar:I07 .
+ar:R2 ar:citesClause ar:I08 .
+ar:R2 ar:citesClause ar:I09 .
+ar:R2 ar:citesClause ar:I10 .
+ar:R3 a ar:JudgementRule ; ar:clauseId "R3" ; ar:text "Retry gate" .
+ar:R3 ar:citesClause ar:I11 .
+ar:R3 ar:citesClause ar:I12 .
+ar:R3 ar:citesClause ar:I13 .
+ar:R3 ar:citesClause ar:I14 .
+ar:R4 a ar:JudgementRule ; ar:clauseId "R4" ; ar:text "Refactoring gate" .
+ar:R4 ar:citesClause ar:I15 .
+ar:R5 a ar:JudgementRule ; ar:clauseId "R5" ; ar:text "Diagnosis gate" .
+ar:R5 ar:citesClause ar:I16 .
+ar:R5 ar:citesClause ar:I25 .
+ar:R5 ar:citesClause ar:I26 .
+ar:R5 ar:citesClause ar:I28 .
+ar:R6 a ar:JudgementRule ; ar:clauseId "R6" ; ar:text "Self-review gate" .
+ar:R6 ar:citesClause ar:I17 .
+ar:R6 ar:citesClause ar:I18 .
+ar:R6 ar:citesClause ar:I19 .
+ar:R6 ar:citesClause ar:I20 .
+ar:R7 a ar:JudgementRule ; ar:clauseId "R7" ; ar:text "Report gate" .
+ar:R7 ar:citesClause ar:I21 .
+ar:R7 ar:citesClause ar:I22 .
+ar:R7 ar:citesClause ar:I23 .
+ar:R7 ar:citesClause ar:I24 .
+ar:R8 a ar:JudgementRule ; ar:clauseId "R8" ; ar:text "Risk gate" .
+ar:R8 ar:citesClause ar:I29 .
+ar:R8 ar:citesClause ar:I30 .
+ar:R8 ar:citesClause ar:I31 .
+ar:R8 ar:citesClause ar:I32 .
+ar:R8 ar:citesClause ar:I33 .
+ar:R8 ar:citesClause ar:I34 .
+ar:R9 a ar:JudgementRule ; ar:clauseId "R9" ; ar:text "Runtime gate" .
+ar:R9 ar:citesClause ar:I35 .
+ar:R9 ar:citesClause ar:I36 .
+ar:R10 a ar:JudgementRule ; ar:clauseId "R10" ; ar:text "Spec gate" .
+ar:R10 ar:citesClause ar:I08 .
+ar:R10 ar:citesClause ar:I37 .
