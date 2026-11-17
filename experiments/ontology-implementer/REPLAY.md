@@ -90,6 +90,31 @@ well-specified ticket, it cannot estimate a 10pp effect. The full 30-run
 protocol was not run. Raw logs are in `results/phase2/`; agent diffs are saved
 as `*-agent.diff` before the hidden-test overlay.
 
+## Token cost
+
+Measured from the DSH subagent session usage records (sum of every
+`assistant/message.data.usage`). `totalTokens` includes cache reads, so it is a
+processed-token count, not a billed-cost count. `non-cached` is
+`inputTokens + outputTokens`.
+
+| run | arm | model calls | input | output | cache read | total | non-cached |
+|---|---|---:|---:|---:|---:|---:|---:|
+| prose-1 | prose | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
+| prose-2 | prose | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
+| ontology-1 | ontology | 48 | 99,577 | 24,500 | 1,928,704 | 2,052,781 | 124,077 |
+| ontology-2 | ontology | 58 | 90,871 | 22,535 | 2,767,744 | 2,881,150 | 113,406 |
+| **prose avg** | | **58** | **105,352** | **25,782** | **2,974,848** | **3,105,982** | **131,134** |
+| **ontology avg** | | **53** | **95,224** | **23,517** | **2,348,224** | **2,466,965** | **118,741** |
+
+The ontology arm averages 20.6% fewer total processed tokens and 9.5% fewer
+non-cached tokens, but this is N=2 and the ranges overlap
+(ontology 2.05-2.88M total vs prose 2.83-3.38M). The plan is 7,007 characters
+and is read once as a tool result (~1.8k-2.0k tokens); the first model call
+differs by only +60 input tokens because the plan is not inlined into the
+system prompt. The difference is therefore mostly fewer exploration/tool
+steps, not a direct injection saving, and it is not evidence of a cost win.
+Raw numbers: `results/phase2/tokens.json`.
+
 ## Limitations
 
 - The full 30-run protocol (5 tickets x 2 arms x 3 runs, temperature 0, blind

@@ -509,6 +509,26 @@ ontology-1 的并行失败是 `shared::tests::load_skill_lock_from_temp_project`
   （prose-1 的 `test_build` 跑到 65.2s 时被 SIGTERM，exit 101 是超时信号而非断言失败；
   后续手动尝试卡在 `deploy.rs dev` 的 cargo build 上），不计入 pass。
 
+#### 过程 token
+
+从 DSH 子会话的 `assistant/message.data.usage` 汇总，`totalTokens` 含 cache read，
+是“处理过的 token”，不是账单金额；非缓存量 = input + output。
+
+| run | model calls | input | output | cache read | total | non-cached |
+|---|---:|---:|---:|---:|---:|---:|
+| prose-1 | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
+| prose-2 | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
+| ontology-1 | 48 | 99,577 | 24,500 | 1,928,704 | 2,052,781 | 124,077 |
+| ontology-2 | 58 | 90,871 | 22,535 | 2,767,744 | 2,881,150 | 113,406 |
+| prose avg | 58 | 105,352 | 25,782 | 2,974,848 | 3,105,982 | 131,134 |
+| ontology avg | 53 | 95,224 | 23,517 | 2,348,224 | 2,466,965 | 118,741 |
+
+ontology 臂平均 total 少 20.6%、非缓存少 9.5%，但 N=2 且区间重叠
+（ontology 2.05–2.88M vs prose 2.83–3.38M）；差异主要来自更少的探索/工具步骤，
+不是注入本身直接省出来的。7,007 字符的 plan 只读一次（约 1.8k–2.0k tokens），
+首轮 model call 仅多 60 input tokens，因为 plan 通过工具读取而非内联进 system prompt。
+因此不能据此声称“本体注入更省 token”。原始数字在 `results/phase2/tokens.json`。
+
 ---
 
 ## 9. 决策树
