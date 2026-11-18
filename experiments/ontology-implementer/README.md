@@ -21,8 +21,9 @@ decision tree and validation protocol.
 ```bash
 cd experiments/ontology-implementer
 export OPEN_ONTOLOGIES_BIN=/path/to/open-ontologies
-# Context excerpts are read from the T126 base commit, not the working tree.
+# Context excerpts are read from each ticket's parent commit, not the working tree.
 export AUTOPILOT_REPO=/path/to/autopilot-toolkit
+# AUTOPILOT_BASE_COMMIT is only a fallback; per-ticket bases are built in.
 export AUTOPILOT_BASE_COMMIT=98270ef
 python3 scripts/build_artifacts.py
 python3 scripts/select_ablation.py
@@ -31,6 +32,14 @@ python3 scripts/injection_variants.py
 python3 scripts/render_plan.py
 python3 scripts/build_reports.py
 python3 scripts/run_gate.py
+```
+
+Replay preparation and evaluation:
+
+```bash
+python3 scripts/prepare_replay.py --task T126 --arms prose,ontology --reps 2
+REPLAY_TEST_THREADS=1 python3 scripts/run_phase2_eval.py --runs ontology-1,ontology-2
+python3 scripts/summarize_replay.py
 ```
 
 The only external dependency is the pinned `open-ontologies` CLI v2.1.0
