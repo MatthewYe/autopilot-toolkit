@@ -81,6 +81,17 @@ SELECT $this ?ac WHERE {
   }
 }
 """
+    ] ;
+    sh:sparql [
+        sh:message "DONE cannot also declare not-run verification"
+        ; sh:select """
+PREFIX ar: <https://example.org/autopilot/implementer#>
+SELECT $this ?ac WHERE {
+  $this ar:status ar:DONE ; ar:hasAc ?ac .
+  ?ac ar:verificationMethod ?method .
+  FILTER(STR(?method) = "not-run")
+}
+"""
     ] .
 
 # A TOOLCHAIN: unavailable run must not claim DONE.
@@ -169,10 +180,11 @@ ar:RetryScopeShape a sh:NodeShape ;
         ; sh:select """
 PREFIX ar: <https://example.org/autopilot/implementer#>
 SELECT $this WHERE {
-  $this ar:forTask ?task ; ar:round ?round ; ar:retryScope ?scope .
-  ?task ar:runtime ?runtime .
-  FILTER(?round > 1)
-  FILTER(?scope != ar:CriticalAndImportant)
+  $this ar:round ?round .
+  # ROUND 0 is the first implementation.  Any retry (ROUND >= 1) must declare
+  # CriticalAndImportant; a missing retryScope is also a violation.
+  FILTER(?round >= 1)
+  FILTER NOT EXISTS { $this ar:retryScope ar:CriticalAndImportant }
 }
 """
     ] .

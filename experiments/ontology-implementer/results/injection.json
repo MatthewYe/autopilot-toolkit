@@ -8,22 +8,22 @@
       "hybrid": 0.0
     },
     "generic": {
-      "full": 19027.0,
-      "ids": 415.0,
-      "compact": 453.0,
-      "hybrid": 2875.0
+      "full": 26361.0,
+      "ids": 583.0,
+      "compact": 763.0,
+      "hybrid": 3195.0
     },
     "keyword": {
-      "full": 1990.2,
-      "ids": 56.8,
-      "compact": 55.0,
-      "hybrid": 659.8
+      "full": 1810.2,
+      "ids": 53.2,
+      "compact": 50.2,
+      "hybrid": 650.0
     },
     "ontology": {
-      "full": 8946.4,
-      "ids": 216.2,
-      "compact": 238.8,
-      "hybrid": 1742.8
+      "full": 8753.2,
+      "ids": 219.8,
+      "compact": 259.0,
+      "hybrid": 1734.8
     }
   },
   "note": "hybrid = full clause text + context path/line pointer, no context body; compact = clause ids + context titles; ids = ids only."

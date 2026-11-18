@@ -5,7 +5,7 @@ ar:Report a ar:Report ;
   ar:forTask ar:T122 ;
   ar:hasPlan ar:Plan ;
   ar:status ar:DONE ;
-  ar:round "1"^^xsd:integer ;
+  ar:round "0"^^xsd:integer ;
   ar:toolchain true ;
   ar:retryScope ar:CriticalAndImportant ;
   ar:hypotheses "2"^^xsd:integer ;

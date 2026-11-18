@@ -1,23 +1,8 @@
 [
   {
     "run": "ontology-1",
-    "workspace_tests": 0,
-    "workspace_tests_serial": null,
-    "toolkit_setup": 0,
-    "skill_check": 0,
-    "validation": 0,
-    "clippy": 0,
-    "structural": true,
-    "report_contract": true,
-    "report_status": "DONE",
-    "changed_files": 4,
-    "hidden_test_pass": true,
-    "full_pass": true
-  },
-  {
-    "run": "ontology-2",
-    "workspace_tests": 0,
-    "workspace_tests_serial": null,
+    "workspace_tests": null,
+    "workspace_tests_serial": 0,
     "toolkit_setup": 0,
     "skill_check": 0,
     "validation": 0,
@@ -27,6 +12,25 @@
     "report_status": "DONE",
     "changed_files": 3,
     "hidden_test_pass": true,
+    "checks_ok": true,
+    "checks_missing": [],
+    "full_pass": true
+  },
+  {
+    "run": "ontology-2",
+    "workspace_tests": null,
+    "workspace_tests_serial": 0,
+    "toolkit_setup": 0,
+    "skill_check": 0,
+    "validation": 0,
+    "clippy": 0,
+    "structural": true,
+    "report_contract": true,
+    "report_status": "DONE",
+    "changed_files": 3,
+    "hidden_test_pass": true,
+    "checks_ok": true,
+    "checks_missing": [],
     "full_pass": true
   },
   {
@@ -42,6 +46,8 @@
     "report_status": "DONE",
     "changed_files": 3,
     "hidden_test_pass": true,
+    "checks_ok": true,
+    "checks_missing": [],
     "full_pass": true
   },
   {
@@ -57,6 +63,8 @@
     "report_status": "DONE",
     "changed_files": 5,
     "hidden_test_pass": true,
+    "checks_ok": true,
+    "checks_missing": [],
     "full_pass": true
   }
 ]

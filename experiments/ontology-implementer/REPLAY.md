@@ -67,6 +67,10 @@ Checks: `cargo test --workspace --no-fail-fast`,
 
 ## Results
 
+The prepared base includes every `corpus/issue-*.json` the plan names; the
+preparer verifies the pointer is readable before dispatch and checks that the
+plan provenance matches the requested base (`results/plan-provenance.json`).
+
 T126 pilot, 2 runs per arm. Hidden checks are the merged test suite (inline test
 modules overlaid from `e3818a8`, so the agent cannot pass by rewriting tests)
 plus the structural entry-field check. The original agent diff (including new
@@ -75,16 +79,16 @@ temporary copy; the agent worktree is not modified.
 
 | run | arm | `cargo test --workspace` | serial | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | 0 | pass | pass | DONE |
-| prose-2 | prose | 0 | 0 | pass | pass | DONE |
+| prose-1 | prose | 0 | — (parallel) | pass | pass | DONE |
+| prose-2 | prose | 0 | — (parallel) | pass | pass | DONE |
 | ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
 | ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 All four also passed `toolkit_setup`, `scripts/check.rs`, `validation/run.rs`,
 and `clippy --workspace --all-targets -- -D warnings` (all exit 0).
 
-All hidden-test evaluations were run with `--test-threads=1`; an earlier
-parallel ontology-1 run hit the known
+Prose runs used the default parallel test configuration. The ontology runs
+used `--test-threads=1` after an earlier parallel ontology-1 run hit the known
 `shared::tests::load_skill_lock_from_temp_project` `PROJECT_ROOT` env race
 (exit 101), but the serial overlay run passed. This is a harness flake, not an
 implementation difference.
@@ -107,16 +111,15 @@ processed-token count, not a billed-cost count. `non-cached` is
 |---|---|---:|---:|---:|---:|---:|---:|
 | prose-1 | prose | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
 | prose-2 | prose | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
-| ontology-1 | ontology | 85 | 109,509 | 32,394 | 4,296,832 | 4,438,735 | 141,903 |
-| ontology-2 | ontology | 75 | 60,302 | 21,449 | 3,860,736 | 3,942,487 | 81,751 |
+| ontology-1 | ontology | 92 | 99,172 | 38,122 | 4,159,744 | 4,297,038 | 137,294 |
+| ontology-2 | ontology | 75 | 221,614 | 44,485 | 3,796,224 | 4,062,323 | 266,099 |
 | **prose avg** | | **58** | **105,352** | **25,782** | **2,974,848** | **3,105,982** | **131,134** |
-| **ontology avg** | | **80** | **84,906** | **26,922** | **4,078,784** | **4,190,611** | **111,827** |
+| **ontology avg** | | **84** | **160,393** | **41,304** | **3,977,984** | **4,179,681** | **201,696** |
 
-Ontology total processed tokens are higher (4.19M vs 3.11M, +34.9%), while
-non-cached input+output is lower (111,827 vs 131,134, -14.7%); output is
-slightly higher (26,922 vs 25,782, +4.4%). N=2 and the total ranges overlap
-(ontology 3.94-4.44M vs prose 2.83-3.38M), so this is not evidence of a token
-win. The plan is 6,767 characters (7,077 bytes) and is read once as a tool
+Ontology total processed tokens are higher (4.18M vs 3.11M, +34.6%), and
+non-cached input+output is also higher (201,696 vs 131,134, +53.8%); output is
+higher (41,304 vs 25,782, +60.2%). N=2 and the total ranges do not overlap
+(prose max 3.38M < ontology min 4.06M), so this is not evidence of a token win. The plan is 6,767 characters (7,077 bytes) and is read once as a tool
 result (~1.8k-2.0k tokens); it is not inlined into the system prompt. Raw
 numbers: `results/phase2/tokens.json`.
 

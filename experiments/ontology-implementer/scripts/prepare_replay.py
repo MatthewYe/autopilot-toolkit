@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -88,6 +89,13 @@ def main() -> None:
     plan_text = plan_path.read_text() if plan_path.exists() else ""
     if "ontology" in args.arms.split(",") and not plan_text:
         raise SystemExit(f"missing ontology plan: {plan_path}")
+    prov = ROOT / "results" / "plan-provenance.json"
+    if prov.exists():
+        expected = json.loads(prov.read_text()).get(f"T{args.task}")
+        if expected and not (base.startswith(expected) or expected.startswith(base)):
+            raise SystemExit(
+                f"plan provenance mismatch: plan was built at {expected}, --base is {base}"
+            )
 
     for arm in args.arms.split(","):
         for rep in range(1, args.reps + 1):
@@ -101,12 +109,27 @@ def main() -> None:
             try:
                 repo_dir = tmp / "repo"
                 export(repo, base, repo_dir)
+                # The plan may point at the full parent spec.  Materialize
+                # every referenced corpus file inside the prepared base so the
+                # pointer is readable; it is part of the base commit, not the
+                # agent's diff.
+                for rel in sorted(set(re.findall(r"corpus/issue-[0-9]+\.json", plan_text))):
+                    src = ROOT / rel
+                    if not src.exists():
+                        raise SystemExit(f"plan references missing context: {rel}")
+                    dst = repo_dir / rel
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                for rel in sorted(set(re.findall(r"corpus/issue-[0-9]+\.json", plan_text))):
+                    if not (repo_dir / rel).is_file():
+                        raise SystemExit(f"context pointer is not readable: {rel}")
                 subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)
                 subprocess.run(["git", "config", "user.email", "replay@example.invalid"], cwd=repo_dir, check=True)
                 subprocess.run(["git", "config", "user.name", "Replay"], cwd=repo_dir, check=True)
                 subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
                 subprocess.run(["git", "commit", "-q", "-m", f"base {base}"], cwd=repo_dir, check=True)
                 (tmp / "TASK.md").write_text(task_text)
+                (tmp / ".replay-base").write_text(json.dumps({"commit": base, "hidden": gold}) + "\n")
                 if arm == "ontology":
                     (tmp / "ONTOLOGY_PLAN.md").write_text(plan_text)
                 if dest.exists():

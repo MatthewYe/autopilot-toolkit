@@ -188,14 +188,14 @@ Source: `orchestrator spec contract`
   > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-125.json:1-1` — Issue #125
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nThe toolkit-setup procedure and its integration suite read the enumerator's skill-file 
-- `crates/skill-index/src/lib.rs:25-100` — skill-index interface
+- `crates/skill-index/src/lib.rs:25-100` — skill-index interface at #125 base
   > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
-- `tests/test_toolkit_setup.rs:60-120` — toolkit-setup suite
-  > .iter()\n .filter(|entry| entry.is_failed())\n .map(|entry| {\n let missing: Vec<String> = entry\n .skill_files\n .iter()\n .filter_map(|file| match &file.resolution {\n skill_inde
-- `skills/autopilot/toolkit-setup/SKILL.md:50-80` — toolkit-setup procedure
-  > - the installed tree contains exactly one file named `SKILL.md`;\n - `runtime/default/INSTRUCTIONS.md` exists;\n - each enumerated variant skill file has a corresponding installed\
+- `tests/test_toolkit_setup.rs:60-120` — toolkit-setup suite at #125 base
+  > let entries = skill_index::discover_skills(&project_root())\n .expect(\"enumerate the Expected set from the repo tree\");\n\n assert!(\n !entries.is_empty(),\n \"the repo tree must
+- `skills/autopilot/toolkit-setup/SKILL.md:50-80` — toolkit-setup procedure at #125 base
+  > 7. If `codex/agent.toml` exists, verify the corresponding\n `~/.codex/agents/<skill>.toml` link.\n8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to\n `$PROJE
 
 ## Report contract
 

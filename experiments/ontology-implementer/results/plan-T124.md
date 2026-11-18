@@ -198,18 +198,18 @@ Source: `orchestrator spec contract`
 
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
-- `crates/deploy/src/pack.rs:181-220` — deploy dev/pack strictness
-  > \"'{}' ({} skill, {}): {}\",\n entry.name,\n entry.source,\n file.variant\n .as_deref()\n .map(|variant| format!(\"variant {variant}\"))\n .unwrap_or_else(|| \"root skill file\".to
+- `crates/deploy/src/pack.rs:181-220` — deploy dev/pack strictness at #124 base
+  > reason\n )),\n ResolutionStatus::Resolved => None,\n })\n .collect();\n if failed.is_empty() {\n return Ok(());\n }\n anyhow::bail!(\n \"cannot pack: expected skill(s) missing:\\n 
 - `CONTEXT.md:19-21` — CONTEXT.md — Skill file
   > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-124.json:1-1` — Issue #124
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nDeployment stops reading a directory-level resolution status and judges each entry by t
-- `crates/skill-index/src/lib.rs:25-100` — skill-index interface
+- `crates/skill-index/src/lib.rs:25-100` — skill-index interface at #124 base
   > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
-- `crates/deploy/src/pack.rs:342-370` — deploy tests
-  > root.join(\"templates/install.sh.in\"),\n \"#!/bin/bash\\nVERSION=\\\"__VERSION__\\\"\\n\",\n )\n .unwrap();\n for args in [\n vec![\"init\", \"-q\"],\n vec![\"config\", \"user.ema
+- `crates/deploy/src/pack.rs:342-370` — deploy tests at #124 base
+  > vec![\"commit\", \"-q\", \"--allow-empty\", \"-m\", \"init\"],\n ] {\n let status = std::process::Command::new(\"git\")\n .args(&args)\n .current_dir(root)\n .status()\n .expect(\"
 
 ## Report contract
 

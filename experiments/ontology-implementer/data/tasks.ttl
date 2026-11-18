@@ -8,6 +8,7 @@ ar:T122 a ar:Task ;
   ar:title "Expected-set entry resolves its skill files (expand)" ;
   ar:source "github" ;
   ar:runtime "canonical" ;
+  ar:baseCommit "5653b94" ;
   ar:specLinked true ;
   ar:multiModule false ;
   ar:refactoring false ;
@@ -46,13 +47,13 @@ ar:T122 ar:goldContext ar:CTX_ISSUE_122 .
 ar:T122 ar:goldContext ar:CTX_SPEC_121 .
 ar:T122 ar:goldContext ar:CTX_ADR_0045 .
 ar:T122 ar:goldContext ar:CTX_GLOSSARY .
-ar:T122 ar:goldContext ar:CTX_SKILL_INDEX .
-ar:T122 ar:goldContext ar:CTX_TESTS_SKILL_INDEX .
+ar:T122 ar:goldContext ar:CTX_SKILL_INDEX_122 .
 ar:T123 a ar:Task ;
   ar:taskId "T123" ;
   ar:title "Validation consumes enumerated skill files" ;
   ar:source "github" ;
   ar:runtime "canonical" ;
+  ar:baseCommit "054dacb" ;
   ar:specLinked true ;
   ar:multiModule true ;
   ar:refactoring false ;
@@ -93,14 +94,15 @@ ar:T123 ar:goldContext ar:CTX_ISSUE_123 .
 ar:T123 ar:goldContext ar:CTX_SPEC_121 .
 ar:T123 ar:goldContext ar:CTX_ADR_0045 .
 ar:T123 ar:goldContext ar:CTX_GLOSSARY .
-ar:T123 ar:goldContext ar:CTX_SKILL_INDEX .
-ar:T123 ar:goldContext ar:CTX_VALIDATION .
-ar:T123 ar:goldContext ar:CTX_TESTS_VALIDATION .
+ar:T123 ar:goldContext ar:CTX_SKILL_INDEX_123 .
+ar:T123 ar:goldContext ar:CTX_VALIDATION_123 .
+ar:T123 ar:goldContext ar:CTX_TESTS_VALIDATION_123 .
 ar:T124 a ar:Task ;
   ar:taskId "T124" ;
   ar:title "Dev and pack consume skill files" ;
   ar:source "github" ;
   ar:runtime "canonical" ;
+  ar:baseCommit "93bde83" ;
   ar:specLinked true ;
   ar:multiModule true ;
   ar:refactoring false ;
@@ -140,14 +142,15 @@ ar:T124 ar:goldContext ar:CTX_ISSUE_124 .
 ar:T124 ar:goldContext ar:CTX_SPEC_121 .
 ar:T124 ar:goldContext ar:CTX_ADR_0045 .
 ar:T124 ar:goldContext ar:CTX_GLOSSARY .
-ar:T124 ar:goldContext ar:CTX_SKILL_INDEX .
-ar:T124 ar:goldContext ar:CTX_DEPLOY .
-ar:T124 ar:goldContext ar:CTX_TESTS_DEPLOY .
+ar:T124 ar:goldContext ar:CTX_SKILL_INDEX_124 .
+ar:T124 ar:goldContext ar:CTX_DEPLOY_124 .
+ar:T124 ar:goldContext ar:CTX_TESTS_DEPLOY_124 .
 ar:T125 a ar:Task ;
   ar:taskId "T125" ;
   ar:title "Toolkit-setup reads skill files" ;
   ar:source "github" ;
   ar:runtime "canonical" ;
+  ar:baseCommit "ac573e4" ;
   ar:specLinked true ;
   ar:multiModule true ;
   ar:refactoring false ;
@@ -186,14 +189,15 @@ ar:T125 ar:goldContext ar:CTX_ISSUE_125 .
 ar:T125 ar:goldContext ar:CTX_SPEC_121 .
 ar:T125 ar:goldContext ar:CTX_ADR_0045 .
 ar:T125 ar:goldContext ar:CTX_GLOSSARY .
-ar:T125 ar:goldContext ar:CTX_SKILL_INDEX .
-ar:T125 ar:goldContext ar:CTX_TOOLKIT_SETUP .
-ar:T125 ar:goldContext ar:CTX_TESTS_TOOLKIT_SETUP .
+ar:T125 ar:goldContext ar:CTX_SKILL_INDEX_125 .
+ar:T125 ar:goldContext ar:CTX_TOOLKIT_SETUP_125 .
+ar:T125 ar:goldContext ar:CTX_TESTS_TOOLKIT_SETUP_125 .
 ar:T126 a ar:Task ;
   ar:taskId "T126" ;
   ar:title "Retire the entry-level resolution status" ;
   ar:source "github" ;
   ar:runtime "canonical" ;
+  ar:baseCommit "98270ef" ;
   ar:specLinked true ;
   ar:multiModule true ;
   ar:refactoring false ;

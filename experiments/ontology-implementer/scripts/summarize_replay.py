@@ -29,8 +29,10 @@ def main() -> None:
             continue
         d = json.loads(p.read_text())
         checks = d.get("checks", {})
-        parallel = checks.get("workspace_tests", {}).get("exit")
-        serial = d.get("serial_rerun", {}).get("exit")
+        ws = checks.get("workspace_tests", {})
+        is_serial = "--test-threads=1" in ws.get("cmd", "")
+        serial = ws.get("exit") if is_serial else None
+        parallel = None if is_serial else ws.get("exit")
         report = d.get("report") or parse_report(d.get("report_text", ""))
         structural = d.get("structural", {}).get("pass")
         if structural is None:
@@ -49,7 +51,16 @@ def main() -> None:
             "changed_files": len(d.get("changed_files", [])),
             "hidden_test_pass": (serial == 0) if serial is not None else parallel == 0,
         }
-        row["full_pass"] = bool(row["hidden_test_pass"] and row["structural"] and row["report_contract"])
+        required = ["toolkit_setup", "skill_check", "validation", "clippy"]
+        ws_ok = (serial == 0) or (parallel == 0)
+        checks_ok = ws_ok and all(row.get(k) == 0 for k in required)
+        row["checks_ok"] = checks_ok
+        row["checks_missing"] = ([] if ws_ok else ["workspace_tests"]) + [
+            k for k in required if row.get(k) is None
+        ]
+        row["full_pass"] = bool(
+            row["hidden_test_pass"] and row["structural"] and row["report_contract"] and checks_ok
+        )
         rows.append(row)
     (directory / "summary.json").write_text(json.dumps(rows, indent=2))
     print("| run | hidden | hidden(serial) | structural | report | status | files |")

@@ -90,14 +90,14 @@ SELECT ?id ?predicate ?value WHERE {{
 
     tasks: dict[str, dict] = {}
     for row in store.query(f"""PREFIX ar: <{PREFIX}>
-SELECT ?t ?id ?title ?source ?runtime ?spec ?multi ?refactor ?suggestions ?unverified ?round ?toolchain WHERE {{
-  ?t ar:taskId ?id ; ar:title ?title ; ar:source ?source ; ar:runtime ?runtime ;
+SELECT ?t ?id ?title ?source ?runtime ?base ?spec ?multi ?refactor ?suggestions ?unverified ?round ?toolchain WHERE {{
+  ?t ar:taskId ?id ; ar:title ?title ; ar:source ?source ; ar:runtime ?runtime ; ar:baseCommit ?base ;
      ar:specLinked ?spec ; ar:multiModule ?multi ; ar:refactoring ?refactor ;
      ar:suggestions ?suggestions ; ar:unverified ?unverified ; ar:round ?round ;
      ar:toolchain ?toolchain .
 }}"""):
         tasks[row["id"]] = {"iri": row["t"], "id": row["id"], "title": row["title"],
-                            "source": row["source"], "runtime": row["runtime"],
+                            "source": row["source"], "runtime": row["runtime"], "base": row["base"],
                             "specLinked": row["spec"], "multiModule": row["multi"],
                             "refactoring": row["refactor"], "suggestions": row["suggestions"],
                             "unverified": row["unverified"], "round": row["round"],

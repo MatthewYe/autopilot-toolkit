@@ -202,14 +202,14 @@ Source: `orchestrator spec contract`
   > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-123.json:1-1` — Issue #123
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nValidation stops shadowing the Expected-set entry and stops rebuilding the source layou
-- `crates/skill-index/src/lib.rs:25-100` — skill-index interface
+- `crates/skill-index/src/lib.rs:25-100` — skill-index interface at #123 base
   > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
-- `crates/validation-runner/src/lib.rs:1225-1465` — validation pipeline tests
-  > \"the failure must name the missing variant file, got:\\n{}\",\n report.report\n );\n }\n\n #[test]\n fn codex_agent_toml_variant_keeps_validation_green() {\n // The repo's own ins
-- `crates/validation-runner/src/lib.rs:40-95` — validation-runner targets
-  > /// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries identity and result\n/// together — there is no positional pairing between two li
+- `crates/validation-runner/src/lib.rs:1225-1465` — validation pipeline tests at #123 base
+  > \"the failure must name the variant, got:\\n{}\",\n report.report\n );\n assert!(\n report\n .report\n .contains(\"skills/autopilot/fixture-skill/reasonix/SKILL.md\"),\n \"the fail
+- `crates/validation-runner/src/lib.rs:40-95` — validation-runner targets at #123 base
+  > /// concrete file path.\n#[derive(Debug, Clone)]\npub struct Skill {\n pub name: String,\n /// Relative path from project root to the SKILL.md file — the expected\n /// location ev
 
 ## Report contract
 

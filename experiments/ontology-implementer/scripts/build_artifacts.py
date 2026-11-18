@@ -10,22 +10,33 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENT = ROOT
 REPO = Path(os.environ.get('AUTOPILOT_REPO', Path(__file__).resolve().parents[3]))
 BASE = os.environ.get('AUTOPILOT_BASE_COMMIT', '98270ef')
+# Each ticket is planned against its own parent commit. Using the merged head
+# for every ticket would leak code and tests written by later tickets.
+BASES = {
+    'T122': '5653b94',
+    'T123': '054dacb',
+    'T124': '93bde83',
+    'T125': 'ac573e4',
+    'T126': '98270ef',
+}
 
 
-def source_exists(path: str) -> bool:
+def source_exists(path: str, base: str | None = None) -> bool:
+    commit = base or BASE
     return subprocess.run(
-        ['git', '-C', str(REPO), 'cat-file', '-e', f'{BASE}:{path}'],
+        ['git', '-C', str(REPO), 'cat-file', '-e', f'{commit}:{path}'],
         capture_output=True,
     ).returncode == 0
 
 
-def source_text(path: str) -> str:
+def source_text(path: str, base: str | None = None) -> str:
+    commit = base or BASE
     p = subprocess.run(
-        ['git', '-C', str(REPO), 'show', f'{BASE}:{path}'],
+        ['git', '-C', str(REPO), 'show', f'{commit}:{path}'],
         text=True, capture_output=True,
     )
     if p.returncode != 0:
-        raise SystemExit(f'cannot read {BASE}:{path}: {p.stderr.strip()}')
+        raise SystemExit(f'cannot read {commit}:{path}: {p.stderr.strip()}')
     return p.stdout
 
 
@@ -42,8 +53,8 @@ def int_lit(n: int) -> str:
     return f'"{n}"^^<http://www.w3.org/2001/XMLSchema#integer>'
 
 
-def excerpt(path: str, start: int, end: int, limit: int = 900) -> str:
-    lines = source_text(path).splitlines()
+def excerpt(path: str, start: int, end: int, limit: int = 900, base: str | None = None) -> str:
+    lines = source_text(path, base).splitlines()
     text = '\n'.join(lines[start - 1:end])
     return text[:limit]
 
@@ -114,27 +125,27 @@ RULES = [
 # files the PR actually touched.
 TASKS = [
     dict(id='T122', issue=122, title='Expected-set entry resolves its skill files (expand)',
-         changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
+         base='5653b94', changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
          specLinked=True, multiModule=False,
          goldContexts=['CTX_ISSUE_122', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
-                       'CTX_SKILL_INDEX', 'CTX_TESTS_SKILL_INDEX']),
+                       'CTX_SKILL_INDEX_122']),
     dict(id='T123', issue=123, title='Validation consumes enumerated skill files',
-         changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
+         base='054dacb', changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
          specLinked=True, multiModule=True,
          goldContexts=['CTX_ISSUE_123', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
-                       'CTX_SKILL_INDEX', 'CTX_VALIDATION', 'CTX_TESTS_VALIDATION']),
+                       'CTX_SKILL_INDEX_123', 'CTX_VALIDATION_123', 'CTX_TESTS_VALIDATION_123']),
     dict(id='T124', issue=124, title='Dev and pack consume skill files',
-         changeKinds=['rust-crate'], risks=['data-loss', 'behavior-preservation'],
+         base='93bde83', changeKinds=['rust-crate'], risks=['data-loss', 'behavior-preservation'],
          specLinked=True, multiModule=True,
          goldContexts=['CTX_ISSUE_124', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
-                       'CTX_SKILL_INDEX', 'CTX_DEPLOY', 'CTX_TESTS_DEPLOY']),
+                       'CTX_SKILL_INDEX_124', 'CTX_DEPLOY_124', 'CTX_TESTS_DEPLOY_124']),
     dict(id='T125', issue=125, title='Toolkit-setup reads skill files',
-         changeKinds=['skill', 'test'], risks=['behavior-preservation'],
+         base='ac573e4', changeKinds=['skill', 'test'], risks=['behavior-preservation'],
          specLinked=True, multiModule=True,
          goldContexts=['CTX_ISSUE_125', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
-                       'CTX_SKILL_INDEX', 'CTX_TOOLKIT_SETUP', 'CTX_TESTS_TOOLKIT_SETUP']),
+                       'CTX_SKILL_INDEX_125', 'CTX_TOOLKIT_SETUP_125', 'CTX_TESTS_TOOLKIT_SETUP_125']),
     dict(id='T126', issue=126, title='Retire the entry-level resolution status',
-         changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
+         base='98270ef', changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
          specLinked=True, multiModule=True,
          goldContexts=['CTX_ISSUE_126', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
                        'CTX_SKILL_INDEX', 'CTX_VALIDATION', 'CTX_DEPLOY',
@@ -197,8 +208,8 @@ def gold_clauses(task: dict) -> list[str]:
 
 
 # ── contexts ──────────────────────────────────────────────────────────────
-def ctx(id_, title, path, start, end, conditions, limit=900):
-    text = excerpt(path, start, end, limit) if path else ''
+def ctx(id_, title, path, start, end, conditions, limit=900, base=None):
+    text = excerpt(path, start, end, limit, base) if path else ''
     return dict(id=id_, title=title, path=str(path) if path else '', start=start,
                 end=end, conditions=conditions, excerpt=text, charCount=len(text))
 
@@ -224,15 +235,44 @@ while glossary_end < len(glossary_lines) and glossary_lines[glossary_end].strip(
     glossary_end += 1
 CONTEXTS.append(ctx('CTX_GLOSSARY', f'{glossary_name} — Skill file', glossary_name,
                     glossary_start, glossary_end, {}, 700))
-CONTEXTS.append(ctx('CTX_SKILL_INDEX', 'skill-index interface', 'crates/skill-index/src/lib.rs', 25, 100, {'forTask': ['T122', 'T123', 'T124', 'T125', 'T126']}, 1000))
-CONTEXTS.append(ctx('CTX_TESTS_SKILL_INDEX', 'skill-index enumerator tests', 'crates/skill-index/src/lib.rs', 769, 950, {'forTask': ['T122', 'T126']}, 900))
-CONTEXTS.append(ctx('CTX_VALIDATION', 'validation-runner targets', 'crates/validation-runner/src/lib.rs', 40, 95, {'forTask': ['T123', 'T126']}, 900))
-CONTEXTS.append(ctx('CTX_TESTS_VALIDATION', 'validation pipeline tests', 'crates/validation-runner/src/lib.rs', 1225, 1465, {'forTask': ['T123', 'T126']}, 900))
-CONTEXTS.append(ctx('CTX_DEPLOY', 'deploy dev/pack strictness', 'crates/deploy/src/pack.rs', 181, 220, {'forTask': ['T124', 'T126']}, 800))
-CONTEXTS.append(ctx('CTX_TESTS_DEPLOY', 'deploy tests', 'crates/deploy/src/pack.rs', 342, 370, {'forTask': ['T124', 'T126']}, 800))
-CONTEXTS.append(ctx('CTX_TOOLKIT_SETUP', 'toolkit-setup procedure', 'skills/autopilot/toolkit-setup/SKILL.md', 50, 80, {'forTask': ['T125']}, 900))
-CONTEXTS.append(ctx('CTX_TESTS_TOOLKIT_SETUP', 'toolkit-setup suite', 'tests/test_toolkit_setup.rs', 60, 120, {'forTask': ['T125']}, 800))
-CONTEXTS.append(ctx('CTX_TESTS_ALL', 'workspace test list', 'tests/test_toolkit_setup.rs', 1, 60, {'forTask': ['T126']}, 700))
+def code_ctx(cid, title, path, start, end, conditions, limit, tid):
+    return ctx(cid, title, path, start, end, conditions, limit, BASES[tid])
+
+
+# Code/test excerpts are per-ticket: a ticket must not see files written by a
+# later ticket on the same spec branch.  T126 keeps the unsuffixed IDs because
+# the Phase 2 pilot used them; T122-T125 have their own suffixed cards.
+CONTEXTS.append(code_ctx('CTX_SKILL_INDEX_122', 'skill-index interface at #122 base',
+                         'crates/skill-index/src/lib.rs', 25, 100, {'forTask': 'T122'}, 1000, 'T122'))
+
+CONTEXTS.append(code_ctx('CTX_SKILL_INDEX_123', 'skill-index interface at #123 base',
+                         'crates/skill-index/src/lib.rs', 25, 100, {'forTask': 'T123'}, 1000, 'T123'))
+CONTEXTS.append(code_ctx('CTX_VALIDATION_123', 'validation-runner targets at #123 base',
+                         'crates/validation-runner/src/lib.rs', 40, 95, {'forTask': 'T123'}, 900, 'T123'))
+CONTEXTS.append(code_ctx('CTX_TESTS_VALIDATION_123', 'validation pipeline tests at #123 base',
+                         'crates/validation-runner/src/lib.rs', 1225, 1465, {'forTask': 'T123'}, 900, 'T123'))
+
+CONTEXTS.append(code_ctx('CTX_SKILL_INDEX_124', 'skill-index interface at #124 base',
+                         'crates/skill-index/src/lib.rs', 25, 100, {'forTask': 'T124'}, 1000, 'T124'))
+CONTEXTS.append(code_ctx('CTX_DEPLOY_124', 'deploy dev/pack strictness at #124 base',
+                         'crates/deploy/src/pack.rs', 181, 220, {'forTask': 'T124'}, 800, 'T124'))
+CONTEXTS.append(code_ctx('CTX_TESTS_DEPLOY_124', 'deploy tests at #124 base',
+                         'crates/deploy/src/pack.rs', 342, 370, {'forTask': 'T124'}, 800, 'T124'))
+
+CONTEXTS.append(code_ctx('CTX_SKILL_INDEX_125', 'skill-index interface at #125 base',
+                         'crates/skill-index/src/lib.rs', 25, 100, {'forTask': 'T125'}, 1000, 'T125'))
+CONTEXTS.append(code_ctx('CTX_TOOLKIT_SETUP_125', 'toolkit-setup procedure at #125 base',
+                         'skills/autopilot/toolkit-setup/SKILL.md', 50, 80, {'forTask': 'T125'}, 900, 'T125'))
+CONTEXTS.append(code_ctx('CTX_TESTS_TOOLKIT_SETUP_125', 'toolkit-setup suite at #125 base',
+                         'tests/test_toolkit_setup.rs', 60, 120, {'forTask': 'T125'}, 800, 'T125'))
+
+CONTEXTS.append(code_ctx('CTX_SKILL_INDEX', 'skill-index interface', 'crates/skill-index/src/lib.rs', 25, 100, {'forTask': ['T126']}, 1000, 'T126'))
+CONTEXTS.append(code_ctx('CTX_TESTS_SKILL_INDEX', 'skill-index enumerator tests', 'crates/skill-index/src/lib.rs', 769, 950, {'forTask': ['T126']}, 900, 'T126'))
+CONTEXTS.append(code_ctx('CTX_VALIDATION', 'validation-runner targets', 'crates/validation-runner/src/lib.rs', 40, 95, {'forTask': ['T126']}, 900, 'T126'))
+CONTEXTS.append(code_ctx('CTX_TESTS_VALIDATION', 'validation pipeline tests', 'crates/validation-runner/src/lib.rs', 1225, 1465, {'forTask': ['T126']}, 900, 'T126'))
+CONTEXTS.append(code_ctx('CTX_DEPLOY', 'deploy dev/pack strictness', 'crates/deploy/src/pack.rs', 181, 220, {'forTask': ['T126']}, 800, 'T126'))
+CONTEXTS.append(code_ctx('CTX_TESTS_DEPLOY', 'deploy tests', 'crates/deploy/src/pack.rs', 342, 370, {'forTask': ['T126']}, 800, 'T126'))
+CONTEXTS.append(code_ctx('CTX_TESTS_ALL', 'workspace test list', 'tests/test_toolkit_setup.rs', 1, 60, {'forTask': ['T126']}, 700, 'T126'))
 
 # ── emit TTL ──────────────────────────────────────────────────────────────
 HEADER = '''@prefix ar: <https://example.org/autopilot/implementer#> .
@@ -256,7 +296,7 @@ def build_ontology() -> str:
              'whenUnverified', 'whenRound', 'whenRefactoring', 'whenSuggestions',
              'whenToolchain', 'whenRisk', 'whenChangeKind', 'scope', 'forTask',
              'injectsClause', 'injectsContext', 'hasClause', 'hasContext',
-             'taskId', 'title', 'source', 'runtime', 'changeKind', 'risk',
+             'taskId', 'title', 'source', 'runtime', 'baseCommit', 'changeKind', 'risk',
              'goldClause', 'goldContext', 'charCount', 'excerpt', 'sourcePath',
              'sourceStart', 'sourceEnd', 'hasCheck', 'checkClause', 'status',
              'round', 'toolchain', 'acStatus', 'hasAc', 'verificationMethod',
@@ -291,6 +331,7 @@ def build_tasks() -> str:
   ar:title {lit(t['title'])} ;
   ar:source {lit('github')} ;
   ar:runtime {lit(t.get('runtime', 'canonical'))} ;
+  ar:baseCommit {lit(t['base'])} ;
   ar:specLinked {str(t['specLinked']).lower()} ;
   ar:multiModule {str(t['multiModule']).lower()} ;
   ar:refactoring {str(t.get('refactoring', False)).lower()} ;
@@ -340,6 +381,8 @@ def main():
     }
     (EXPERIMENT / 'data' / 'gold.json').write_text(json.dumps(gold, indent=2) + '\n')
     print('clauses', len(CLAUSES), 'rules', len(RULES), 'tasks', len(TASKS), 'contexts', len(CONTEXTS))
+    (ROOT / 'results' / 'plan-provenance.json').write_text(
+        json.dumps({t['id']: t['base'] for t in TASKS}, indent=2) + '\n')
     for t in TASKS:
         print(t['id'], 'gold clauses', len(gold[t['id']]['clauses']), 'contexts', len(t['goldContexts']))
 

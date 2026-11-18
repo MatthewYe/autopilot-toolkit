@@ -1,25 +1,25 @@
 T122
-  none      clause R/P 0.00/0.00 (0/0 sel, gold 24)  ctx R/P 0.00/0.00 (0/0 sel, gold 6)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/544
-  generic   clause R/P 1.00/0.65 (24/37 sel, gold 24)  ctx R/P 1.00/0.35 (6/17 sel, gold 6)  exact=False chars full/ids/compact/hybrid/rendered=19027/415/453/2875/9878
-  keyword   clause R/P 0.38/0.90 (9/10 sel, gold 24)  ctx R/P 0.17/1.00 (1/1 sel, gold 6)  exact=False chars full/ids/compact/hybrid/rendered=1849/54/51/689/2199
-  ontology  clause R/P 1.00/0.96 (24/25 sel, gold 24)  ctx R/P 1.00/1.00 (6/6 sel, gold 6)  exact=False chars full/ids/compact/hybrid/rendered=7630/191/205/1660/5388
+  none      clause R/P 0.00/0.00 (0/0 sel, gold 24)  ctx R/P 0.00/0.00 (0/0 sel, gold 5)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/544
+  generic   clause R/P 1.00/0.65 (24/37 sel, gold 24)  ctx R/P 1.00/0.20 (5/25 sel, gold 5)  exact=False chars full/ids/compact/hybrid/rendered=26361/583/763/3195/12020
+  keyword   clause R/P 0.38/0.90 (9/10 sel, gold 24)  ctx R/P 0.20/1.00 (1/1 sel, gold 5)  exact=False chars full/ids/compact/hybrid/rendered=1849/54/51/689/2199
+  ontology  clause R/P 1.00/0.96 (24/25 sel, gold 24)  ctx R/P 1.00/1.00 (5/5 sel, gold 5)  exact=False chars full/ids/compact/hybrid/rendered=6730/173/189/1620/5143
 T123
   none      clause R/P 0.00/0.00 (0/0 sel, gold 26)  ctx R/P 0.00/0.00 (0/0 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/543
-  generic   clause R/P 1.00/0.70 (26/37 sel, gold 26)  ctx R/P 1.00/0.41 (7/17 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=19027/415/453/2875/9877
+  generic   clause R/P 1.00/0.70 (26/37 sel, gold 26)  ctx R/P 1.00/0.28 (7/25 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=26361/583/763/3195/12019
   keyword   clause R/P 0.35/1.00 (9/9 sel, gold 26)  ctx R/P 0.14/1.00 (1/1 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=1797/50/47/636/2073
-  ontology  clause R/P 1.00/1.00 (26/26 sel, gold 26)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=True chars full/ids/compact/hybrid/rendered=8574/209/232/1757/5774
+  ontology  clause R/P 1.00/1.00 (26/26 sel, gold 26)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=True chars full/ids/compact/hybrid/rendered=8574/221/271/1757/5813
 T124
   none      clause R/P 0.00/0.00 (0/0 sel, gold 25)  ctx R/P 0.00/0.00 (0/0 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/540
-  generic   clause R/P 1.00/0.68 (25/37 sel, gold 25)  ctx R/P 1.00/0.41 (7/17 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=19027/415/453/2875/9874
+  generic   clause R/P 1.00/0.68 (25/37 sel, gold 25)  ctx R/P 1.00/0.28 (7/25 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=26361/583/763/3195/12016
   keyword   clause R/P 0.36/0.90 (9/10 sel, gold 25)  ctx R/P 0.14/1.00 (1/1 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=1782/54/51/622/2128
-  ontology  clause R/P 1.00/0.96 (25/26 sel, gold 25)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=8380/201/220/1743/5741
+  ontology  clause R/P 1.00/0.96 (25/26 sel, gold 25)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=8380/213/259/1743/5780
 T125
   none      clause R/P 0.00/0.00 (0/0 sel, gold 24)  ctx R/P 0.00/0.00 (0/0 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/530
-  generic   clause R/P 1.00/0.65 (24/37 sel, gold 24)  ctx R/P 1.00/0.41 (7/17 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=19027/415/453/2875/9864
-  keyword   clause R/P 0.38/0.90 (9/10 sel, gold 24)  ctx R/P 0.29/1.00 (2/2 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=2749/72/75/738/2446
-  ontology  clause R/P 1.00/1.00 (24/24 sel, gold 24)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=True chars full/ids/compact/hybrid/rendered=8374/207/216/1649/5494
+  generic   clause R/P 1.00/0.65 (24/37 sel, gold 24)  ctx R/P 1.00/0.28 (7/25 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=26361/583/763/3195/12006
+  keyword   clause R/P 0.38/0.90 (9/10 sel, gold 24)  ctx R/P 0.14/1.00 (1/1 sel, gold 7)  exact=False chars full/ids/compact/hybrid/rendered=1849/54/51/689/2185
+  ontology  clause R/P 1.00/1.00 (24/24 sel, gold 24)  ctx R/P 1.00/1.00 (7/7 sel, gold 7)  exact=True chars full/ids/compact/hybrid/rendered=8308/219/255/1649/5533
 T126
   none      clause R/P 0.00/0.00 (0/0 sel, gold 26)  ctx R/P 0.00/0.00 (0/0 sel, gold 11)  exact=False chars full/ids/compact/hybrid/rendered=0/0/0/0/543
-  generic   clause R/P 1.00/0.70 (26/37 sel, gold 26)  ctx R/P 1.00/0.65 (11/17 sel, gold 11)  exact=False chars full/ids/compact/hybrid/rendered=19027/415/453/2875/9877
+  generic   clause R/P 1.00/0.70 (26/37 sel, gold 26)  ctx R/P 1.00/0.44 (11/25 sel, gold 11)  exact=False chars full/ids/compact/hybrid/rendered=26361/583/763/3195/12019
   keyword   clause R/P 0.38/1.00 (10/10 sel, gold 26)  ctx R/P 0.09/1.00 (1/1 sel, gold 11)  exact=False chars full/ids/compact/hybrid/rendered=1774/54/51/614/2120
   ontology  clause R/P 1.00/1.00 (26/26 sel, gold 26)  ctx R/P 1.00/1.00 (11/11 sel, gold 11)  exact=True chars full/ids/compact/hybrid/rendered=11774/273/321/1905/6767

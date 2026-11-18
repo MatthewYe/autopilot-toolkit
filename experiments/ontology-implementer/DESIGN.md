@@ -254,7 +254,7 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 - `whenRisk` / `whenChangeKind` 是多值；任一命中即该条件族成立。
 - `scope RepoGovernance` 的 clause（如跨 runtime parity）不进入单 ticket plan。
 
-### 5.3 17 个 context card
+### 5.3 25 个 context card
 
 - 每个 task 的 issue card；
 - Spec #121、ADR 0045、base `CONTEXT.md` 的 “Skill file”；
@@ -272,10 +272,10 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 
 | 模式 | 内容 | 平均字符（5 task） |
 |---|---|---|
-| full | 所有 clause 全文 + 所有 context 全文 | 19027（generic） |
+| full | 所有 clause 全文 + 所有 context 全文 | 26361（generic） |
 | ids | 只给 clause/context ID | 218（ontology） |
 | compact | clause ID + context 标题 | 242（ontology） |
-| hybrid | clause 全文 + context 路径/行号指针 | **1,743（ontology 估算）** |
+| hybrid | clause 全文 + context 路径/行号指针 | **1,735（ontology 估算）** |
 
 推荐 hybrid：条款全文是规范，必须给；上下文只给指针，避免把 20K 字符一次性塞进 prompt。
 
@@ -310,8 +310,8 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 
 `results/gate.txt`：
 
-- 13 个 fixture：1 valid + 12 invalid。
-- 13/13 符合预期；valid 退出 0；12 个 invalid 全部退出 1；0 个 false reject。
+- 15 个 fixture：1 valid + 14 invalid。
+- 15/15 符合预期；valid 退出 0；14 个 invalid 全部退出 1；0 个 false reject。
 - 覆盖：缺 check、非法 status、DONE 带 not-run、UNVERIFIED 无方法、BLOCKED 只有 1 个假设、changed files 空、production 无 TDD 证据、retry scope 错误、toolchain=false 却 DONE、spec-linked 无 specMapping、NEEDS_CONTEXT 无 missing fact。
 
 **这证明 gate 能拒绝“报告层面的伪完成”，不证明代码正确。**
@@ -335,7 +335,7 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 | 臂 | 做法 |
 |---|---|
 | none | 不注入任何 clause/context |
-| generic | 注入全部 37 clause + 17 context |
+| generic | 注入全部 37 clause + 25 context |
 | keyword | 按关键词命中（每个 clause 有 keyword 列表） |
 | ontology | 按 TTL 条件 + SPARQL 选择 |
 
@@ -344,25 +344,25 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 | 臂 | clause recall | clause precision | context recall | context precision | exact runs | hybrid 估算 | 实际 rendered |
 |---|---|---|---|---|---|---|---|
 | none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
-| generic | 1.00 | 0.676 | 1.00 | 0.447 | 0/5 | 2,875 | 9,874 |
-| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 | 2,193 |
-| **ontology** | **1.00** | **0.984** | **1.00** | **1.00** | **3/5** | **1,743** | **5,833** |
+| generic | 1.00 | 0.676 | 1.00 | 0.296 | 0/5 | 3,195 | 12,016 |
+| keyword | 0.368 | 0.940 | 0.144 | 1.00 | 0/5 | 650 | 2,141 |
+| **ontology** | **1.00** | **0.984** | **1.00** | **1.00** | **3/5** | **1,735** | **5,807** |
 
 逐 ticket：
 
-- T122：ontology 24/25 clause（多选 I33），6/6 context，exact=False，hybrid 估算 1,660，rendered 5,388。
-- T123：26/26，7/7，exact=True，hybrid 1,757，rendered 5,774。
-- T124：25/26（多选 I31），7/7，exact=False，hybrid 1,743，rendered 5,741。
-- T125：24/24，7/7，exact=True，hybrid 1,649，rendered 5,494。
+- T122：ontology 24/25 clause（多选 I33），5/5 context，exact=False，hybrid 估算 1,620，rendered 5,143。
+- T123：26/26，7/7，exact=True，hybrid 1,757，rendered 5,813。
+- T124：25/26（多选 I31），7/7，exact=False，hybrid 1,743，rendered 5,780。
+- T125：24/24，7/7，exact=True，hybrid 1,649，rendered 5,533。
 - T126：26/26，11/11，exact=True，hybrid 1,905，rendered 6,767。
 
 **解释：**
 
 - ontology 的 clause recall 100%，precision 98.4%；两次多选分别是 T122 的 I33（行为保持）和 T124 的 I31（回滚测试），都是“条件命中但人工 gold 认为不必要”的边界情况。
-- context 选择 38/38，precision/recall 100%。
-- generic 虽然 recall 100%，但 precision 0.676/0.447，注入 20K 字符，模型需要自己过滤。
+- context 选择 37/37，precision/recall 100%。
+- generic 虽然 recall 100%，但 precision 0.676/0.296，注入 26K 字符，模型需要自己过滤。
 - keyword 精度高但 recall 只有 36.8%/16.4%，漏掉大量必须条款。
-- 实际 rendered payload 5,833 字符，比 generic 的 9,874 少 40.9%；比 generic 的 hybrid 估算（1,743 vs 2,875）少 39.4%；同 generic 全量文本（11,774 vs 19,027）少 38.1%，同时保持 100% clause recall。
+- 实际 rendered payload 五票均值 5,807 字符，比 generic 的 12,016 少 51.7%；hybrid 估算 1,735 vs 3,195，少 45.7%；同 generic 全量文本均值（8,753 vs 26,361）少 66.8%，同时保持 100% clause recall。
 
 ### 7.4 这个实验证明了什么
 
@@ -484,19 +484,20 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 ### Phase 2 pilot 实际结果（2026-11-18，T126）
 
 pilot 用真实 ticket T126（退役 `ExpectedSetEntry.resolution`，base `98270ef`，merged `e3818a8`），
-sanitized worktree，`deepseek-flash`，2 臂 × 2 次。隐藏检查是 merged 测试套件 + 结构性检查
+sanitized worktree，`deepseek-flash`，2 臂 × 2 次。计划中的 context 指针（包括父规格
+`corpus/issue-121.json`）在 prep 时物化并校验可读。隐藏检查是 merged 测试套件 + 结构性检查
 （entry 上不得再有 `pub resolution`）；报告检查是结构性的，未接 SHACL gate。温度用 DSH 默认值，
 不是 0；因此这是 harness 验证，不是 30 次 go/no-go。
 
 | run | arm | `cargo test --workspace` | serial rerun | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | 0 | pass | pass | DONE |
-| prose-2 | prose | 0 | 0 | pass | pass | DONE |
+| prose-1 | prose | 0 | — (parallel) | pass | pass | DONE |
+| prose-2 | prose | 0 | — (parallel) | pass | pass | DONE |
 | ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
 | ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 四次的 `toolkit_setup`、`skill_check`、`validation/run.rs`、`clippy -D warnings` 都是 0。
-所有隐藏测试都用 `--test-threads=1` 串行跑；更早的 ontology-1 并行尝试撞到
+prose 两跑使用默认并行配置；ontology 两跑因更早的 ontology-1 并行尝试撞到
 `shared::tests::load_skill_lock_from_temp_project` 的 `PROJECT_ROOT` 环境变量竞态（exit 101），
 串行 overlay 通过。不是实现差异。
 
@@ -520,15 +521,14 @@ sanitized worktree，`deepseek-flash`，2 臂 × 2 次。隐藏检查是 merged 
 |---|---:|---:|---:|---:|---:|---:|
 | prose-1 | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
 | prose-2 | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
-| ontology-1 | 85 | 109,509 | 32,394 | 4,296,832 | 4,438,735 | 141,903 |
-| ontology-2 | 75 | 60,302 | 21,449 | 3,860,736 | 3,942,487 | 81,751 |
+| ontology-1 | 92 | 99,172 | 38,122 | 4,159,744 | 4,297,038 | 137,294 |
+| ontology-2 | 75 | 221,614 | 44,485 | 3,796,224 | 4,062,323 | 266,099 |
 | prose avg | 58 | 105,352 | 25,782 | 2,974,848 | 3,105,982 | 131,134 |
-| ontology avg | 80 | 84,906 | 26,922 | 4,078,784 | 4,190,611 | 111,827 |
+| ontology avg | 84 | 160,393 | 41,304 | 3,977,984 | 4,179,681 | 201,696 |
 
-ontology 臂平均 total 反而高 34.9%（4.19M vs 3.11M），非缓存少 14.7%
-（111,827 vs 131,134），output 略高 4.4%（26,922 vs 25,782）；N=2 且 total 区间重叠
-（ontology 3.94–4.44M vs prose 2.83–3.38M）。6,767 字符的 plan 只读一次
-（约 1.8k–2.0k tokens），但两臂的工具步数不同（ontology 80 次 vs prose 58 次），
+ontology 臂平均 total 高 34.6%（4.18M vs 3.11M），非缓存也高 53.8%
+（201,696 vs 131,134），output 高 60.2%（41,304 vs 25,782）；N=2 且 total 区间不重叠（prose 最大 3.38M < ontology 最小 4.06M）。6,767 字符的 plan 只读一次
+（约 1.8k–2.0k tokens），但两臂工具步数不同（ontology 84 次 vs prose 58 次），
 不能把差异归因于注入本身。因此不能声称“本体注入更省 token”。原始数字在
 `results/phase2/tokens.json`。
 
@@ -579,7 +579,7 @@ flowchart TD
 | 是否改模型行为 | 先不改 | 报告契约可独立验证，风险最低 | Phase 0 |
 | 是否形式化 TDD | 否 | 创造性循环，无可判定 ground truth | 只用护栏 |
 | 选择方式 | 本体条件 | 5 维条件组合，generic/keyword 效果差 | 采用 |
-| 注入方式 | rendered | 5,833 vs 9,874 字符，clause recall 100% | 采用 |
+| 注入方式 | rendered | 5,807 vs 12,016 字符，clause recall 100% | 采用 |
 | gate 语义 | SHACL + fail closed | 退出码 0/1/2；2 不当通过 | 采用 |
 | 验证 | 真实回放 + hidden tests | 唯一能证明代码质量提升的方法 | Phase 2 必做 |
 | 生产接入 | shadow → canary | 先证明不恶化，再扩大 | 未执行 |
@@ -670,7 +670,7 @@ ADR 0039 §4 规定 `Critical` 和 `Important` 都强制 RETRY、都必须修，
 
 ### Q16. hybrid 注入 1749 字符，会不会还是太长？
 
-实际 rendered payload 5,833 字符，比 generic 9,874 少 40.9%；hybrid 估算 1,743，比 generic 估算 2,875 少 39.4%，但比 keyword 的 660 多。rendered 约 1.5k–2k tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
+实际 rendered payload 5,807 字符，比 generic 12,016 少 51.7%；hybrid 估算 1,735，比 generic 估算 3,195 少 45.7%，但比 keyword 的 650 多。rendered 约 1.5k–2k tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
 
 ### Q17. 维护成本会不会超过收益？
 
@@ -761,10 +761,10 @@ experiment-ontology-implementer/
 ├── README.md
 ├── ontology/implementer.ttl        # 37 clauses + 10 rules + TBox
 ├── data/tasks.ttl                 # T122–T126
-├── data/contexts.ttl              # 17 context cards
+├── data/contexts.ttl              # 25 context cards
 ├── data/gold.json                 # 人工 gold sets
 ├── shapes/report-shapes.ttl       # 10 report shapes
-├── fixtures/*.ttl                 # 13 report fixtures
+├── fixtures/*.ttl                 # 15 report fixtures
 ├── scripts/
 │   ├── build_artifacts.py
 │   ├── lib.py
@@ -799,12 +799,12 @@ python3 scripts/run_gate.py
 
 | 证据 | 位置 |
 |---|---|
-| 37 clause / 10 rule / 5 task / 17 context | `ontology/implementer.ttl`、`data/*.ttl` |
+| 37 clause / 10 rule / 5 task / 25 context | `ontology/implementer.ttl`、`data/*.ttl` |
 | 选择 ablation 明细 | `results/selection.txt` |
 | 聚合指标 | `results/aggregate.json` |
 | 注入字符 | `results/injection.json` |
 | 实际注入载荷样例 | `results/plan-T122.md` … `plan-T126.md` |
-| 13/13 gate | `results/gate.txt` |
+| 15/15 gate | `results/gate.txt` |
 | 真实基线 | GitHub PR #127、#153、#154、#155 |
 | 原型设计原则 | `ontology-agent-lab` 的 O1–O15 / G1–G15 |
 

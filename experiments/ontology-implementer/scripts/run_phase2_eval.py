@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -28,25 +29,60 @@ def git(repo: Path, *args: str) -> str:
     return p.stdout if p.returncode == 0 else ""
 
 
-def snapshot_agent_diff(repo: Path) -> str:
-    # -N makes untracked files visible to git diff; reset clears only the
-    # index entry, not the working tree.
-    subprocess.run(["git", "add", "-N", "."], cwd=repo, check=True)
+def baseline_commit(repo: Path, run_dir: Path) -> str:
+    """Return a commit object that exists in this sanitized repo.
+
+    The prepared repo is history-free: its root commit has the base tree but
+    not the original base object.  Prefer the real base when present, otherwise
+    use the root commit.
+    """
+    roots = git(repo, "rev-list", "--max-parents=0", "HEAD").split()
+    if not roots:
+        raise SystemExit(f"cannot determine baseline for {repo}")
+    meta = run_dir / ".replay-base"
+    if meta.exists():
+        candidate = json.loads(meta.read_text())["commit"]
+        if subprocess.run(
+            ["git", "cat-file", "-e", f"{candidate}^{{commit}}"],
+            cwd=repo, text=True, capture_output=True,
+        ).returncode == 0:
+            return candidate
+        print(f"note: base {candidate[:8]} not in sanitized repo; using root {roots[-1][:8]}")
+        return roots[-1]
+    return roots[-1]
+
+
+def snapshot_agent(repo: Path, base: str) -> tuple[str, list[str]]:
+    """Return (binary diff from base, changed paths) without touching the index.
+
+    The agent may have committed its work.  Diffing against HEAD would then
+    return an empty patch.  We use a throwaway index seeded from the prepared
+    base commit, so committed and uncommitted changes are both captured and the
+    real index is never reset.
+    """
+    fd, index_path = tempfile.mkstemp(prefix="replay-index-")
+    os.close(fd)
+    os.unlink(index_path)
+    env = os.environ.copy()
+    env["GIT_INDEX_FILE"] = index_path
     try:
-        return git(repo, "diff", "--binary", "HEAD")
+        subprocess.run(["git", "read-tree", base], cwd=repo, env=env, check=True)
+        subprocess.run(["git", "add", "-A", "--", ".", ":(exclude)corpus"], cwd=repo, env=env, check=True)
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--binary", base],
+            cwd=repo, env=env, text=True, capture_output=True, check=True,
+        ).stdout
+        names = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", base],
+            cwd=repo, env=env, text=True, capture_output=True, check=True,
+        ).stdout
     finally:
-        subprocess.run(["git", "reset", "-q"], cwd=repo, check=True)
-
-
-def changed_paths(repo: Path) -> list[str]:
-    out = []
-    for line in git(repo, "status", "--porcelain").splitlines():
-        path = line[3:]
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        if path and path != "IMPLEMENTER_REPORT.md":
-            out.append(path)
-    return out
+        try:
+            os.unlink(index_path)
+        except FileNotFoundError:
+            pass
+    paths = [p for p in names.splitlines() if p and p != "IMPLEMENTER_REPORT.md" and not p.startswith("corpus/")]
+    return diff, paths
 
 
 def copy_without_git(repo: Path, dest: Path) -> None:
@@ -71,11 +107,11 @@ def main() -> None:
         if not repo.exists():
             print(f"skip missing {run}")
             continue
-        diff = snapshot_agent_diff(repo)
+        base = baseline_commit(repo, repo.parent)
+        diff, agent_changed = snapshot_agent(repo, base)
         (out_dir / f"{run}-agent.diff").write_text(diff)
-        print(f"== {run}: snapshotted agent diff ({len(diff)} bytes)")
+        print(f"== {run}: snapshotted agent diff from {base[:8]} ({len(diff)} bytes)")
 
-        agent_changed = changed_paths(repo)
         report_text = (repo / "IMPLEMENTER_REPORT.md").read_text() if (repo / "IMPLEMENTER_REPORT.md").exists() else ""
         report = parse_report(report_text)
 
@@ -122,6 +158,7 @@ def main() -> None:
             "report_text": report_text,
             "structural": structural,
             "changed_files": agent_changed,
+            "agent_base": base,
             "hidden_tests_commit": HIDDEN_TESTS_COMMIT,
         })
         result_path.write_text(json.dumps(result, indent=2))

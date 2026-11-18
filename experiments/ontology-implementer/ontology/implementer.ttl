@@ -42,6 +42,7 @@ ar:taskId a owl:ObjectProperty .
 ar:title a owl:ObjectProperty .
 ar:source a owl:ObjectProperty .
 ar:runtime a owl:ObjectProperty .
+ar:baseCommit a owl:ObjectProperty .
 ar:changeKind a owl:ObjectProperty .
 ar:risk a owl:ObjectProperty .
 ar:goldClause a owl:ObjectProperty .

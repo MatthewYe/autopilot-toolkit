@@ -74,6 +74,96 @@ ar:CTX_GLOSSARY a ar:ContextSource ;
   ar:sourceEnd "21"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "423"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "**Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A variant that ships an `agent.toml` instead of a `SKILL.md` is not missing a skill file — the agent definition is its artifact. An entry is a failed entry when any skill file it owns is missing.\n_Avoid_: skill content, entry content, file target" .
+ar:CTX_SKILL_INDEX_122 a ar:ContextSource ;
+  ar:clauseId "CTX_SKILL_INDEX_122" ;
+  ar:title "skill-index interface at #122 base" ;
+  ar:sourcePath "crates/skill-index/src/lib.rs" ;
+  ar:sourceStart "25"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "100"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "1000"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "\n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n    /// The source directory exists.\n    Resolved,\n    /// The failed-entry state (CONTEXT.md): the provenance points at a\n    /// directory that does not exist. The entry is still returned, with its\n    /// reason.\n    Missing { reason: String },\n}\n\n/// One Expected-set entry: a skill the toolkit owns.\n#[derive(Debug, Clone)]\npub struct ExpectedSetEntry {\n    pub name: String,\n    /// \"autopilot\", \"upstream\", or \"vendor\".\n    pub source: String,\n    pub skill_type: SkillType,\n    /// Variant directory names (e.g. [\"codex\", \"kimi\", \"reasonix\"]).\n    /// Empty for agnostic skills.\n    pub variants: Vec<String>,\n    /// Whether a codex/agent.toml file exists (only meaningful for coupled skills).\n    pub codex_agent: bool,\n    /// The skill's source directory, joined to the project root. For a failed\n    /// entry this is the expected location that was not fou" .
+ar:CTX_SKILL_INDEX_122 ar:forTask "T122" .
+ar:CTX_SKILL_INDEX_123 a ar:ContextSource ;
+  ar:clauseId "CTX_SKILL_INDEX_123" ;
+  ar:title "skill-index interface at #123 base" ;
+  ar:sourcePath "crates/skill-index/src/lib.rs" ;
+  ar:sourceStart "25"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "100"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "1000"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "\n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n    /// The source directory exists.\n    Resolved,\n    /// The failed-entry state (CONTEXT.md): the provenance points at a\n    /// directory that does not exist. The entry is still returned, with its\n    /// reason.\n    Missing { reason: String },\n}\n\n/// What a Skill file is: a skill body or a custom-agent definition.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum SkillFileKind {\n    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.\n    Skill,\n    /// An `agent.toml` custom-agent definition shipped instead of a\n    /// `SKILL.md` (see ADR 0036 / ADR 0045).\n    AgentDefinition,\n}\n\n/// One Skill file an Expected-set entry owns (CONTEXT.md).\n///\n/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a\n/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying\n/// neither is a missing `Skill` " .
+ar:CTX_SKILL_INDEX_123 ar:forTask "T123" .
+ar:CTX_VALIDATION_123 a ar:ContextSource ;
+  ar:clauseId "CTX_VALIDATION_123" ;
+  ar:title "validation-runner targets at #123 base" ;
+  ar:sourcePath "crates/validation-runner/src/lib.rs" ;
+  ar:sourceStart "40"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "95"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "/// concrete file path.\n#[derive(Debug, Clone)]\npub struct Skill {\n    pub name: String,\n    /// Relative path from project root to the SKILL.md file — the expected\n    /// location even when the file is missing.\n    pub relative_path: String,\n    /// \"upstream\", \"vendor\", or \"autopilot\".\n    pub source: String,\n    /// Runtime variant: None for runtime-agnostic, Some(\"reasonix\") etc.\n    pub variant: Option<String>,\n    /// Why this entry fails validation, if it does — an Expected-set\n    /// resolution failure, or a missing skill file for a resolved entry.\n    /// A failed entry fails validation immediately, without reading content.\n    pub failed_reason: Option<String>,\n}\n\n/// The result of validating a single skill.\npub struct SkillResult {\n    pub result: ValidationResult,\n    /// Frontmatter fields for autopilot display (runAs / allowed-tools)\n    pub frontmatter: Option<HashMap<St" .
+ar:CTX_VALIDATION_123 ar:forTask "T123" .
+ar:CTX_TESTS_VALIDATION_123 a ar:ContextSource ;
+  ar:clauseId "CTX_TESTS_VALIDATION_123" ;
+  ar:title "validation pipeline tests at #123 base" ;
+  ar:sourcePath "crates/validation-runner/src/lib.rs" ;
+  ar:sourceStart "1225"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "1465"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "            \"the failure must name the variant, got:\\n{}\",\n            report.report\n        );\n        assert!(\n            report\n                .report\n                .contains(\"skills/autopilot/fixture-skill/reasonix/SKILL.md\"),\n            \"the failure must name the missing variant file, got:\\n{}\",\n            report.report\n        );\n    }\n\n    #[test]\n    fn codex_agent_toml_variant_keeps_validation_green() {\n        // The repo's own install model: a codex variant may ship an\n        // agent.toml instead of a SKILL.md. That stays INFO, not FAIL.\n        let tmp = tempfile::tempdir().unwrap();\n        let root = tmp.path();\n        let skill_dir = root.join(\"skills/autopilot/fixture-skill\");\n        fs::create_dir_all(skill_dir.join(\"codex\")).unwrap();\n        write_skill_md(&skill_dir);\n        fs::write(\n            skill_dir.join(\"codex\").join(\"agent.toml\"),\n            \"nam" .
+ar:CTX_TESTS_VALIDATION_123 ar:forTask "T123" .
+ar:CTX_SKILL_INDEX_124 a ar:ContextSource ;
+  ar:clauseId "CTX_SKILL_INDEX_124" ;
+  ar:title "skill-index interface at #124 base" ;
+  ar:sourcePath "crates/skill-index/src/lib.rs" ;
+  ar:sourceStart "25"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "100"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "1000"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "\n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n    /// The source directory exists.\n    Resolved,\n    /// The failed-entry state (CONTEXT.md): the provenance points at a\n    /// directory that does not exist. The entry is still returned, with its\n    /// reason.\n    Missing { reason: String },\n}\n\n/// What a Skill file is: a skill body or a custom-agent definition.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum SkillFileKind {\n    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.\n    Skill,\n    /// An `agent.toml` custom-agent definition shipped instead of a\n    /// `SKILL.md` (see ADR 0036 / ADR 0045).\n    AgentDefinition,\n}\n\n/// One Skill file an Expected-set entry owns (CONTEXT.md).\n///\n/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a\n/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying\n/// neither is a missing `Skill` " .
+ar:CTX_SKILL_INDEX_124 ar:forTask "T124" .
+ar:CTX_DEPLOY_124 a ar:ContextSource ;
+  ar:clauseId "CTX_DEPLOY_124" ;
+  ar:title "deploy dev/pack strictness at #124 base" ;
+  ar:sourcePath "crates/deploy/src/pack.rs" ;
+  ar:sourceStart "181"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "220"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "                reason\n            )),\n            ResolutionStatus::Resolved => None,\n        })\n        .collect();\n    if failed.is_empty() {\n        return Ok(());\n    }\n    anyhow::bail!(\n        \"cannot pack: expected skill(s) missing:\\n  {}\",\n        failed.join(\"\\n  \")\n    )\n}\n\n/// Stage one resolved Expected-set entry into the tarball.\n///\n/// Autopilot and vendor skills keep their per-source staging behavior: a\n/// coupled skill gets the runtime-router layout, an agnostic one is copied\n/// as-is. Upstream skills are agnostic by policy and are copied directly,\n/// exactly as the tarball shipped them before.\nfn stage_entry_skill(entry: &ExpectedSetEntry, dst: &Path) -> Result<(), anyhow::Error> {\n    // Upstream entries cannot reach this arm as coupled: the enumerator\n    // constr" .
+ar:CTX_DEPLOY_124 ar:forTask "T124" .
+ar:CTX_TESTS_DEPLOY_124 a ar:ContextSource ;
+  ar:clauseId "CTX_TESTS_DEPLOY_124" ;
+  ar:title "deploy tests at #124 base" ;
+  ar:sourcePath "crates/deploy/src/pack.rs" ;
+  ar:sourceStart "342"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "370"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "            vec![\"commit\", \"-q\", \"--allow-empty\", \"-m\", \"init\"],\n        ] {\n            let status = std::process::Command::new(\"git\")\n                .args(&args)\n                .current_dir(root)\n                .status()\n                .expect(\"git should run\");\n            assert!(status.success(), \"git {:?} should succeed\", args);\n        }\n    }\n\n    #[test]\n    fn pack_fails_on_missing_vendor_entry() {\n        let tmp = tempfile::tempdir().unwrap();\n        let root = tmp.path();\n        write_minimal_project(root);\n        std::fs::write(\n            root.join(\".vendor-lock.json\"),\n            r#\"{\"version\":1,\"skills\":{\"missing-vendor\":{\"skillPath\":\"plugins/missing-vendor/skills/missing-vendor/SKILL.md\",\"skillFolderHash\":\"deadbeef\",\"vendorPath\":\"skills/vendor/missing-vendor\"}}}\"" .
+ar:CTX_TESTS_DEPLOY_124 ar:forTask "T124" .
+ar:CTX_SKILL_INDEX_125 a ar:ContextSource ;
+  ar:clauseId "CTX_SKILL_INDEX_125" ;
+  ar:title "skill-index interface at #125 base" ;
+  ar:sourcePath "crates/skill-index/src/lib.rs" ;
+  ar:sourceStart "25"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "100"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "1000"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "\n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n    /// The source directory exists.\n    Resolved,\n    /// The failed-entry state (CONTEXT.md): the provenance points at a\n    /// directory that does not exist. The entry is still returned, with its\n    /// reason.\n    Missing { reason: String },\n}\n\n/// What a Skill file is: a skill body or a custom-agent definition.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum SkillFileKind {\n    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.\n    Skill,\n    /// An `agent.toml` custom-agent definition shipped instead of a\n    /// `SKILL.md` (see ADR 0036 / ADR 0045).\n    AgentDefinition,\n}\n\n/// One Skill file an Expected-set entry owns (CONTEXT.md).\n///\n/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a\n/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying\n/// neither is a missing `Skill` " .
+ar:CTX_SKILL_INDEX_125 ar:forTask "T125" .
+ar:CTX_TOOLKIT_SETUP_125 a ar:ContextSource ;
+  ar:clauseId "CTX_TOOLKIT_SETUP_125" ;
+  ar:title "toolkit-setup procedure at #125 base" ;
+  ar:sourcePath "skills/autopilot/toolkit-setup/SKILL.md" ;
+  ar:sourceStart "50"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "80"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "834"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "7. If `codex/agent.toml` exists, verify the corresponding\n   `~/.codex/agents/<skill>.toml` link.\n8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to\n   `$PROJECT_ROOT/principles`.\n\nIf `deploy.rs dev` reports a real-directory or real-file conflict, do not\nreplace it. Report the exact path and leave verification failed until the user\nresolves ownership.\n\n## Cleanup\n\nWhen explicitly asked to remove development links, run:\n\n```bash\nrust-script \"$PROJECT_ROOT/deploy.rs\" dev-clean\n```\n\nThis removes only links pointing into the current checkout.\n\n## Report\n\nReturn a compact report containing:\n\n```text\nTOOLKIT_SETUP_REPORT\nExpected: <count>\nActions: <dev/link-principles actions>\nRouters: <count passed>, <count failed>\nCodex agents: <count passed>, <count failed>\nPrinciples: PASS|FAIL\nWarnings: <paths or none>" .
+ar:CTX_TOOLKIT_SETUP_125 ar:forTask "T125" .
+ar:CTX_TESTS_TOOLKIT_SETUP_125 a ar:ContextSource ;
+  ar:clauseId "CTX_TESTS_TOOLKIT_SETUP_125" ;
+  ar:title "toolkit-setup suite at #125 base" ;
+  ar:sourcePath "tests/test_toolkit_setup.rs" ;
+  ar:sourceStart "60"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:sourceEnd "120"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
+  ar:excerpt "        let entries = skill_index::discover_skills(&project_root())\n            .expect(\"enumerate the Expected set from the repo tree\");\n\n        assert!(\n            !entries.is_empty(),\n            \"the repo tree must own at least one skill\"\n        );\n\n        let failed: Vec<String> = entries\n            .iter()\n            .filter_map(|entry| match &entry.resolution {\n                skill_index::ResolutionStatus::Missing { reason } => {\n                    Some(format!(\"{}: {reason}\", entry.name))\n                }\n                skill_index::ResolutionStatus::Resolved => None,\n            })\n            .collect();\n        assert!(\n            failed.is_empty(),\n            \"every entry must resolve in the repo tree:\\n{failed:#?}\"\n        );\n\n        // Deterministic order: autopi" .
+ar:CTX_TESTS_TOOLKIT_SETUP_125 ar:forTask "T125" .
 ar:CTX_SKILL_INDEX a ar:ContextSource ;
   ar:clauseId "CTX_SKILL_INDEX" ;
   ar:title "skill-index interface" ;
@@ -82,10 +172,6 @@ ar:CTX_SKILL_INDEX a ar:ContextSource ;
   ar:sourceEnd "100"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "1000"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "\n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n    /// The source directory exists.\n    Resolved,\n    /// The failed-entry state (CONTEXT.md): the provenance points at a\n    /// directory that does not exist. The entry is still returned, with its\n    /// reason.\n    Missing { reason: String },\n}\n\n/// What a Skill file is: a skill body or a custom-agent definition.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum SkillFileKind {\n    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.\n    Skill,\n    /// An `agent.toml` custom-agent definition shipped instead of a\n    /// `SKILL.md` (see ADR 0036 / ADR 0045).\n    AgentDefinition,\n}\n\n/// One Skill file an Expected-set entry owns (CONTEXT.md).\n///\n/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a\n/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying\n/// neither is a missing `Skill` " .
-ar:CTX_SKILL_INDEX ar:forTask "T122" .
-ar:CTX_SKILL_INDEX ar:forTask "T123" .
-ar:CTX_SKILL_INDEX ar:forTask "T124" .
-ar:CTX_SKILL_INDEX ar:forTask "T125" .
 ar:CTX_SKILL_INDEX ar:forTask "T126" .
 ar:CTX_TESTS_SKILL_INDEX a ar:ContextSource ;
   ar:clauseId "CTX_TESTS_SKILL_INDEX" ;
@@ -95,7 +181,6 @@ ar:CTX_TESTS_SKILL_INDEX a ar:ContextSource ;
   ar:sourceEnd "950"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "\n        let alpha = entries.iter().find(|e| e.name == \"alpha\").unwrap();\n        assert_eq!(alpha.skill_files.len(), 1);\n        let alpha_root = alpha.skill_file(None).expect(\"root skill file\");\n        assert_eq!(alpha_root.kind, SkillFileKind::Skill);\n        assert_eq!(alpha_root.resolution, ResolutionStatus::Resolved);\n        assert_eq!(\n            alpha_root.path,\n            root.join(\"skills/autopilot/alpha/SKILL.md\")\n        );\n        assert!(!alpha.is_failed());\n\n        let beta_entry = entries.iter().find(|e| e.name == \"beta\").unwrap();\n        assert_eq!(\n            beta_entry.skill_files.len(),\n            3,\n            \"root + reasonix + codex agent definition: {:?}\",\n            beta_entry.skill_files\n        );\n        let codex_file = beta_entry.skill_file(Some(\"codex\")).expect(\"codex file\");\n        assert_eq!(codex_file.kind, SkillFileKind::AgentDefinition);\n   " .
-ar:CTX_TESTS_SKILL_INDEX ar:forTask "T122" .
 ar:CTX_TESTS_SKILL_INDEX ar:forTask "T126" .
 ar:CTX_VALIDATION a ar:ContextSource ;
   ar:clauseId "CTX_VALIDATION" ;
@@ -105,7 +190,6 @@ ar:CTX_VALIDATION a ar:ContextSource ;
   ar:sourceEnd "95"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "/// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries identity and result\n/// together — there is no positional pairing between two lists (ADR 0045).\n#[derive(Debug, Clone)]\npub struct ValidationTarget {\n    /// The Expected-set entry that owns this file.\n    pub entry: skill_index::ExpectedSetEntry,\n    /// The skill file under validation (expected path, even when missing).\n    pub file: skill_index::SkillFile,\n    /// Project-relative path used for display and file access.\n    pub relative_path: String,\n}\n\nimpl ValidationTarget {\n    pub fn name(&self) -> &str {\n        &self.entry.name\n    }\n\n    /// \"upstream\", \"vendor\", or \"autopilot\".\n    pub fn source(&self) -> &str {\n        &self.entry.source\n    }\n\n    /// Runtime variant: None for the root fallback, Some(\"reasonix\") etc.\n    pub fn variant(&self) -> Option<&str> {\n        self.file.va" .
-ar:CTX_VALIDATION ar:forTask "T123" .
 ar:CTX_VALIDATION ar:forTask "T126" .
 ar:CTX_TESTS_VALIDATION a ar:ContextSource ;
   ar:clauseId "CTX_TESTS_VALIDATION" ;
@@ -115,7 +199,6 @@ ar:CTX_TESTS_VALIDATION a ar:ContextSource ;
   ar:sourceEnd "1465"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "            \"the failure must name the missing variant file, got:\\n{}\",\n            report.report\n        );\n    }\n\n    #[test]\n    fn codex_agent_toml_variant_keeps_validation_green() {\n        // The repo's own install model: a codex variant may ship an\n        // agent.toml instead of a SKILL.md. That stays INFO, not FAIL.\n        let tmp = tempfile::tempdir().unwrap();\n        let root = tmp.path();\n        let skill_dir = root.join(\"skills/autopilot/fixture-skill\");\n        fs::create_dir_all(skill_dir.join(\"codex\")).unwrap();\n        write_skill_md(&skill_dir);\n        fs::write(\n            skill_dir.join(\"codex\").join(\"agent.toml\"),\n            \"name = \\\"fixture\\\"\\n\",\n        )\n        .unwrap();\n\n        let report = run_validation(root).expect(\"run_validation should succeed\");\n        assert!(\n            !report.has_failures,\n            \"an agent.toml-only codex variant must " .
-ar:CTX_TESTS_VALIDATION ar:forTask "T123" .
 ar:CTX_TESTS_VALIDATION ar:forTask "T126" .
 ar:CTX_DEPLOY a ar:ContextSource ;
   ar:clauseId "CTX_DEPLOY" ;
@@ -125,7 +208,6 @@ ar:CTX_DEPLOY a ar:ContextSource ;
   ar:sourceEnd "220"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "                        \"'{}' ({} skill, {}): {}\",\n                        entry.name,\n                        entry.source,\n                        file.variant\n                            .as_deref()\n                            .map(|variant| format!(\"variant {variant}\"))\n                            .unwrap_or_else(|| \"root skill file\".to_string()),\n                        reason\n                    )),\n                    ResolutionStatus::Resolved => None,\n                })\n        })\n        .collect();\n    if failed.is_empty() {\n        return Ok(());\n    }\n    anyhow::bail!(\n        \"cannot pack: expected skill file(s) missing:\\n  {}\",\n        failed.join(\"\\n  \")\n    )\n}\n\n/// Stage one resolved Expected-set entry into the tarball.\n///\n/// Autopilot and vendor skills keep their per-" .
-ar:CTX_DEPLOY ar:forTask "T124" .
 ar:CTX_DEPLOY ar:forTask "T126" .
 ar:CTX_TESTS_DEPLOY a ar:ContextSource ;
   ar:clauseId "CTX_TESTS_DEPLOY" ;
@@ -135,26 +217,7 @@ ar:CTX_TESTS_DEPLOY a ar:ContextSource ;
   ar:sourceEnd "370"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
   ar:excerpt "            root.join(\"templates/install.sh.in\"),\n            \"#!/bin/bash\\nVERSION=\\\"__VERSION__\\\"\\n\",\n        )\n        .unwrap();\n        for args in [\n            vec![\"init\", \"-q\"],\n            vec![\"config\", \"user.email\", \"test@test.com\"],\n            vec![\"config\", \"user.name\", \"Test\"],\n            vec![\"commit\", \"-q\", \"--allow-empty\", \"-m\", \"init\"],\n        ] {\n            let status = std::process::Command::new(\"git\")\n                .args(&args)\n                .current_dir(root)\n                .status()\n                .expect(\"git should run\");\n            assert!(status.success(), \"git {:?} should succeed\", args);\n        }\n    }\n\n    #[test]\n    fn pack_fails_on_missing_vendor_entry() {\n        let tmp = tempfile::tempdir().unwrap();\n        let root = tmp.path();\n        wr" .
-ar:CTX_TESTS_DEPLOY ar:forTask "T124" .
 ar:CTX_TESTS_DEPLOY ar:forTask "T126" .
-ar:CTX_TOOLKIT_SETUP a ar:ContextSource ;
-  ar:clauseId "CTX_TOOLKIT_SETUP" ;
-  ar:title "toolkit-setup procedure" ;
-  ar:sourcePath "skills/autopilot/toolkit-setup/SKILL.md" ;
-  ar:sourceStart "50"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:sourceEnd "80"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:charCount "900"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:excerpt "   - the installed tree contains exactly one file named `SKILL.md`;\n   - `runtime/default/INSTRUCTIONS.md` exists;\n   - each enumerated variant skill file has a corresponding installed\n     `runtime/<variant>/INSTRUCTIONS.md`;\n   - no same-name entry exists in the Codex or Reasonix exclusive skill\n     directory.\n7. For every enumerated agent definition, verify the corresponding\n   `~/.codex/agents/<skill>.toml` link.\n8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to\n   `$PROJECT_ROOT/principles`.\n\nIf `deploy.rs dev` reports a real-directory or real-file conflict, do not\nreplace it. Report the exact path and leave verification failed until the user\nresolves ownership.\n\n## Cleanup\n\nWhen explicitly asked to remove development links, run:\n\n```bash\nrust-script \"$PROJECT_ROOT/deploy.rs\" dev-clean\n```\n\nThis removes only links pointing into the current checkout.\n\n## Repor" .
-ar:CTX_TOOLKIT_SETUP ar:forTask "T125" .
-ar:CTX_TESTS_TOOLKIT_SETUP a ar:ContextSource ;
-  ar:clauseId "CTX_TESTS_TOOLKIT_SETUP" ;
-  ar:title "toolkit-setup suite" ;
-  ar:sourcePath "tests/test_toolkit_setup.rs" ;
-  ar:sourceStart "60"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:sourceEnd "120"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:charCount "800"^^<http://www.w3.org/2001/XMLSchema#integer> ;
-  ar:excerpt "            .iter()\n            .filter(|entry| entry.is_failed())\n            .map(|entry| {\n                let missing: Vec<String> = entry\n                    .skill_files\n                    .iter()\n                    .filter_map(|file| match &file.resolution {\n                        skill_index::ResolutionStatus::Missing { reason } => Some(format!(\n                            \"{} ({:?}): {reason}\",\n                            file.path.display(),\n                            file.variant\n                        )),\n                        skill_index::ResolutionStatus::Resolved => None,\n                    })\n                    .collect();\n                format!(\"{}: {}\", entry.name, missing.join(\"; \"))\n            })\n            .collect();\n        assert!(\n            failed.is_" .
-ar:CTX_TESTS_TOOLKIT_SETUP ar:forTask "T125" .
 ar:CTX_TESTS_ALL a ar:ContextSource ;
   ar:clauseId "CTX_TESTS_ALL" ;
   ar:title "workspace test list" ;

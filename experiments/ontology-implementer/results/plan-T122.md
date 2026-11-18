@@ -187,7 +187,7 @@ Spec-linked work maps each AC to the spec and records deliberate behavior change
 Report check: `spec_mapping`  
 Source: `orchestrator spec contract`
 
-## Context (6)
+## Context (5)
 
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
@@ -195,12 +195,10 @@ Source: `orchestrator spec contract`
   > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-122.json:1-1` — Issue #122
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nAn Expected-set entry resolves and exposes every skill file it owns — the root `SKILL.m
-- `crates/skill-index/src/lib.rs:25-100` — skill-index interface
+- `crates/skill-index/src/lib.rs:25-100` — skill-index interface at #122 base
   > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
-- `crates/skill-index/src/lib.rs:769-950` — skill-index enumerator tests
-  > \n let alpha = entries.iter().find(|e| e.name == \"alpha\").unwrap();\n assert_eq!(alpha.skill_files.len(), 1);\n let alpha_root = alpha.skill_file(None).expect(\"root skill file\"
 
 ## Report contract
 

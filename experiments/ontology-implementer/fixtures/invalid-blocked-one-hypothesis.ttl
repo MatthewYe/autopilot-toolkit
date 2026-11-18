@@ -5,7 +5,7 @@ ar:Report a ar:Report ;
   ar:forTask ar:T122 ;
   ar:hasPlan ar:Plan ;
   ar:status ar:BLOCKED ;
-  ar:round "1"^^xsd:integer ;
+  ar:round "0"^^xsd:integer ;
   ar:toolchain true ;
   ar:retryScope ar:CriticalAndImportant ;
   ar:specMapping "AC1 -> spec item 1; AC2 -> spec item 2" ;

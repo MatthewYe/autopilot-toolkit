@@ -10,9 +10,14 @@ STATUSES = {"DONE", "UNVERIFIED", "BLOCKED", "NEEDS_CONTEXT"}
 # A header is either `IMPLEMENTER_REPORT:` or a Markdown heading whose first
 # words are IMPLEMENTER_REPORT, optionally followed by a title.
 HEADER = re.compile(r"^\s*(?:#{1,6}\s*)?IMPLEMENTER[\s_-]+REPORT\b[^\n]*$", re.I)
-_FIELD_TEMPLATE = r"^\s*(?:#{1,6}\s*)?(?:\*\*)?{key}(?:\*\*)?\s*[:：]?\s*(.*)$"
+# A field is either `KEY: value` (inline) or a Markdown heading whose line is
+# exactly KEY (value follows on later lines).  A prefix such as SELF_REVIEWER
+# must not satisfy SELF_REVIEW.
+_INLINE = r"^\s*(?:#{1,6}\s*)?(?:\*\*)?{key}(?:\*\*)?\s*[:：]\s*(.*)$"
+_HEADING = r"^\s*#{1,6}\s*(?:\*\*)?{key}(?:\*\*)?\s*$"
 _STATUS = re.compile(
-    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?STATUS(?:\*\*)?[ \t]*[:：]?[ \t]*\n?[ \t]*(?:\*\*)?"
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?STATUS(?:\*\*)?[ \t]*[:：]?[ \t]*"
+    r"(?:\n[ \t]*){0,4}(?:\*\*)?"
     r"(DONE|UNVERIFIED|BLOCKED|NEEDS_CONTEXT)(?:\*\*)?[ \t]*[.。]?[ \t]*$",
     re.I | re.M,
 )
@@ -24,22 +29,23 @@ def parse_report(text: str) -> dict:
     has_header = bool(HEADER.match(first))
     missing = []
     for key in REQUIRED:
-        field = re.compile(_FIELD_TEMPLATE.replace("{key}", re.escape(key)), re.I | re.M)
-        if not field.search(text):
+        esc = re.escape(key)
+        inline = re.compile(_INLINE.replace("{key}", esc), re.I | re.M)
+        heading = re.compile(_HEADING.replace("{key}", esc), re.I | re.M)
+        if not (inline.search(text) or heading.search(text)):
             missing.append(key)
     status_match = _STATUS.search(text)
-    status = status_match.group(1).upper() if status_match else None
-    # A status token that is not a standalone value (e.g. DONEISH) must not
-    # inherit a valid prefix.
-    if status is None:
-        loose = re.search(r"\bSTATUS\b\s*[:：]?\s*([A-Z_]+)", text, re.I)
-        if loose:
-            status = loose.group(1).upper()
+    strict_status = status_match.group(1).upper() if status_match else None
+    # Loose status is diagnostic only; it never decides pass.  A value such as
+    # `DONE pending tests` must fail even though it starts with DONE.
+    loose_match = re.search(r"\bSTATUS\b\s*[:：]?\s*([A-Z_]+)", text, re.I)
+    loose_status = loose_match.group(1).upper() if loose_match else None
     return {
         "present": bool(text.strip()),
         "header": has_header,
-        "pass": has_header and not missing and status in STATUSES,
+        "pass": has_header and not missing and strict_status in STATUSES,
         "missing": missing,
-        "status": status if status in STATUSES else None,
-        "raw_status": status,
+        "status": strict_status if strict_status in STATUSES else None,
+        "raw_status": loose_status,
+        "strict_status": strict_status,
     }

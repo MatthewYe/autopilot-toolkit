@@ -8,10 +8,10 @@ decision tree and validation protocol.
 
 - `ontology/implementer.ttl`: 37 clauses, 10 rules, task/report/context classes.
 - `data/tasks.ttl`: five real tickets from Spec #121 (`T122`–`T126`).
-- `data/contexts.ttl`: 17 context cards with source pointers and excerpts.
+- `data/contexts.ttl`: 25 context cards with source pointers and excerpts.
 - `data/gold.json`: hand-assigned gold clause/context sets.
 - `shapes/report-shapes.ttl`: 10 SHACL shapes for the `IMPLEMENTER_REPORT` contract.
-- `fixtures/`: 13 report fixtures (1 valid, 12 invalid).
+- `fixtures/`: 15 report fixtures (1 valid, 14 invalid).
 - `corpus/`: GitHub issues #121–#126 and PR #127 diff.
 - `scripts/`: artifact builder, selector, report builder, gate runner, summaries.
 - `results/`: selection, injection, aggregate, gate, and rendered plan outputs (`plan-T*.md`).
@@ -44,15 +44,16 @@ Selection over T122–T126 (mean):
 | arm | clause recall | clause precision | context recall | context precision | exact | hybrid est. | rendered |
 |---|---|---|---|---|---|---|---|
 | none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
-| generic | 1.00 | 0.676 | 1.00 | 0.447 | 0/5 | 2,875 | 9,874 |
-| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 | 2,193 |
-| ontology | 1.00 | 0.984 | 1.00 | 1.00 | 3/5 | 1,743 | 5,833 |
+| generic | 1.00 | 0.676 | 1.00 | 0.296 | 0/5 | 3,195 | 12,016 |
+| keyword | 0.368 | 0.940 | 0.144 | 1.00 | 0/5 | 650 | 2,141 |
+| ontology | 1.00 | 0.984 | 1.00 | 1.00 | 3/5 | 1,735 | 5,807 |
 
-Report gate: 13/13 fixtures matched; valid exit 0; 12 invalid exit 1; 0 false rejects.
+Report gate: 15/15 fixtures matched; valid exit 0; 14 invalid exit 1; 0 false rejects.
 
 Phase 2 pilot (T126, 2 runs per arm, `deepseek-flash`): all four runs passed the
-hidden-test overlay, structural check, and report contract. All hidden-test runs
-used `--test-threads=1`; an earlier parallel `ontology-1` attempt hit a known
+hidden-test overlay, structural check, and report contract. The prose runs used
+the default parallel test configuration; the ontology runs used
+`--test-threads=1` after an earlier parallel `ontology-1` attempt hit a known
 `shared` `PROJECT_ROOT` race. The result is null:
 both arms implemented the contract and passed. This is 4 runs on one ticket, not
 the pre-registered 30-run protocol.
@@ -63,8 +64,8 @@ Shows:
 
 - Conditions over real ticket facts select the applicable clauses and context cards.
 - Ontology selection has much higher precision than "inject everything" and much
-  higher recall than keyword matching, with 39.4% fewer characters than generic in the hybrid estimate; the actual
-  rendered plans are 40.9% smaller than the generic payload.
+  higher recall than keyword matching, with 45.7% fewer characters than generic in the hybrid estimate; the actual
+  rendered plans are 51.7% smaller than the generic payload.
 - A SHACL gate can enforce the report/status/retry/spec contract deterministically.
 
 Does not show:

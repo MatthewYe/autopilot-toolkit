@@ -41,7 +41,7 @@
         "result_path": "https://example.org/autopilot/implementer#status",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#InConstraintComponent",
-        "source_shape": "_:b9aa5e2d6f6c54a808ae42360cf496e2"
+        "source_shape": "_:ffeb46288ad38d904f412e470a95d944"
       }
     ]
   },
@@ -52,6 +52,15 @@
     "conforms": false,
     "passed": true,
     "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE cannot also declare not-run verification",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      },
       {
         "constraint": "sparql",
         "focus_node": "https://example.org/autopilot/implementer#Report",
@@ -74,6 +83,24 @@
         "constraint": "sparql",
         "focus_node": "https://example.org/autopilot/implementer#Report",
         "message": "DONE requires an executed verification method for every AC",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-done-method-mixed",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE cannot also declare not-run verification",
         "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
@@ -133,7 +160,7 @@
         "result_path": "https://example.org/autopilot/implementer#changedFile",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#MinCountConstraintComponent",
-        "source_shape": "_:ab27df936cb9ad778f44e01f95f19eb8"
+        "source_shape": "_:c373051ab141ec364e831d0d949d5ef9"
       }
     ]
   },
@@ -157,6 +184,24 @@
   },
   {
     "fixture": "invalid-retry-scope",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "retry scope does not match the task runtime",
+        "node_shape": "https://example.org/autopilot/implementer#RetryScopeShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#RetryScopeShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-retry-scope-missing",
     "expected": 1,
     "exit_code": 1,
     "conforms": false,

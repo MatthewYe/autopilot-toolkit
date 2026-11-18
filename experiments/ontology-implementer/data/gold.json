@@ -31,8 +31,7 @@
       "CTX_SPEC_121",
       "CTX_ADR_0045",
       "CTX_GLOSSARY",
-      "CTX_SKILL_INDEX",
-      "CTX_TESTS_SKILL_INDEX"
+      "CTX_SKILL_INDEX_122"
     ]
   },
   "T123": {
@@ -69,9 +68,9 @@
       "CTX_SPEC_121",
       "CTX_ADR_0045",
       "CTX_GLOSSARY",
-      "CTX_SKILL_INDEX",
-      "CTX_VALIDATION",
-      "CTX_TESTS_VALIDATION"
+      "CTX_SKILL_INDEX_123",
+      "CTX_VALIDATION_123",
+      "CTX_TESTS_VALIDATION_123"
     ]
   },
   "T124": {
@@ -107,9 +106,9 @@
       "CTX_SPEC_121",
       "CTX_ADR_0045",
       "CTX_GLOSSARY",
-      "CTX_SKILL_INDEX",
-      "CTX_DEPLOY",
-      "CTX_TESTS_DEPLOY"
+      "CTX_SKILL_INDEX_124",
+      "CTX_DEPLOY_124",
+      "CTX_TESTS_DEPLOY_124"
     ]
   },
   "T125": {
@@ -144,9 +143,9 @@
       "CTX_SPEC_121",
       "CTX_ADR_0045",
       "CTX_GLOSSARY",
-      "CTX_SKILL_INDEX",
-      "CTX_TOOLKIT_SETUP",
-      "CTX_TESTS_TOOLKIT_SETUP"
+      "CTX_SKILL_INDEX_125",
+      "CTX_TOOLKIT_SETUP_125",
+      "CTX_TESTS_TOOLKIT_SETUP_125"
     ]
   },
   "T126": {
