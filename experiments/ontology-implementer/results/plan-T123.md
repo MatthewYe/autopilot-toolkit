@@ -198,18 +198,18 @@ Source: `orchestrator spec contract`
 
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
-- `GLOSSARY.md:14-26` — GLOSSARY — Skill file
-  > \n**Expected-set entry**:\nOne skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entr
+- `CONTEXT.md:19-21` — CONTEXT.md — Skill file
+  > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-123.json:1-1` — Issue #123
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nValidation stops shadowing the Expected-set entry and stops rebuilding the source layou
 - `crates/skill-index/src/lib.rs:25-100` — skill-index interface
-  > \n/// Whether a Skill file (or a source directory) resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The file exists.\n Resolved,\n /// The faile
+  > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
 - `crates/validation-runner/src/lib.rs:1225-1465` — validation pipeline tests
-  > fn run_validation_fails_when_expected_entry_directory_is_missing() {\n let tmp = tempfile::tempdir().unwrap();\n let root = tmp.path();\n write_valid_autopilot_skill(root);\n write
+  > \"the failure must name the missing variant file, got:\\n{}\",\n report.report\n );\n }\n\n #[test]\n fn codex_agent_toml_variant_keeps_validation_green() {\n // The repo's own ins
 - `crates/validation-runner/src/lib.rs:40-95` — validation-runner targets
-  > /// One validation target: a Skill file the enumerator resolved, together with\n/// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries i
+  > /// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries identity and result\n/// together — there is no positional pairing between two li
 
 ## Report contract
 

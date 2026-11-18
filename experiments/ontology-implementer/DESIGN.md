@@ -91,10 +91,10 @@ canonical 与 DSH 变体在 retry 模式上语义不同：
 
 | 位置 | 文本 | 含义 |
 |---|---|---|
-| `skills/autopilot/autopilot-implementer/SKILL.md` retry | “Only fix the Critical issues listed in `PREV_REVIEW`” | 只修 Critical |
+| `skills/autopilot/autopilot-implementer/SKILL.md` retry | “Only fix the Critical issues listed in `PREV_REVIEW`” | 旧表述：只修 Critical；与 ADR 0039 §4 冲突 |
 | `skills/autopilot/autopilot-implementer/dsh/SKILL.md` retry | “修复 `PREV_REVIEW` 中列出的**全部 Critical 和 Important** 问题” | Critical + Important 都修 |
 
-这不是措辞差异，是**同一份技能在不同 runtime 上给出不同重试范围**。它正好说明：条件注入不是“把 prose 抄进 TTL”，而是把“在什么 runtime / 什么 round 下哪条义务生效”变成可查询、可校验的数据。
+这不是可接受的条件差异：规范文本是 ADR 0039 §4，`Critical` 和 `Important` 都强制 RETRY、都必须修；canonical 的 “Only fix Critical” 属于旧 prose drift。实验按 ADR 编码，并把旧措辞记录为 drift，而不是让 gate 接受 `CriticalOnly`。它正好说明：条件注入不是“把 prose 抄进 TTL”，而是把“在什么 runtime / 什么 round 下哪条义务生效”变成可查询、可校验的数据；发现 prose 与规范冲突时，不能把冲突固化成合法分支。
 
 DSH 还多了：
 
@@ -112,7 +112,7 @@ canonical 没有这些。任何“一份 prose 走所有 runtime”的方案都�
 - 不把“怎么写出好测试 / 怎么诊断 bug / 怎么做架构取舍”形式化；
 - 不替换 `autopilot-orchestrator` 的 dispatch、label、retry 状态机；
 - 不声称本体能替代 TDD 的创造性循环；
-- 不做完整 30 次真实模型回放；只做 T126 的 4 次 pilot（本机没有 `DEEPSEEK_API_KEY`，回放成本未获授权）。
+- 不做完整 30 次真实模型回放；只做 T126 的 4 次 pilot（通过 DSH subagent 执行，未使用 `DEEPSEEK_API_KEY`；完整回放成本未获授权）。
 
 ---
 
@@ -148,7 +148,7 @@ canonical 没有这些。任何“一份 prose 走所有 runtime”的方案都�
 |---|---|---|
 | R1 TDD gate | I01–I05 | 失败测试先行、行为断言、mock 边界、RED/GREEN/REFACTOR、AC 覆盖 |
 | R2 Context gate | I06–I10 | 读 issue/brief、GLOSSARY、spec/ADR、Seam、suggestions |
-| R3 Retry gate | I11–I14 | canonical 只修 Critical；DSH 修 Critical+Important；不重做已过 AC；不加新功能 |
+| R3 Retry gate | I11–I14 | retry 必须修 Critical+Important（ADR 0039）；旧 canonical SKILL.md 的 “只修 Critical” 是 drift；不重做已过 AC；不加新功能 |
 | R4 Refactoring gate | I15 | 行为保持、跳过新代码 RED、前后跑既有测试 |
 | R5 Diagnosis gate | I16、I25、I26、I28 | 最多两个假设；BLOCKED/NEEDS_CONTEXT 必须点名事实；不猜 |
 | R6 Self-review gate | I17–I20 | 全量测试、AC 覆盖、scope creep、CHANGED_FILES 完整 |
@@ -254,16 +254,17 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 - `whenRisk` / `whenChangeKind` 是多值；任一命中即该条件族成立。
 - `scope RepoGovernance` 的 clause（如跨 runtime parity）不进入单 ticket plan。
 
-### 5.3 18 个 context card
+### 5.3 17 个 context card
 
 - 每个 task 的 issue card；
-- Spec #121、ADR 0045、GLOSSARY “Skill file”；
+- Spec #121、ADR 0045、base `CONTEXT.md` 的 “Skill file”；
 - skill-index 接口与枚举测试；
 - validation-runner targets 与测试；
 - deploy dev/pack 与测试；
 - toolkit-setup 与测试；
-- PR #127 deliberate changes；
 - workspace test list。
+
+excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当前 worktree，因此不会带入 merged PR 的 diff 或测试。
 
 每张 card 带 `sourcePath`、`sourceStart`、`sourceEnd`、`excerpt`、`charCount`、适用条件。注入时只给路径 + 行号 + 短摘录；模型需要时再打开。
 
@@ -271,10 +272,10 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 
 | 模式 | 内容 | 平均字符（5 task） |
 |---|---|---|
-| full | 所有 clause 全文 + 所有 context 全文 | 20418（generic） |
+| full | 所有 clause 全文 + 所有 context 全文 | 19027（generic） |
 | ids | 只给 clause/context ID | 218（ontology） |
 | compact | clause ID + context 标题 | 242（ontology） |
-| hybrid | clause 全文 + context 路径/行号指针 | **1749（ontology）** |
+| hybrid | clause 全文 + context 路径/行号指针 | **1,743（ontology 估算）** |
 
 推荐 hybrid：条款全文是规范，必须给；上下文只给指针，避免把 20K 字符一次性塞进 prompt。
 
@@ -296,7 +297,7 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 | `BlockedShape` | BLOCKED 时 hypotheses ≥ 2 |
 | `NeedsContextShape` | NEEDS_CONTEXT 时 missingContext 非空 |
 | `TddEvidenceShape` | 每个 production changed file 都有 `hasTestEvidence true` |
-| `RetryScopeShape` | canonical retry 只能 CriticalOnly；DSH retry 必须 CriticalAndImportant |
+| `RetryScopeShape` | retry 必须是 CriticalAndImportant；CriticalOnly 是反例 |
 | `SpecMappingShape` | specLinked 时 specMapping 非空 |
 
 ### 6.2 为什么 gate 不检查代码
@@ -309,8 +310,8 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 
 `results/gate.txt`：
 
-- 12 个 fixture：1 valid + 11 invalid。
-- 12/12 符合预期；valid 退出 0；11 个 invalid 全部退出 1；0 个 false reject。
+- 13 个 fixture：1 valid + 12 invalid。
+- 13/13 符合预期；valid 退出 0；12 个 invalid 全部退出 1；0 个 false reject。
 - 覆盖：缺 check、非法 status、DONE 带 not-run、UNVERIFIED 无方法、BLOCKED 只有 1 个假设、changed files 空、production 无 TDD 证据、retry scope 错误、toolchain=false 却 DONE、spec-linked 无 specMapping、NEEDS_CONTEXT 无 missing fact。
 
 **这证明 gate 能拒绝“报告层面的伪完成”，不证明代码正确。**
@@ -334,34 +335,34 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 | 臂 | 做法 |
 |---|---|
 | none | 不注入任何 clause/context |
-| generic | 注入全部 37 clause + 18 context |
+| generic | 注入全部 37 clause + 17 context |
 | keyword | 按关键词命中（每个 clause 有 keyword 列表） |
 | ontology | 按 TTL 条件 + SPARQL 选择 |
 
 ### 7.3 选择结果
 
-| 臂 | clause recall | clause precision | context recall | context precision | exact runs | hybrid chars |
-|---|---|---|---|---|---|---|
-| none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 |
-| generic | 1.00 | 0.676 | 1.00 | 0.433 | 0/5 | 2817 |
-| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 |
-| **ontology** | **1.00** | **0.984** | **1.00** | **1.00** | **3/5** | **1749** |
+| 臂 | clause recall | clause precision | context recall | context precision | exact runs | hybrid 估算 | 实际 rendered |
+|---|---|---|---|---|---|---|---|
+| none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
+| generic | 1.00 | 0.676 | 1.00 | 0.447 | 0/5 | 2,875 | 9,874 |
+| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 | 2,193 |
+| **ontology** | **1.00** | **0.984** | **1.00** | **1.00** | **3/5** | **1,743** | **5,833** |
 
 逐 ticket：
 
-- T122：ontology 24/25 clause（多选 I33），6/6 context，exact=False，hybrid 1657。
-- T123：26/26，7/7，exact=True，hybrid 1752。
-- T124：25/26（多选 I31），7/7，exact=False，hybrid 1738。
-- T125：24/24，7/7，exact=True，hybrid 1646。
-- T126：26/26，12/12，exact=True，hybrid 1921。
+- T122：ontology 24/25 clause（多选 I33），6/6 context，exact=False，hybrid 估算 1,660，rendered 5,388。
+- T123：26/26，7/7，exact=True，hybrid 1,757，rendered 5,774。
+- T124：25/26（多选 I31），7/7，exact=False，hybrid 1,743，rendered 5,741。
+- T125：24/24，7/7，exact=True，hybrid 1,649，rendered 5,494。
+- T126：26/26，11/11，exact=True，hybrid 1,905，rendered 6,767。
 
 **解释：**
 
 - ontology 的 clause recall 100%，precision 98.4%；两次多选分别是 T122 的 I33（行为保持）和 T124 的 I31（回滚测试），都是“条件命中但人工 gold 认为不必要”的边界情况。
-- context 选择 39/39，precision/recall 100%。
-- generic 虽然 recall 100%，但 precision 0.676/0.433，注入 20K 字符，模型需要自己过滤。
+- context 选择 38/38，precision/recall 100%。
+- generic 虽然 recall 100%，但 precision 0.676/0.447，注入 20K 字符，模型需要自己过滤。
 - keyword 精度高但 recall 只有 36.8%/16.4%，漏掉大量必须条款。
-- hybrid 比 generic 全量少 91.4% 字符（1749 vs 20418）；比 generic 的 hybrid（1749 vs 2817）少 37.9%，同时保持 100% clause recall。
+- 实际 rendered payload 5,833 字符，比 generic 的 9,874 少 40.9%；比 generic 的 hybrid 估算（1,743 vs 2,875）少 39.4%；同 generic 全量文本（11,774 vs 19,027）少 38.1%，同时保持 100% clause recall。
 
 ### 7.4 这个实验证明了什么
 
@@ -384,7 +385,7 @@ Clause Inventory (TTL)  ──►  Task Facts (TTL)
 |---|---|---|
 | 小样本 | 5 个 ticket，同一 spec、同一作者 | 用 #153–#155 作第二组；Phase 2 扩大 |
 | gold 与条件同源 | clause gold 由同一套条件匹配生成，再做两处人工删减（T122 去 I33、T124 去 I31），存在循环 | 在 Phase 2 用 hidden tests 作为外部标准；context gold 由 PR diff/ADR 独立标注 |
-| 合成 fixture | gate 用 12 个构造报告 | Phase A 用真实 PR body/commit 重建报告 |
+| 合成 fixture | gate 用 13 个构造报告 | Phase A 用真实 PR body/commit 重建报告 |
 | 无模型回放 | 本报告主体没有 LLM 输出 | 已有 T126 pilot 4 次；完整 30 次仍未跑，不能据此声称质量提升 |
 | 无生产接入 | 未改 autopilot-toolkit | 先 shadow，再 canary |
 | 无 merged 转换基线 | 找不到同类 PR | 明确区分“任务基线”与“转换基线” |
@@ -525,7 +526,7 @@ ontology-1 的并行失败是 `shared::tests::load_skill_lock_from_temp_project`
 
 ontology 臂平均 total 少 20.6%、非缓存少 9.5%，但 N=2 且区间重叠
 （ontology 2.05–2.88M vs prose 2.83–3.38M）；差异主要来自更少的探索/工具步骤，
-不是注入本身直接省出来的。7,007 字符的 plan 只读一次（约 1.8k–2.0k tokens），
+不是注入本身直接省出来的。6,767 字符的 plan 只读一次（约 1.8k–2.0k tokens），
 首轮 model call 仅多 60 input tokens，因为 plan 通过工具读取而非内联进 system prompt。
 因此不能据此声称“本体注入更省 token”。原始数字在 `results/phase2/tokens.json`。
 
@@ -576,7 +577,7 @@ flowchart TD
 | 是否改模型行为 | 先不改 | 报告契约可独立验证，风险最低 | Phase 0 |
 | 是否形式化 TDD | 否 | 创造性循环，无可判定 ground truth | 只用护栏 |
 | 选择方式 | 本体条件 | 5 维条件组合，generic/keyword 效果差 | 采用 |
-| 注入方式 | hybrid | 1749 vs 20418 字符，clause recall 100% | 采用 |
+| 注入方式 | rendered | 5,833 vs 9,874 字符，clause recall 100% | 采用 |
 | gate 语义 | SHACL + fail closed | 退出码 0/1/2；2 不当通过 | 采用 |
 | 验证 | 真实回放 + hidden tests | 唯一能证明代码质量提升的方法 | Phase 2 必做 |
 | 生产接入 | shadow → canary | 先证明不恶化，再扩大 | 未执行 |
@@ -663,11 +664,11 @@ temperature=0 降低方差；每个 ticket N=3，配对比较同一 ticket 的�
 
 ### Q15. canonical 和 DSH 的 retry 差异怎么处理？
 
-编码成两个 clause：I11（canonical，只修 Critical）和 I12（DSH，修 Critical+Important），用 `whenRuntime` + `whenRound` 选择。Report gate 的 `RetryScopeShape` 检查报告声明的 retry 范围与 runtime 匹配。这样差异是显式的、可测试的，而不是藏在两份 prose 里。
+ADR 0039 §4 规定 `Critical` 和 `Important` 都强制 RETRY、都必须修，这是规范文本。旧 canonical `SKILL.md` 的 “Only fix the Critical issues” 是 drift，不能编码成合法范围。两个 clause 仍按 runtime 分开（I11 canonical、I12 DSH），但都要求 `CriticalAndImportant`；Report gate 的 `RetryScopeShape` 只接受 `CriticalAndImportant`，`CriticalOnly` 作为反例。
 
 ### Q16. hybrid 注入 1749 字符，会不会还是太长？
 
-比 generic 全量 20418 少 91.4%、比 generic hybrid 2817 少 37.9%，但比 keyword 的 660 多。1749 字符约 500–700 tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
+实际 rendered payload 5,833 字符，比 generic 9,874 少 40.9%；hybrid 估算 1,743，比 generic 估算 2,875 少 39.4%，但比 keyword 的 660 多。rendered 约 1.5k–2k tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
 
 ### Q17. 维护成本会不会超过收益？
 
@@ -758,10 +759,10 @@ experiment-ontology-implementer/
 ├── README.md
 ├── ontology/implementer.ttl        # 37 clauses + 10 rules + TBox
 ├── data/tasks.ttl                 # T122–T126
-├── data/contexts.ttl              # 18 context cards
+├── data/contexts.ttl              # 17 context cards
 ├── data/gold.json                 # 人工 gold sets
 ├── shapes/report-shapes.ttl       # 10 report shapes
-├── fixtures/*.ttl                 # 12 report fixtures
+├── fixtures/*.ttl                 # 13 report fixtures
 ├── scripts/
 │   ├── build_artifacts.py
 │   ├── lib.py
@@ -796,12 +797,12 @@ python3 scripts/run_gate.py
 
 | 证据 | 位置 |
 |---|---|
-| 37 clause / 10 rule / 5 task / 18 context | `ontology/implementer.ttl`、`data/*.ttl` |
+| 37 clause / 10 rule / 5 task / 17 context | `ontology/implementer.ttl`、`data/*.ttl` |
 | 选择 ablation 明细 | `results/selection.txt` |
 | 聚合指标 | `results/aggregate.json` |
 | 注入字符 | `results/injection.json` |
 | 实际注入载荷样例 | `results/plan-T122.md` … `plan-T126.md` |
-| 12/12 gate | `results/gate.txt` |
+| 13/13 gate | `results/gate.txt` |
 | 真实基线 | GitHub PR #127、#153、#154、#155 |
 | 原型设计原则 | `ontology-agent-lab` 的 O1–O15 / G1–G15 |
 
@@ -847,8 +848,8 @@ python3 scripts/run_gate.py
 | I08 | Context | context_read | specLinked |
 | I09 | Context | context_read | 总是 |
 | I10 | Context | suggestion_resolution | suggestions |
-| I11 | Retry | retry_scope | round=retry, runtime=canonical |
-| I12 | Retry | retry_scope | round=retry, runtime=dsh |
+| I11 | Retry | retry_scope | round=retry, runtime=canonical；Critical+Important |
+| I12 | Retry | retry_scope | round=retry, runtime=dsh；Critical+Important |
 | I13 | Retry | retry_scope | round=retry |
 | I14 | Retry | retry_scope | round=retry |
 | I15 | Refactoring | refactoring_evidence | refactoring |

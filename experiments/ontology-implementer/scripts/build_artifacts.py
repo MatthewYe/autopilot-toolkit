@@ -3,11 +3,30 @@
 from __future__ import annotations
 import json
 import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENT = ROOT
 REPO = Path(os.environ.get('AUTOPILOT_REPO', Path(__file__).resolve().parents[3]))
+BASE = os.environ.get('AUTOPILOT_BASE_COMMIT', '98270ef')
+
+
+def source_exists(path: str) -> bool:
+    return subprocess.run(
+        ['git', '-C', str(REPO), 'cat-file', '-e', f'{BASE}:{path}'],
+        capture_output=True,
+    ).returncode == 0
+
+
+def source_text(path: str) -> str:
+    p = subprocess.run(
+        ['git', '-C', str(REPO), 'show', f'{BASE}:{path}'],
+        text=True, capture_output=True,
+    )
+    if p.returncode != 0:
+        raise SystemExit(f'cannot read {BASE}:{path}: {p.stderr.strip()}')
+    return p.stdout
 
 
 def esc(s: str) -> str:
@@ -23,8 +42,8 @@ def int_lit(n: int) -> str:
     return f'"{n}"^^<http://www.w3.org/2001/XMLSchema#integer>'
 
 
-def excerpt(path: Path, start: int, end: int, limit: int = 900) -> str:
-    lines = path.read_text(errors='replace').splitlines()
+def excerpt(path: str, start: int, end: int, limit: int = 900) -> str:
+    lines = source_text(path).splitlines()
     text = '\n'.join(lines[start - 1:end])
     return text[:limit]
 
@@ -47,8 +66,8 @@ CLAUSES = [
     ('I08', 'Context', 'Read the linked spec/PRD/ADR before editing.', 'context_read', {'whenSpecLinked': True}, 'SKILL.md Step 1'),
     ('I09', 'Context', 'Check Seam annotations and stay inside the named seam.', 'context_read', {}, 'SKILL.md Step 1'),
     ('I10', 'Context', 'Resolve CROSS_ISSUE_SUGGESTIONS in SUGGESTION_RESOLUTIONS.', 'suggestion_resolution', {'whenSuggestions': True}, 'SKILL.md Step 2.5'),
-    ('I11', 'Retry', 'Retry mode: fix only the Critical findings (canonical).', 'retry_scope', {'whenRound': 'retry', 'whenRuntime': 'canonical'}, 'SKILL.md retry mode'),
-    ('I12', 'Retry', 'Retry mode: fix all Critical and Important findings (DSH).', 'retry_scope', {'whenRound': 'retry', 'whenRuntime': 'dsh'}, 'dsh/SKILL.md retry mode'),
+    ('I11', 'Retry', 'Retry mode: fix all Critical and Important findings (ADR 0039; legacy canonical SKILL.md wording says Critical only).', 'retry_scope', {'whenRound': 'retry', 'whenRuntime': 'canonical'}, 'docs/adr/0039 §4; SKILL.md retry mode'),
+    ('I12', 'Retry', 'Retry mode: fix all Critical and Important findings (ADR 0039; same rule for DSH).', 'retry_scope', {'whenRound': 'retry', 'whenRuntime': 'dsh'}, 'docs/adr/0039 §4; dsh/SKILL.md retry mode'),
     ('I13', 'Retry', 'Retry mode: do not redo already-passed acceptance criteria.', 'retry_scope', {'whenRound': 'retry'}, 'SKILL.md retry mode'),
     ('I14', 'Retry', 'Retry mode: no new features.', 'retry_scope', {'whenRound': 'retry'}, 'SKILL.md retry mode'),
     ('I15', 'Refactoring', 'REFACTORING preserves behavior; skip RED for new code but run existing tests before and after.', 'refactoring_evidence', {'whenRefactoring': True}, 'SKILL.md REFACTORING'),
@@ -118,7 +137,7 @@ TASKS = [
          changeKinds=['rust-crate'], risks=['api-contract', 'behavior-preservation'],
          specLinked=True, multiModule=True,
          goldContexts=['CTX_ISSUE_126', 'CTX_SPEC_121', 'CTX_ADR_0045', 'CTX_GLOSSARY',
-                       'CTX_SKILL_INDEX', 'CTX_VALIDATION', 'CTX_DEPLOY', 'CTX_PR_127',
+                       'CTX_SKILL_INDEX', 'CTX_VALIDATION', 'CTX_DEPLOY',
                        'CTX_TESTS_ALL', 'CTX_TESTS_DEPLOY', 'CTX_TESTS_SKILL_INDEX',
                        'CTX_TESTS_VALIDATION']),
 ]
@@ -179,7 +198,7 @@ def gold_clauses(task: dict) -> list[str]:
 
 # ── contexts ──────────────────────────────────────────────────────────────
 def ctx(id_, title, path, start, end, conditions, limit=900):
-    text = excerpt(REPO / path, start, end, limit) if path else ''
+    text = excerpt(path, start, end, limit) if path else ''
     return dict(id=id_, title=title, path=str(path) if path else '', start=start,
                 end=end, conditions=conditions, excerpt=text, charCount=len(text))
 
@@ -197,7 +216,14 @@ spec = issue_body(121)[:1600]
 CONTEXTS.append(dict(id='CTX_SPEC_121', title='Spec #121', path='corpus/issue-121.json',
                      start=1, end=1, conditions={'whenSpecLinked': True}, excerpt=spec, charCount=len(spec)))
 CONTEXTS.append(ctx('CTX_ADR_0045', 'ADR 0045', 'docs/adr/0045-expected-set-entry-resolves-its-skill-files.md', 1, 40, {'whenSpecLinked': True}, 1100))
-CONTEXTS.append(ctx('CTX_GLOSSARY', 'GLOSSARY — Skill file', 'GLOSSARY.md', 14, 26, {}, 700))
+glossary_name = 'GLOSSARY.md' if source_exists('GLOSSARY.md') else 'CONTEXT.md'
+glossary_lines = source_text(glossary_name).splitlines()
+glossary_start = next(i + 1 for i, line in enumerate(glossary_lines) if line.startswith('**Skill file**'))
+glossary_end = glossary_start
+while glossary_end < len(glossary_lines) and glossary_lines[glossary_end].strip():
+    glossary_end += 1
+CONTEXTS.append(ctx('CTX_GLOSSARY', f'{glossary_name} — Skill file', glossary_name,
+                    glossary_start, glossary_end, {}, 700))
 CONTEXTS.append(ctx('CTX_SKILL_INDEX', 'skill-index interface', 'crates/skill-index/src/lib.rs', 25, 100, {'forTask': ['T122', 'T123', 'T124', 'T125', 'T126']}, 1000))
 CONTEXTS.append(ctx('CTX_TESTS_SKILL_INDEX', 'skill-index enumerator tests', 'crates/skill-index/src/lib.rs', 769, 950, {'forTask': ['T122', 'T126']}, 900))
 CONTEXTS.append(ctx('CTX_VALIDATION', 'validation-runner targets', 'crates/validation-runner/src/lib.rs', 40, 95, {'forTask': ['T123', 'T126']}, 900))
@@ -206,9 +232,6 @@ CONTEXTS.append(ctx('CTX_DEPLOY', 'deploy dev/pack strictness', 'crates/deploy/s
 CONTEXTS.append(ctx('CTX_TESTS_DEPLOY', 'deploy tests', 'crates/deploy/src/pack.rs', 342, 370, {'forTask': ['T124', 'T126']}, 800))
 CONTEXTS.append(ctx('CTX_TOOLKIT_SETUP', 'toolkit-setup procedure', 'skills/autopilot/toolkit-setup/SKILL.md', 50, 80, {'forTask': ['T125']}, 900))
 CONTEXTS.append(ctx('CTX_TESTS_TOOLKIT_SETUP', 'toolkit-setup suite', 'tests/test_toolkit_setup.rs', 60, 120, {'forTask': ['T125']}, 800))
-pr_body = (EXPERIMENT / 'corpus' / 'pr-127.diff').read_text()[:1200]
-CONTEXTS.append(dict(id='CTX_PR_127', title='PR #127 deliberate changes', path='corpus/pr-127.diff',
-                     start=1, end=1, conditions={'forTask': ['T126']}, excerpt=pr_body, charCount=len(pr_body)))
 CONTEXTS.append(ctx('CTX_TESTS_ALL', 'workspace test list', 'tests/test_toolkit_setup.rs', 1, 60, {'forTask': ['T126']}, 700))
 
 # ── emit TTL ──────────────────────────────────────────────────────────────

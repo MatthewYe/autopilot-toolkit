@@ -29,10 +29,10 @@ def plan_clauses():
     return PLAN
 
 
-def report(name: str, *, status='DONE', round_=1, toolchain='true', retry='CriticalOnly',
+def report(name: str, *, status='DONE', round_=1, toolchain='true', retry='CriticalAndImportant',
            changed=True, tdd=True, ac_extra=False, spec=True, hypotheses=2,
            missing=None, drop_check=None, status_iri=None, unverified_method=None,
-           ac_pass=True):
+           ac_pass=True, drop_method=False):
     out = [HEAD]
     out.append('ar:Report a ar:Report ;')
     out.append('  ar:forTask ar:T122 ;')
@@ -59,7 +59,9 @@ def report(name: str, *, status='DONE', round_=1, toolchain='true', retry='Criti
     for c in plan_clauses():
         out.append(f'ar:Check{c} a ar:Check ; ar:checkClause ar:{c} .')
     out.append('')
-    if unverified_method is None:
+    if drop_method:
+        out.append('ar:AC1 a ar:AcResult ; ar:acStatus "pass" .')
+    elif unverified_method is None:
         out.append('ar:AC1 a ar:AcResult ; ar:acStatus "pass" ; ar:verificationMethod "test_a" .')
     else:
         out.append(f'ar:AC1 a ar:AcResult ; ar:acStatus "pass" ; ar:verificationMethod {unverified_method!r} .')
@@ -86,10 +88,11 @@ def main():
     report('invalid-status', status_iri='ar:MERGE')
     report('invalid-done-unverified-ac', ac_extra=True)
     report('invalid-unverified-no-method', status='UNVERIFIED', unverified_method='not-run')
+    report('invalid-done-no-method', drop_method=True)
     report('invalid-blocked-one-hypothesis', status='BLOCKED', hypotheses=1)
     report('invalid-changed-files-empty', changed=False)
     report('invalid-tdd-missing', tdd=False)
-    report('invalid-retry-scope', round_=2, retry='CriticalAndImportant')
+    report('invalid-retry-scope', round_=2, retry='CriticalOnly')
     report('invalid-toolchain-done', toolchain='false')
     report('invalid-spec-mapping', spec=False)
     report('invalid-needs-context-empty', status='NEEDS_CONTEXT', missing=None)

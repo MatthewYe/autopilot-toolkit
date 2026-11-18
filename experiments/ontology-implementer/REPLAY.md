@@ -40,20 +40,22 @@ replay/T126/
 ```
 
 `TASK.md` is the GitHub issue body, no PR metadata. `ONTOLOGY_PLAN.md` is the
-deterministic plan from `scripts/render_plan.py`.
+deterministic plan from `scripts/render_plan.py`. Every plan excerpt is read from
+the base commit `98270ef` with `git show`, not from the merged worktree; the
+merged PR diff and post-merge tests are not part of the plan.
 
 ## Commands
 
 ```bash
-# prepare the pilot worktrees (already run)
+# prepare the pilot worktrees (already run; refuses to replace existing runs
+# unless --force is passed and verifies base + hidden-test commits first)
 python3 scripts/prepare_replay.py
 
-# evaluate one run
-python3 scripts/evaluate_replay.py \
-  --repo replay/T126/prose-1/repo \
-  --out results/phase2/prose-1.json
+# evaluate one run (snapshot the agent diff/report, overlay hidden tests in a
+# temporary copy, persist checks + structural result + report text)
+python3 scripts/run_phase2_eval.py --runs prose-1
 
-# structural hidden check for T126
+# structural hidden check for T126 (also run inside the command above)
 python3 scripts/check_t126_contract.py replay/T126/prose-1/repo
 ```
 
@@ -66,7 +68,9 @@ Checks: `cargo test --workspace --no-fail-fast`,
 
 T126 pilot, 2 runs per arm. Hidden checks are the merged test suite (inline test
 modules overlaid from `e3818a8`, so the agent cannot pass by rewriting tests)
-plus the structural entry-field check.
+plus the structural entry-field check. The original agent diff (including new
+files) and report are snapshotted before the overlay, and the overlay runs on a
+temporary copy; the agent worktree is not modified.
 
 | run | arm | `cargo test --workspace` | serial | structural | report | status |
 |---|---|---|---|---|---|---|
@@ -108,7 +112,7 @@ processed-token count, not a billed-cost count. `non-cached` is
 
 The ontology arm averages 20.6% fewer total processed tokens and 9.5% fewer
 non-cached tokens, but this is N=2 and the ranges overlap
-(ontology 2.05-2.88M total vs prose 2.83-3.38M). The plan is 7,007 characters
+(ontology 2.05-2.88M total vs prose 2.83-3.38M). The plan is 6,767 characters (7,077 bytes)
 and is read once as a tool result (~1.8k-2.0k tokens); the first model call
 differs by only +60 input tokens because the plan is not inlined into the
 system prompt. The difference is therefore mostly fewer exploration/tool

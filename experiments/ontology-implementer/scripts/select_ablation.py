@@ -5,6 +5,7 @@ import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import PREFIX, Store, load_inventory, select, metrics
+from render_plan import render
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +89,7 @@ def main():
                 'chars_ids': chars(cs, xs, 'ids'),
                 'chars_compact': chars(cs, xs, 'compact'),
                 'chars_hybrid': chars(cs, xs, 'hybrid'),
+                'chars_rendered': len(render(task, cs, xs)),
                 'selected_clauses': sorted(cids), 'selected_contexts': sorted(xids),
             })
 
@@ -105,8 +107,8 @@ def main():
                 f"({r['clause_hit']}/{r['clause_selected']} sel, gold {r['clause_gold']})  "
                 f"ctx R/P {r['context_recall']:.2f}/{r['context_precision']:.2f} "
                 f"({r['context_hit']}/{r['context_selected']} sel, gold {r['context_gold']})  "
-                f"exact={r['exact']} chars full/ids/compact/hybrid="
-                f"{r['chars_full']}/{r['chars_ids']}/{r['chars_compact']}/{r['chars_hybrid']}")
+                f"exact={r['exact']} chars full/ids/compact/hybrid/rendered="
+                f"{r['chars_full']}/{r['chars_ids']}/{r['chars_compact']}/{r['chars_hybrid']}/{r['chars_rendered']}")
     report = '\n'.join(lines)
     (ROOT / 'results' / 'selection.txt').write_text(report + '\n')
     print(report)

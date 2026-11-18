@@ -20,6 +20,12 @@ FILES = [
 
 
 def merged(path: str) -> str:
+    check = subprocess.run(
+        ["git", "-C", str(REPO), "cat-file", "-e", f"{MERGE}^{{commit}}"],
+        text=True, capture_output=True,
+    )
+    if check.returncode != 0:
+        raise SystemExit(f"hidden-test commit {MERGE} is not available in {REPO}")
     return subprocess.run(
         ["git", "-C", str(REPO), "show", f"{MERGE}:{path}"],
         text=True, capture_output=True, check=True,

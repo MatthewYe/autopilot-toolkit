@@ -70,12 +70,15 @@ SELECT $this ?ac WHERE {
 """
     ] ;
     sh:sparql [
-        sh:message "DONE cannot carry an unexecuted test"
+        sh:message "DONE requires an executed verification method for every AC"
         ; sh:select """
 PREFIX ar: <https://example.org/autopilot/implementer#>
 SELECT $this ?ac WHERE {
   $this ar:status ar:DONE ; ar:hasAc ?ac .
-  ?ac ar:verificationMethod "not-run" .
+  FILTER NOT EXISTS {
+    ?ac ar:verificationMethod ?method .
+    FILTER(STRLEN(STR(?method)) > 0 && STR(?method) != "not-run")
+  }
 }
 """
     ] .
@@ -156,8 +159,9 @@ SELECT $this ?file WHERE {
 """
     ] .
 
-# Retry scope is runtime-conditioned: canonical fixes Critical only; DSH fixes
-# Critical and Important.  The canonical/DSH prose drift becomes data.
+# Retry scope follows ADR 0039 §4: both Critical and Important findings force
+# RETRY and both must be fixed.  The old canonical SKILL.md wording (Critical
+# only) is recorded as drift in DESIGN.md, not encoded as an allowed scope.
 ar:RetryScopeShape a sh:NodeShape ;
     sh:targetClass ar:Report ;
     sh:sparql [
@@ -168,8 +172,7 @@ SELECT $this WHERE {
   $this ar:forTask ?task ; ar:round ?round ; ar:retryScope ?scope .
   ?task ar:runtime ?runtime .
   FILTER(?round > 1)
-  FILTER((?runtime = "canonical" && ?scope != ar:CriticalOnly) ||
-         (?runtime = "dsh" && ?scope != ar:CriticalAndImportant))
+  FILTER(?scope != ar:CriticalAndImportant)
 }
 """
     ] .

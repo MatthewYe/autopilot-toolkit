@@ -41,7 +41,7 @@
         "result_path": "https://example.org/autopilot/implementer#status",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#InConstraintComponent",
-        "source_shape": "_:be46de4865ee3aea2c09a4dade77c033"
+        "source_shape": "_:ab8aedbc8e4045ca4855cf4478964b68"
       }
     ]
   },
@@ -55,7 +55,25 @@
       {
         "constraint": "sparql",
         "focus_node": "https://example.org/autopilot/implementer#Report",
-        "message": "DONE cannot carry an unexecuted test",
+        "message": "DONE requires an executed verification method for every AC",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-done-no-method",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE requires an executed verification method for every AC",
         "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
@@ -115,7 +133,7 @@
         "result_path": "https://example.org/autopilot/implementer#changedFile",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#MinCountConstraintComponent",
-        "source_shape": "_:f83e571fa60505d491aa6fa150e64171"
+        "source_shape": "_:eda2ac9c6047356d6b716b3d5df601f1"
       }
     ]
   },

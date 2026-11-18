@@ -2,7 +2,8 @@
 """Evaluate one Phase 2 replay worktree.
 
 Runs the repository checks that the merged baseline was verified with and
-records a machine-readable result. It never edits the worktree.
+records a machine-readable result. It never edits the worktree and does not
+store an absolute path, so the result is portable.
 """
 from __future__ import annotations
 
@@ -47,23 +48,37 @@ def git(repo, *args):
     return p.stdout.strip() if p.returncode == 0 else ""
 
 
+def changed_paths(repo: Path) -> list[str]:
+    out = []
+    for line in git(repo, "status", "--porcelain").splitlines():
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path:
+            out.append(path)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--run", default="")
     ap.add_argument("--skip", default="", help="comma-separated check names to skip")
+    ap.add_argument("--hidden-tests-commit", default="")
     args = ap.parse_args()
     repo = Path(args.repo).resolve()
     skip = {s for s in args.skip.split(",") if s}
 
     result = {
-        "repo": str(repo),
+        "run": args.run,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "head": git(repo, "rev-parse", "HEAD"),
         "status": git(repo, "status", "--short"),
         "diff_stat": git(repo, "diff", "--stat", "HEAD"),
-        "changed_files": [x for x in git(repo, "diff", "--name-only", "HEAD").splitlines() if x],
+        "changed_files": changed_paths(repo),
         "report_present": (repo / "IMPLEMENTER_REPORT.md").exists(),
+        "hidden_tests_commit": args.hidden_tests_commit,
         "checks": {},
     }
     for name, cmd, timeout in CHECKS:

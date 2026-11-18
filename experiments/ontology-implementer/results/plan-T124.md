@@ -199,17 +199,17 @@ Source: `orchestrator spec contract`
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
 - `crates/deploy/src/pack.rs:181-220` — deploy dev/pack strictness
-  > /// Refuse to pack while the Expected set contains failed entries (GLOSSARY.md).\n///\n/// `pack` is strict where `dev` is lenient: a tarball that silently omits a\n/// locked skil
-- `GLOSSARY.md:14-26` — GLOSSARY — Skill file
-  > \n**Expected-set entry**:\nOne skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entr
+  > \"'{}' ({} skill, {}): {}\",\n entry.name,\n entry.source,\n file.variant\n .as_deref()\n .map(|variant| format!(\"variant {variant}\"))\n .unwrap_or_else(|| \"root skill file\".to
+- `CONTEXT.md:19-21` — CONTEXT.md — Skill file
+  > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-124.json:1-1` — Issue #124
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nDeployment stops reading a directory-level resolution status and judges each entry by t
 - `crates/skill-index/src/lib.rs:25-100` — skill-index interface
-  > \n/// Whether a Skill file (or a source directory) resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The file exists.\n Resolved,\n /// The faile
+  > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
 - `crates/deploy/src/pack.rs:342-370` — deploy tests
-  > // ── pack_command: Expected-set failure semantics ───────────────────\n\n /// Write a minimal packable project: one autopilot skill plus the\n /// install template. The fixture is
+  > root.join(\"templates/install.sh.in\"),\n \"#!/bin/bash\\nVERSION=\\\"__VERSION__\\\"\\n\",\n )\n .unwrap();\n for args in [\n vec![\"init\", \"-q\"],\n vec![\"config\", \"user.ema
 
 ## Report contract
 

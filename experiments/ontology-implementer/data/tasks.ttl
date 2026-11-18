@@ -237,7 +237,6 @@ ar:T126 ar:goldContext ar:CTX_GLOSSARY .
 ar:T126 ar:goldContext ar:CTX_SKILL_INDEX .
 ar:T126 ar:goldContext ar:CTX_VALIDATION .
 ar:T126 ar:goldContext ar:CTX_DEPLOY .
-ar:T126 ar:goldContext ar:CTX_PR_127 .
 ar:T126 ar:goldContext ar:CTX_TESTS_ALL .
 ar:T126 ar:goldContext ar:CTX_TESTS_DEPLOY .
 ar:T126 ar:goldContext ar:CTX_TESTS_SKILL_INDEX .

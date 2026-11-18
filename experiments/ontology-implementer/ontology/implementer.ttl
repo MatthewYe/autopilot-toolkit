@@ -147,18 +147,18 @@ ar:I10 ar:whenSuggestions "true" .
 ar:I11 a ar:Guardrail ;
   ar:clauseId "I11" ;
   ar:axis "Retry" ;
-  ar:text "Retry mode: fix only the Critical findings (canonical)." ;
+  ar:text "Retry mode: fix all Critical and Important findings (ADR 0039; legacy canonical SKILL.md wording says Critical only)." ;
   ar:defaultCheck "retry_scope" ;
-  ar:sourceAnchor "SKILL.md retry mode" ;
+  ar:sourceAnchor "docs/adr/0039 §4; SKILL.md retry mode" ;
   ar:scope "ReviewScope" .
 ar:I11 ar:whenRound "retry" .
 ar:I11 ar:whenRuntime "canonical" .
 ar:I12 a ar:Guardrail ;
   ar:clauseId "I12" ;
   ar:axis "Retry" ;
-  ar:text "Retry mode: fix all Critical and Important findings (DSH)." ;
+  ar:text "Retry mode: fix all Critical and Important findings (ADR 0039; same rule for DSH)." ;
   ar:defaultCheck "retry_scope" ;
-  ar:sourceAnchor "dsh/SKILL.md retry mode" ;
+  ar:sourceAnchor "docs/adr/0039 §4; dsh/SKILL.md retry mode" ;
   ar:scope "ReviewScope" .
 ar:I12 ar:whenRound "retry" .
 ar:I12 ar:whenRuntime "dsh" .

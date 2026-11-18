@@ -12,6 +12,7 @@ EXPECTED = {
     'invalid-missing-check': 1,
     'invalid-status': 1,
     'invalid-done-unverified-ac': 1,
+    'invalid-done-no-method': 1,
     'invalid-unverified-no-method': 1,
     'invalid-blocked-one-hypothesis': 1,
     'invalid-changed-files-empty': 1,

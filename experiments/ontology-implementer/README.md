@@ -8,10 +8,10 @@ decision tree and validation protocol.
 
 - `ontology/implementer.ttl`: 37 clauses, 10 rules, task/report/context classes.
 - `data/tasks.ttl`: five real tickets from Spec #121 (`T122`–`T126`).
-- `data/contexts.ttl`: 18 context cards with source pointers and excerpts.
+- `data/contexts.ttl`: 17 context cards with source pointers and excerpts.
 - `data/gold.json`: hand-assigned gold clause/context sets.
 - `shapes/report-shapes.ttl`: 10 SHACL shapes for the `IMPLEMENTER_REPORT` contract.
-- `fixtures/`: 12 report fixtures (1 valid, 11 invalid).
+- `fixtures/`: 13 report fixtures (1 valid, 12 invalid).
 - `corpus/`: GitHub issues #121–#126 and PR #127 diff.
 - `scripts/`: artifact builder, selector, report builder, gate runner, summaries.
 - `results/`: selection, injection, aggregate, gate, and rendered plan outputs (`plan-T*.md`).
@@ -21,6 +21,9 @@ decision tree and validation protocol.
 ```bash
 cd experiments/ontology-implementer
 export OPEN_ONTOLOGIES_BIN=/path/to/open-ontologies
+# Context excerpts are read from the T126 base commit, not the working tree.
+export AUTOPILOT_REPO=/path/to/autopilot-toolkit
+export AUTOPILOT_BASE_COMMIT=98270ef
 python3 scripts/build_artifacts.py
 python3 scripts/select_ablation.py
 python3 scripts/summarize.py
@@ -38,14 +41,14 @@ and no API key are required for the deterministic stages.
 
 Selection over T122–T126 (mean):
 
-| arm | clause recall | clause precision | context recall | context precision | exact | hybrid chars |
-|---|---|---|---|---|---|---|
-| none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 |
-| generic | 1.00 | 0.676 | 1.00 | 0.433 | 0/5 | 2817 |
-| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 |
-| ontology | 1.00 | 0.984 | 1.00 | 1.00 | 3/5 | 1749 |
+| arm | clause recall | clause precision | context recall | context precision | exact | hybrid est. | rendered |
+|---|---|---|---|---|---|---|---|
+| none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
+| generic | 1.00 | 0.676 | 1.00 | 0.447 | 0/5 | 2,875 | 9,874 |
+| keyword | 0.368 | 0.940 | 0.164 | 1.00 | 0/5 | 660 | 2,193 |
+| ontology | 1.00 | 0.984 | 1.00 | 1.00 | 3/5 | 1,743 | 5,833 |
 
-Report gate: 12/12 fixtures matched; valid exit 0; 11 invalid exit 1; 0 false rejects.
+Report gate: 13/13 fixtures matched; valid exit 0; 12 invalid exit 1; 0 false rejects.
 
 Phase 2 pilot (T126, 2 runs per arm, `deepseek-flash`): all four runs passed the
 hidden-test overlay, structural check, and report contract. `ontology-1` needed a
@@ -59,8 +62,8 @@ Shows:
 
 - Conditions over real ticket facts select the applicable clauses and context cards.
 - Ontology selection has much higher precision than "inject everything" and much
-  higher recall than keyword matching, with 37.9% fewer characters than generic in hybrid mode (and
-  91.4% fewer than passing all context excerpts).
+  higher recall than keyword matching, with 39.4% fewer characters than generic in the hybrid estimate; the actual
+  rendered plans are 40.9% smaller than the generic payload.
 - A SHACL gate can enforce the report/status/retry/spec contract deterministically.
 
 Does not show:

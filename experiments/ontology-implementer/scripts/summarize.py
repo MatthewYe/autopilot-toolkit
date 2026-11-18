@@ -35,6 +35,7 @@ def main():
             "chars_ids": mean(r["chars_ids"] for r in arm_rows),
             "chars_compact": mean(r["chars_compact"] for r in arm_rows),
             "chars_hybrid": mean(r["chars_hybrid"] for r in arm_rows),
+            "chars_rendered": mean(r.get("chars_rendered", 0) for r in arm_rows),
         })
     (ROOT / "results" / "aggregate.json").write_text(json.dumps(aggregate, indent=2) + "\n")
     print(json.dumps(aggregate, indent=2))

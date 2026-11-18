@@ -184,18 +184,18 @@ Source: `orchestrator spec contract`
 
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
-- `GLOSSARY.md:14-26` — GLOSSARY — Skill file
-  > \n**Expected-set entry**:\nOne skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entr
+- `CONTEXT.md:19-21` — CONTEXT.md — Skill file
+  > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-125.json:1-1` — Issue #125
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nThe toolkit-setup procedure and its integration suite read the enumerator's skill-file 
 - `crates/skill-index/src/lib.rs:25-100` — skill-index interface
-  > \n/// Whether a Skill file (or a source directory) resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The file exists.\n Resolved,\n /// The faile
+  > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
 - `tests/test_toolkit_setup.rs:60-120` — toolkit-setup suite
-  > fn repo_tree_resolves_every_skill_file() {\n let entries = skill_index::discover_skills(&project_root())\n .expect(\"enumerate the Expected set from the repo tree\");\n\n assert!(\
+  > .iter()\n .filter(|entry| entry.is_failed())\n .map(|entry| {\n let missing: Vec<String> = entry\n .skill_files\n .iter()\n .filter_map(|file| match &file.resolution {\n skill_inde
 - `skills/autopilot/toolkit-setup/SKILL.md:50-80` — toolkit-setup procedure
-  > ```bash\n rust-script \"$PROJECT_ROOT/deploy.rs\" dev\n rust-script \"$PROJECT_ROOT/deploy.rs\" link-principles \"$PROJECT_ROOT/principles\"\n ```\n\n5. Enumerate the Expected set 
+  > - the installed tree contains exactly one file named `SKILL.md`;\n - `runtime/default/INSTRUCTIONS.md` exists;\n - each enumerated variant skill file has a corresponding installed\
 
 ## Report contract
 

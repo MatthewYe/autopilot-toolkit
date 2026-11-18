@@ -194,32 +194,30 @@ Spec-linked work maps each AC to the spec and records deliberate behavior change
 Report check: `spec_mapping`  
 Source: `orchestrator spec contract`
 
-## Context (12)
+## Context (11)
 
 - `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-40` — ADR 0045
   > # ADR 0045: An Expected-set Entry Resolves Its Skill Files\n\n> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single\n> discoverable router). Sharpens the te
 - `crates/deploy/src/pack.rs:181-220` — deploy dev/pack strictness
-  > /// Refuse to pack while the Expected set contains failed entries (GLOSSARY.md).\n///\n/// `pack` is strict where `dev` is lenient: a tarball that silently omits a\n/// locked skil
-- `GLOSSARY.md:14-26` — GLOSSARY — Skill file
-  > \n**Expected-set entry**:\nOne skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entr
+  > \"'{}' ({} skill, {}): {}\",\n entry.name,\n entry.source,\n file.variant\n .as_deref()\n .map(|variant| format!(\"variant {variant}\"))\n .unwrap_or_else(|| \"root skill file\".to
+- `CONTEXT.md:19-21` — CONTEXT.md — Skill file
+  > **Skill file**:\nOne source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A 
 - `corpus/issue-126.json:1-1` — Issue #126
   > ## Parent\n\n#121 — spec: Expected-set entry resolves its skill files\n\n## What to build\n\nThe entry-level resolution status retires. Every consumer derives failure from the skil
-- `corpus/pr-127.diff:1-1` — PR #127 deliberate changes
-  > diff --git a/CONTEXT.md b/CONTEXT.md\nindex 0317b4d..ef1139d 100644\n--- a/CONTEXT.md\n+++ b/CONTEXT.md\n@@ -16,6 +16,10 @@ _Avoid_: skill inventory, skill manifest\n One skill bel
 - `crates/skill-index/src/lib.rs:25-100` — skill-index interface
-  > \n/// Whether a Skill file (or a source directory) resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The file exists.\n Resolved,\n /// The faile
+  > \n/// Whether an Expected-set entry's source directory resolved.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ResolutionStatus {\n /// The source directory exists.\n Resolved,
 - `corpus/issue-121.json:1-1` — Spec #121
   > ## Problem Statement\n\nThe Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit
 - `tests/test_toolkit_setup.rs:1-60` — workspace test list
   > #!/usr/bin/env rust-script\n//! ```cargo\n//! [dependencies]\n//! skill-index = { path = \"../crates/skill-index\" }\n//! ```\n//!\n//! Integration tests for the toolkit-setup flow
 - `crates/deploy/src/pack.rs:342-370` — deploy tests
-  > // ── pack_command: Expected-set failure semantics ───────────────────\n\n /// Write a minimal packable project: one autopilot skill plus the\n /// install template. The fixture is
+  > root.join(\"templates/install.sh.in\"),\n \"#!/bin/bash\\nVERSION=\\\"__VERSION__\\\"\\n\",\n )\n .unwrap();\n for args in [\n vec![\"init\", \"-q\"],\n vec![\"config\", \"user.ema
 - `crates/skill-index/src/lib.rs:769-950` — skill-index enumerator tests
-  > fn entry_skill_files_carry_kind_variant_and_resolution() {\n let tmp = tempfile::tempdir().unwrap();\n let root = tmp.path();\n\n // Agnostic autopilot skill: exactly one skill fil
+  > \n let alpha = entries.iter().find(|e| e.name == \"alpha\").unwrap();\n assert_eq!(alpha.skill_files.len(), 1);\n let alpha_root = alpha.skill_file(None).expect(\"root skill file\"
 - `crates/validation-runner/src/lib.rs:1225-1465` — validation pipeline tests
-  > fn run_validation_fails_when_expected_entry_directory_is_missing() {\n let tmp = tempfile::tempdir().unwrap();\n let root = tmp.path();\n write_valid_autopilot_skill(root);\n write
+  > \"the failure must name the missing variant file, got:\\n{}\",\n report.report\n );\n }\n\n #[test]\n fn codex_agent_toml_variant_keeps_validation_green() {\n // The repo's own ins
 - `crates/validation-runner/src/lib.rs:40-95` — validation-runner targets
-  > /// One validation target: a Skill file the enumerator resolved, together with\n/// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries i
+  > /// the Expected-set entry that owns it.\n///\n/// The entry is owned here so a report row carries identity and result\n/// together — there is no positional pairing between two li
 
 ## Report contract
 
