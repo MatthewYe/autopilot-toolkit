@@ -1,0 +1,293 @@
+[
+  {
+    "fixture": "valid",
+    "expected": 0,
+    "exit_code": 0,
+    "conforms": true,
+    "passed": true,
+    "violations": []
+  },
+  {
+    "fixture": "invalid-missing-check",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "the report has no check for an injected clause",
+        "node_shape": "https://example.org/autopilot/implementer#ClauseCoverageShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#ClauseCoverageShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-status",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "in",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "a report claims exactly one known status",
+        "node_shape": "https://example.org/autopilot/implementer#ReportSchemaShape",
+        "path": "https://example.org/autopilot/implementer#status",
+        "result_path": "https://example.org/autopilot/implementer#status",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#InConstraintComponent",
+        "source_shape": "_:f5c532ca646b07cace06b674584b17da"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-done-unverified-ac",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE cannot also declare not-run verification",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      },
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE requires an executed verification method for every AC",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-done-no-method",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE requires an executed verification method for every AC",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-done-method-mixed",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "DONE cannot also declare not-run verification",
+        "node_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#DoneEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-unverified-no-method",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "an UNVERIFIED AC has no verification method",
+        "node_shape": "https://example.org/autopilot/implementer#UnverifiedMethodShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#UnverifiedMethodShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-blocked-one-hypothesis",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "BLOCKED before two diagnosis hypotheses were tried",
+        "node_shape": "https://example.org/autopilot/implementer#BlockedShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#BlockedShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-changed-files-empty",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "minCount",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "a report records at least one changed file",
+        "node_shape": "https://example.org/autopilot/implementer#ReportSchemaShape",
+        "path": "https://example.org/autopilot/implementer#changedFile",
+        "result_path": "https://example.org/autopilot/implementer#changedFile",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#MinCountConstraintComponent",
+        "source_shape": "_:dfe82b8c4b488a0950a38e2ad2184917"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-tdd-missing",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "a production change has no TDD evidence",
+        "node_shape": "https://example.org/autopilot/implementer#TddEvidenceShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#TddEvidenceShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-retry-scope",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "retry scope does not match the task runtime",
+        "node_shape": "https://example.org/autopilot/implementer#RetryScopeShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#RetryScopeShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-retry-scope-missing",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "retry scope does not match the task runtime",
+        "node_shape": "https://example.org/autopilot/implementer#RetryScopeShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#RetryScopeShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-retry-scope-double",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "retry scope does not match the task runtime",
+        "node_shape": "https://example.org/autopilot/implementer#RetryScopeShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#RetryScopeShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-toolchain-done",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "a report with an unavailable toolchain cannot be DONE",
+        "node_shape": "https://example.org/autopilot/implementer#ToolchainShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#ToolchainShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-spec-mapping",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "spec-linked report has no spec mapping",
+        "node_shape": "https://example.org/autopilot/implementer#SpecMappingShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#SpecMappingShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-needs-context-empty",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "NEEDS_CONTEXT has no named missing fact",
+        "node_shape": "https://example.org/autopilot/implementer#NeedsContextShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#NeedsContextShape"
+      }
+    ]
+  }
+]

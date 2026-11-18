@@ -1,0 +1,73 @@
+@prefix ar: <https://example.org/autopilot/implementer#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ar:Report a ar:Report ;
+  ar:forTask ar:T122 ;
+  ar:hasPlan ar:Plan ;
+  ar:status ar:DONE ;
+  ar:round "2"^^xsd:integer ;
+  ar:toolchain true ;
+  ar:specMapping "AC1 -> spec item 1; AC2 -> spec item 2" ;
+  ar:hypotheses "2"^^xsd:integer ;
+  ar:hasAc ar:AC1, ar:AC2, ar:AC3 ;
+  ar:changedFile ar:F1, ar:F2 ;
+  ar:hasCheck ar:CheckI01, ar:CheckI02, ar:CheckI03, ar:CheckI04, ar:CheckI05, ar:CheckI06, ar:CheckI07, ar:CheckI08, ar:CheckI09, ar:CheckI16, ar:CheckI17, ar:CheckI18, ar:CheckI19, ar:CheckI20, ar:CheckI21, ar:CheckI22, ar:CheckI25, ar:CheckI26, ar:CheckI27, ar:CheckI28, ar:CheckI29, ar:CheckI32, ar:CheckI33, ar:CheckI34, ar:CheckI37 .
+
+ar:Plan a ar:ImplementationPlan ;
+  ar:injectsClause ar:I01 ;
+  ar:injectsClause ar:I02 ;
+  ar:injectsClause ar:I03 ;
+  ar:injectsClause ar:I04 ;
+  ar:injectsClause ar:I05 ;
+  ar:injectsClause ar:I06 ;
+  ar:injectsClause ar:I07 ;
+  ar:injectsClause ar:I08 ;
+  ar:injectsClause ar:I09 ;
+  ar:injectsClause ar:I16 ;
+  ar:injectsClause ar:I17 ;
+  ar:injectsClause ar:I18 ;
+  ar:injectsClause ar:I19 ;
+  ar:injectsClause ar:I20 ;
+  ar:injectsClause ar:I21 ;
+  ar:injectsClause ar:I22 ;
+  ar:injectsClause ar:I25 ;
+  ar:injectsClause ar:I26 ;
+  ar:injectsClause ar:I27 ;
+  ar:injectsClause ar:I28 ;
+  ar:injectsClause ar:I29 ;
+  ar:injectsClause ar:I32 ;
+  ar:injectsClause ar:I33 ;
+  ar:injectsClause ar:I34 ;
+  ar:injectsClause ar:I37 .
+
+ar:CheckI01 a ar:Check ; ar:checkClause ar:I01 .
+ar:CheckI02 a ar:Check ; ar:checkClause ar:I02 .
+ar:CheckI03 a ar:Check ; ar:checkClause ar:I03 .
+ar:CheckI04 a ar:Check ; ar:checkClause ar:I04 .
+ar:CheckI05 a ar:Check ; ar:checkClause ar:I05 .
+ar:CheckI06 a ar:Check ; ar:checkClause ar:I06 .
+ar:CheckI07 a ar:Check ; ar:checkClause ar:I07 .
+ar:CheckI08 a ar:Check ; ar:checkClause ar:I08 .
+ar:CheckI09 a ar:Check ; ar:checkClause ar:I09 .
+ar:CheckI16 a ar:Check ; ar:checkClause ar:I16 .
+ar:CheckI17 a ar:Check ; ar:checkClause ar:I17 .
+ar:CheckI18 a ar:Check ; ar:checkClause ar:I18 .
+ar:CheckI19 a ar:Check ; ar:checkClause ar:I19 .
+ar:CheckI20 a ar:Check ; ar:checkClause ar:I20 .
+ar:CheckI21 a ar:Check ; ar:checkClause ar:I21 .
+ar:CheckI22 a ar:Check ; ar:checkClause ar:I22 .
+ar:CheckI25 a ar:Check ; ar:checkClause ar:I25 .
+ar:CheckI26 a ar:Check ; ar:checkClause ar:I26 .
+ar:CheckI27 a ar:Check ; ar:checkClause ar:I27 .
+ar:CheckI28 a ar:Check ; ar:checkClause ar:I28 .
+ar:CheckI29 a ar:Check ; ar:checkClause ar:I29 .
+ar:CheckI32 a ar:Check ; ar:checkClause ar:I32 .
+ar:CheckI33 a ar:Check ; ar:checkClause ar:I33 .
+ar:CheckI34 a ar:Check ; ar:checkClause ar:I34 .
+ar:CheckI37 a ar:Check ; ar:checkClause ar:I37 .
+
+ar:AC1 a ar:AcResult ; ar:acStatus "pass" ; ar:verificationMethod "test_a" .
+ar:AC2 a ar:AcResult ; ar:acStatus "pass" ; ar:verificationMethod "test_b" .
+ar:AC3 a ar:AcResult ; ar:acStatus "pass" ; ar:verificationMethod "test_c" .
+ar:F1 a ar:ChangedFile ; ar:changedKind "production" ; ar:hasTestEvidence true .
+ar:F2 a ar:ChangedFile ; ar:changedKind "test" ; ar:hasTestEvidence true .

@@ -1,0 +1,2266 @@
+diff --git a/CONTEXT.md b/CONTEXT.md
+index 0317b4d..ef1139d 100644
+--- a/CONTEXT.md
++++ b/CONTEXT.md
+@@ -16,6 +16,10 @@ _Avoid_: skill inventory, skill manifest
+ One skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entry whose provenance points at a missing directory is a failed entry.
+ _Avoid_: skill record, discovery result, skill item
+ 
++**Skill file**:
++One source file an Expected-set entry owns and the toolkit can act on: the root `SKILL.md`, a runtime variant's `SKILL.md`, or a runtime variant's `agent.toml`. A variant that ships an `agent.toml` instead of a `SKILL.md` is not missing a skill file — the agent definition is its artifact. An entry is a failed entry when any skill file it owns is missing.
++_Avoid_: skill content, entry content, file target
++
+ **Skill source**:
+ The origin of a toolkit skill — `upstream` (mattpocock/skills, synced via `.skill-lock.json`), `vendor` (third-party, pinned in `.vendor-lock.json` under `skills/vendor/`), or `autopilot` (local, under `skills/autopilot/`).
+ _Avoid_: skill type, skill category
+diff --git a/crates/deploy/src/dev.rs b/crates/deploy/src/dev.rs
+index 9f84ffd..bee274d 100644
+--- a/crates/deploy/src/dev.rs
++++ b/crates/deploy/src/dev.rs
+@@ -24,10 +24,14 @@ pub fn dev_all(
+ 
+     let mut count = 0u32;
+     for entry in &entries {
+-        if let ResolutionStatus::Missing { reason } = &entry.resolution {
++        // A failed entry is one whose owned Skill files are not all present
++        // (ADR-0045) — not just a missing source directory.
++        if entry.is_failed() {
+             eprintln!(
+-                "WARNING: {} skill '{}' source dir missing, skipping: {}",
+-                entry.source, entry.name, reason
++                "WARNING: {} skill '{}' is missing skill files, skipping: {}",
++                entry.source,
++                entry.name,
++                missing_skill_files(entry)
+             );
+             continue;
+         }
+@@ -49,6 +53,22 @@ pub fn dev_all(
+     Ok(())
+ }
+ 
++/// The missing Skill files of a failed entry, rendered for a warning.
++fn missing_skill_files(entry: &skill_index::ExpectedSetEntry) -> String {
++    entry
++        .skill_files
++        .iter()
++        .filter_map(|file| match &file.resolution {
++            ResolutionStatus::Missing { reason } => Some(match &file.variant {
++                Some(variant) => format!("{variant}: {reason}"),
++                None => reason.clone(),
++            }),
++            ResolutionStatus::Resolved => None,
++        })
++        .collect::<Vec<_>>()
++        .join("; ")
++}
++
+ /// Remove all dev symlinks that point back into the project tree.
+ pub fn dev_clean(
+     project_root: &Path,
+@@ -369,4 +389,36 @@ mod tests {
+             "error should name the malformed lock: {error}"
+         );
+     }
++
++    #[test]
++    fn dev_warns_and_skips_an_entry_with_a_missing_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path().join("project");
++        write_fixture_project(&root);
++        // The fixture skill's directory exists but its root SKILL.md is gone
++        // (the #118 state): dev must skip it, not link it.
++        std::fs::remove_file(root.join("skills/autopilot/alpha/SKILL.md")).unwrap();
++        let dirs = dirs_under(tmp.path());
++
++        let result = dev_all(
++            &root,
++            &dirs.shared,
++            &dirs.reasonix,
++            &dirs.codex,
++            &dirs.codex_agents,
++        );
++        assert!(
++            result.is_ok(),
++            "a partial checkout stays usable: {:?}",
++            result
++        );
++        assert!(
++            !dirs.shared.join("alpha").exists(),
++            "an entry missing its skill file must not be provisioned"
++        );
++        assert!(
++            dirs.shared.join("beta").is_symlink(),
++            "resolved entries are still provisioned"
++        );
++    }
+ }
+diff --git a/crates/deploy/src/pack.rs b/crates/deploy/src/pack.rs
+index 7239ed1..56e649d 100644
+--- a/crates/deploy/src/pack.rs
++++ b/crates/deploy/src/pack.rs
+@@ -14,9 +14,9 @@ use skill_index::{discover_skills, ExpectedSetEntry, ResolutionStatus, SkillType
+ 
+ /// Build a self-contained tarball into `dist/`.
+ ///
+-/// A lock entry whose source directory is missing fails the pack (unlike
+-/// `dev`, which warns and skips): the tarball would otherwise silently
+-/// omit an expected skill.
++/// An expected skill file that is missing fails the pack (unlike `dev`, which
++/// warns and skips): the tarball would otherwise silently omit an expected
++/// skill.
+ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
+     // ── one Expected-set enumeration drives staging and manifest ──
+     let entries = discover_skills(project_root)?;
+@@ -168,26 +168,34 @@ pub fn pack_command(project_root: &Path) -> Result<(), anyhow::Error> {
+ ///
+ /// `pack` is strict where `dev` is lenient: a tarball that silently omits a
+ /// locked skill would ship a manifest that disagrees with the sources, so the
+-/// pack fails and names every failed entry instead.
++/// pack fails and names every missing Skill file (ADR-0045).
+ fn reject_failed_entries(entries: &[ExpectedSetEntry]) -> Result<(), anyhow::Error> {
+     let failed: Vec<String> = entries
+         .iter()
+-        .filter_map(|entry| match &entry.resolution {
+-            ResolutionStatus::Missing { reason } => Some(format!(
+-                "'{}' ({} skill at {}: {})",
+-                entry.name,
+-                entry.source,
+-                entry.source_dir.display(),
+-                reason
+-            )),
+-            ResolutionStatus::Resolved => None,
++        .flat_map(|entry| {
++            entry
++                .skill_files
++                .iter()
++                .filter_map(move |file| match &file.resolution {
++                    ResolutionStatus::Missing { reason } => Some(format!(
++                        "'{}' ({} skill, {}): {}",
++                        entry.name,
++                        entry.source,
++                        file.variant
++                            .as_deref()
++                            .map(|variant| format!("variant {variant}"))
++                            .unwrap_or_else(|| "root skill file".to_string()),
++                        reason
++                    )),
++                    ResolutionStatus::Resolved => None,
++                })
+         })
+         .collect();
+     if failed.is_empty() {
+         return Ok(());
+     }
+     anyhow::bail!(
+-        "cannot pack: expected skill(s) missing:\n  {}",
++        "cannot pack: expected skill file(s) missing:\n  {}",
+         failed.join("\n  ")
+     )
+ }
+@@ -388,6 +396,31 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn pack_fails_when_a_skill_directory_lacks_its_root_skill_md() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        write_minimal_project(root);
++        // Directory exists, root SKILL.md deleted: the #118 state must be
++        // caught at the release gate, not shipped.
++        std::fs::remove_file(root.join("skills/autopilot/alpha/SKILL.md")).unwrap();
++
++        let err = pack_command(root).expect_err("pack must fail on a missing skill file");
++        let msg = format!("{err:?}");
++        assert!(
++            msg.contains("alpha"),
++            "error must name the skill whose file is missing: {msg}"
++        );
++        assert!(
++            msg.contains("SKILL.md"),
++            "error must name the missing file: {msg}"
++        );
++        assert!(
++            !root.join("dist/autopilot-toolkit.tar.gz").exists(),
++            "pack must not produce a tarball when a skill file is missing"
++        );
++    }
++
+     #[test]
+     fn pack_manifest_names_match_staged_directories() {
+         let tmp = tempfile::tempdir().unwrap();
+diff --git a/crates/skill-index/src/lib.rs b/crates/skill-index/src/lib.rs
+index f4dbd87..f3dc093 100644
+--- a/crates/skill-index/src/lib.rs
++++ b/crates/skill-index/src/lib.rs
+@@ -23,17 +23,45 @@ pub enum SkillType {
+     Coupled,
+ }
+ 
+-/// Whether an Expected-set entry's source directory resolved.
++/// Whether a Skill file (or a source directory) resolved.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum ResolutionStatus {
+-    /// The source directory exists.
++    /// The file exists.
+     Resolved,
+-    /// The failed-entry state (CONTEXT.md): the provenance points at a
+-    /// directory that does not exist. The entry is still returned, with its
+-    /// reason.
++    /// The failed-entry state (CONTEXT.md): the provenance points at a file
++    /// (or a directory) that does not exist. The entry is still returned,
++    /// with its reason.
+     Missing { reason: String },
+ }
+ 
++/// What a Skill file is: a skill body or a custom-agent definition.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum SkillFileKind {
++    /// A `SKILL.md` — the root fallback or a runtime variant's skill body.
++    Skill,
++    /// An `agent.toml` custom-agent definition shipped instead of a
++    /// `SKILL.md` (see ADR 0036 / ADR 0045).
++    AgentDefinition,
++}
++
++/// One Skill file an Expected-set entry owns (CONTEXT.md).
++///
++/// A variant that ships an `agent.toml` instead of a `SKILL.md` appears as a
++/// resolved [`SkillFileKind::AgentDefinition`]; a variant directory carrying
++/// neither is a missing `Skill` file.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct SkillFile {
++    /// The runtime variant directory this file lives under; `None` for the
++    /// root fallback.
++    pub variant: Option<String>,
++    /// Absolute path of the file this entry owns (the expected path, even for
++    /// a missing file).
++    pub path: PathBuf,
++    pub kind: SkillFileKind,
++    /// Whether the file exists on disk.
++    pub resolution: ResolutionStatus,
++}
++
+ /// One Expected-set entry: a skill the toolkit owns.
+ #[derive(Debug, Clone)]
+ pub struct ExpectedSetEntry {
+@@ -49,8 +77,25 @@ pub struct ExpectedSetEntry {
+     /// The skill's source directory, joined to the project root. For a failed
+     /// entry this is the expected location that was not found.
+     pub source_dir: PathBuf,
+-    /// Whether `source_dir` exists.
+-    pub resolution: ResolutionStatus,
++    /// The Skill files this entry owns, in deterministic order: the root
++    /// fallback first, then variants in `RUNTIME_VARIANTS` order.
++    pub skill_files: Vec<SkillFile>,
++}
++
++impl ExpectedSetEntry {
++    /// Whether any Skill file this entry owns is missing.
++    pub fn is_failed(&self) -> bool {
++        self.skill_files
++            .iter()
++            .any(|file| matches!(file.resolution, ResolutionStatus::Missing { .. }))
++    }
++
++    /// The Skill file for one variant; `None` addresses the root fallback.
++    pub fn skill_file(&self, variant: Option<&str>) -> Option<&SkillFile> {
++        self.skill_files
++            .iter()
++            .find(|file| file.variant.as_deref() == variant)
++    }
+ }
+ 
+ /// A single skill entry in manifest.json.
+@@ -165,6 +210,7 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
+                     let src_dir = project_root.join(rel);
+                     if src_dir.is_dir() {
+                         // Upstream skills are runtime-agnostic by policy.
++                        let skill_md = src_dir.join("SKILL.md");
+                         entries.push(ExpectedSetEntry {
+                             name: skill.name.clone(),
+                             source: "upstream".to_string(),
+@@ -172,7 +218,12 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
+                             variants: vec![],
+                             codex_agent: false,
+                             source_dir: src_dir,
+-                            resolution: ResolutionStatus::Resolved,
++                            skill_files: vec![skill_file(
++                                None,
++                                skill_md.clone(),
++                                SkillFileKind::Skill,
++                                &skill_md,
++                            )],
+                         });
+                     } else {
+                         let reason =
+@@ -230,6 +281,7 @@ fn source_rank(source: &str) -> u8 {
+ /// Build a resolved entry by classifying the skill's source directory.
+ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSetEntry {
+     let (skill_type, variants, codex_agent) = classify_skill(&source_dir);
++    let skill_files = skill_files_for(&source_dir, &variants);
+     ExpectedSetEntry {
+         name,
+         source: source.to_string(),
+@@ -237,7 +289,83 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
+         variants,
+         codex_agent,
+         source_dir,
+-        resolution: ResolutionStatus::Resolved,
++        skill_files,
++    }
++}
++
++/// Enumerate the Skill files a source directory owns: the root fallback first,
++/// then each runtime variant in `RUNTIME_VARIANTS` order (ADR-0045).
++///
++/// A variant that ships an `agent.toml` instead of a `SKILL.md` is an
++/// [`SkillFileKind::AgentDefinition`]; a variant directory carrying neither is
++/// a missing `Skill` file.
++fn skill_files_for(source_dir: &Path, variants: &[String]) -> Vec<SkillFile> {
++    let root = source_dir.join("SKILL.md");
++    let mut files = vec![skill_file(None, root.clone(), SkillFileKind::Skill, &root)];
++    // `variants` is name-sorted (part of the entry contract); the Skill-file
++    // list follows the canonical runtime order instead (ADR-0045).
++    let owned: Vec<String> = RUNTIME_VARIANTS
++        .iter()
++        .filter(|variant| variants.iter().any(|known| known == *variant))
++        .map(|variant| variant.to_string())
++        .collect();
++    for variant in &owned {
++        let variant_dir = source_dir.join(variant.as_str());
++        let skill = variant_dir.join("SKILL.md");
++        if skill.is_file() {
++            files.push(skill_file(
++                Some(variant.to_string()),
++                skill.clone(),
++                SkillFileKind::Skill,
++                &skill,
++            ));
++            continue;
++        }
++        let agent = variant_dir.join("agent.toml");
++        if agent.is_file() {
++            files.push(skill_file(
++                Some(variant.to_string()),
++                agent.clone(),
++                SkillFileKind::AgentDefinition,
++                &agent,
++            ));
++        } else {
++            files.push(SkillFile {
++                variant: Some(variant.to_string()),
++                path: skill.clone(),
++                kind: SkillFileKind::Skill,
++                resolution: ResolutionStatus::Missing {
++                    reason: format!(
++                        "variant '{}' ships neither SKILL.md nor agent.toml: {}",
++                        variant,
++                        variant_dir.display()
++                    ),
++                },
++            });
++        }
++    }
++    files
++}
++
++/// Build one Skill file by checking the file on disk.
++fn skill_file(
++    variant: Option<String>,
++    path: PathBuf,
++    kind: SkillFileKind,
++    present: &Path,
++) -> SkillFile {
++    let resolution = if present.is_file() {
++        ResolutionStatus::Resolved
++    } else {
++        ResolutionStatus::Missing {
++            reason: format!("skill file not found: {}", present.display()),
++        }
++    };
++    SkillFile {
++        variant,
++        path,
++        kind,
++        resolution,
+     }
+ }
+ 
+@@ -251,6 +379,7 @@ fn failed_entry(
+     source_dir: PathBuf,
+     reason: String,
+ ) -> ExpectedSetEntry {
++    let root_file = source_dir.join("SKILL.md");
+     ExpectedSetEntry {
+         name,
+         source: source.to_string(),
+@@ -258,7 +387,12 @@ fn failed_entry(
+         variants: vec![],
+         codex_agent: false,
+         source_dir,
+-        resolution: ResolutionStatus::Missing { reason },
++        skill_files: vec![SkillFile {
++            variant: None,
++            path: root_file,
++            kind: SkillFileKind::Skill,
++            resolution: ResolutionStatus::Missing { reason },
++        }],
+     }
+ }
+ 
+@@ -271,7 +405,7 @@ fn failed_entry(
+ pub fn generate_manifest(skills: &[ExpectedSetEntry], version: &str) -> Manifest {
+     let mut map = BTreeMap::new();
+     for skill in skills {
+-        if !matches!(skill.resolution, ResolutionStatus::Resolved) {
++        if skill.is_failed() {
+             continue;
+         }
+         let skill_type_str = match skill.skill_type {
+@@ -439,7 +573,7 @@ mod tests {
+         assert_eq!(alpha.skill_type, SkillType::Agnostic);
+         assert!(alpha.variants.is_empty());
+         assert!(!alpha.codex_agent);
+-        assert_eq!(alpha.resolution, ResolutionStatus::Resolved);
++        assert!(!alpha.is_failed());
+         assert_eq!(alpha.source_dir, root.join("skills/autopilot/alpha"));
+ 
+         let beta = entries.iter().find(|e| e.name == "beta").unwrap();
+@@ -451,13 +585,13 @@ mod tests {
+         let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
+         assert_eq!(show_me.source, "vendor");
+         assert_eq!(show_me.skill_type, SkillType::Agnostic);
+-        assert_eq!(show_me.resolution, ResolutionStatus::Resolved);
++        assert!(!show_me.is_failed());
+         assert_eq!(show_me.source_dir, root.join("skills/vendor/show-me"));
+ 
+         let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
+         assert_eq!(tdd.source, "upstream");
+         assert_eq!(tdd.skill_type, SkillType::Agnostic);
+-        assert_eq!(tdd.resolution, ResolutionStatus::Resolved);
++        assert!(!tdd.is_failed());
+         assert_eq!(
+             tdd.source_dir,
+             root.join("skills/upstream/skills/engineering/tdd")
+@@ -494,12 +628,13 @@ mod tests {
+             .expect("a failed entry must still be returned");
+         assert_eq!(ghost.source, "vendor");
+         assert_eq!(ghost.source_dir, root.join("skills/vendor/ghost"));
+-        match &ghost.resolution {
++        assert!(ghost.is_failed(), "expected a failed entry");
++        match &ghost.skill_file(None).unwrap().resolution {
+             ResolutionStatus::Missing { reason } => assert!(
+                 reason.contains("ghost"),
+                 "reason should name the missing location, got: {reason}"
+             ),
+-            ResolutionStatus::Resolved => panic!("expected a failed entry"),
++            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
+         }
+     }
+ 
+@@ -519,12 +654,13 @@ mod tests {
+             gone.source_dir,
+             root.join("skills/upstream/skills/engineering/gone")
+         );
+-        match &gone.resolution {
++        assert!(gone.is_failed(), "expected a failed entry");
++        match &gone.skill_file(None).unwrap().resolution {
+             ResolutionStatus::Missing { reason } => assert!(
+                 reason.contains("gone"),
+                 "reason should name the missing location, got: {reason}"
+             ),
+-            ResolutionStatus::Resolved => panic!("expected a failed entry"),
++            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
+         }
+     }
+ 
+@@ -605,6 +741,200 @@ mod tests {
+         );
+     }
+ 
++    // ── Skill files (ADR-0045) ──────────────────────────────────────────
++
++    #[test]
++    fn entry_skill_files_carry_kind_variant_and_resolution() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++
++        // Agnostic autopilot skill: exactly one skill file, the root fallback.
++        write_skill_md(&root.join("skills/autopilot/alpha"));
++
++        // Coupled autopilot skill: root + a reasonix skill file + a codex
++        // variant that ships an agent definition instead.
++        let beta = root.join("skills/autopilot/beta");
++        write_skill_md(&beta);
++        write_skill_md(&beta.join("reasonix"));
++        std::fs::create_dir_all(beta.join("codex")).unwrap();
++        std::fs::write(beta.join("codex/agent.toml"), "[agent]\nname = \"beta\"\n").unwrap();
++
++        // Vendor and upstream skills carry their root skill file.
++        write_skill_md(&root.join("skills/vendor/show-me"));
++        write_vendor_lock(root, &[("show-me", "skills/vendor/show-me")]);
++        write_skill_md(&root.join("skills/upstream/skills/engineering/tdd"));
++        write_upstream_lock(root, &[("tdd", "skills/engineering/tdd/SKILL.md")]);
++
++        let entries = discover_skills(root).unwrap();
++
++        let alpha = entries.iter().find(|e| e.name == "alpha").unwrap();
++        assert_eq!(alpha.skill_files.len(), 1);
++        let alpha_root = alpha.skill_file(None).expect("root skill file");
++        assert_eq!(alpha_root.kind, SkillFileKind::Skill);
++        assert_eq!(alpha_root.resolution, ResolutionStatus::Resolved);
++        assert_eq!(
++            alpha_root.path,
++            root.join("skills/autopilot/alpha/SKILL.md")
++        );
++        assert!(!alpha.is_failed());
++
++        let beta_entry = entries.iter().find(|e| e.name == "beta").unwrap();
++        assert_eq!(
++            beta_entry.skill_files.len(),
++            3,
++            "root + reasonix + codex agent definition: {:?}",
++            beta_entry.skill_files
++        );
++        let codex_file = beta_entry.skill_file(Some("codex")).expect("codex file");
++        assert_eq!(codex_file.kind, SkillFileKind::AgentDefinition);
++        assert_eq!(
++            codex_file.path,
++            root.join("skills/autopilot/beta/codex/agent.toml")
++        );
++        assert_eq!(codex_file.resolution, ResolutionStatus::Resolved);
++        let reasonix_file = beta_entry
++            .skill_file(Some("reasonix"))
++            .expect("reasonix file");
++        assert_eq!(reasonix_file.kind, SkillFileKind::Skill);
++        assert_eq!(
++            reasonix_file.path,
++            root.join("skills/autopilot/beta/reasonix/SKILL.md")
++        );
++
++        let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
++        assert_eq!(show_me.skill_files.len(), 1);
++        assert_eq!(
++            show_me.skill_file(None).unwrap().path,
++            root.join("skills/vendor/show-me/SKILL.md")
++        );
++
++        let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
++        assert_eq!(tdd.skill_files.len(), 1);
++        assert_eq!(
++            tdd.skill_file(None).unwrap().path,
++            root.join("skills/upstream/skills/engineering/tdd/SKILL.md")
++        );
++    }
++
++    #[test]
++    fn skill_files_are_ordered_root_first_then_runtime_order() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        let skill = root.join("skills/autopilot/omega");
++        write_skill_md(&skill);
++        for variant in RUNTIME_VARIANTS {
++            write_skill_md(&skill.join(variant));
++        }
++
++        let entries = discover_skills(root).unwrap();
++        let variants: Vec<Option<&str>> = entries[0]
++            .skill_files
++            .iter()
++            .map(|file| file.variant.as_deref())
++            .collect();
++
++        assert_eq!(
++            variants,
++            vec![None, Some("codex"), Some("kimi"), Some("reasonix")],
++            "root fallback first, then variants in runtime order"
++        );
++    }
++
++    #[test]
++    fn missing_source_directory_reports_a_missing_root_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        write_vendor_lock(root, &[("ghost", "skills/vendor/ghost")]);
++
++        let entries = discover_skills(root).unwrap();
++        let ghost = entries
++            .iter()
++            .find(|e| e.name == "ghost")
++            .expect("a failed entry must still be returned");
++
++        assert_eq!(ghost.skill_files.len(), 1);
++        let root_file = ghost.skill_file(None).expect("root skill file");
++        assert_eq!(root_file.kind, SkillFileKind::Skill);
++        match &root_file.resolution {
++            ResolutionStatus::Missing { reason } => assert!(
++                reason.contains("ghost"),
++                "reason should name the missing location, got: {reason}"
++            ),
++            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
++        }
++        assert!(ghost.is_failed());
++    }
++
++    #[test]
++    fn missing_root_skill_md_reports_a_missing_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++
++        // The directory exists and is coupled, but the root fallback file is gone.
++        let broken = root.join("skills/autopilot/broken");
++        write_skill_md(&broken.join("reasonix"));
++        write_skill_md(&broken.join("codex"));
++
++        let entries = discover_skills(root).unwrap();
++        let entry = entries.iter().find(|e| e.name == "broken").unwrap();
++
++        match &entry.skill_file(None).expect("root skill file").resolution {
++            ResolutionStatus::Missing { reason } => assert!(
++                reason.contains("SKILL.md"),
++                "reason should name the missing file, got: {reason}"
++            ),
++            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
++        }
++        // The variant files are still present and resolved.
++        assert_eq!(
++            entry.skill_file(Some("reasonix")).unwrap().resolution,
++            ResolutionStatus::Resolved
++        );
++        assert!(entry.is_failed());
++    }
++
++    #[test]
++    fn malformed_skill_path_reports_a_missing_root_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        write_upstream_lock(root, &[("odd", "skills/engineering/odd/README.md")]);
++
++        let entries = discover_skills(root).unwrap();
++        let odd = entries.iter().find(|e| e.name == "odd").unwrap();
++
++        assert_eq!(odd.skill_files.len(), 1);
++        match &odd.skill_file(None).expect("root skill file").resolution {
++            ResolutionStatus::Missing { reason } => assert!(
++                reason.contains("README.md"),
++                "reason should name the malformed path, got: {reason}"
++            ),
++            ResolutionStatus::Resolved => panic!("expected a missing root skill file"),
++        }
++    }
++
++    #[test]
++    fn variant_without_skill_file_reports_a_missing_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        let skill = root.join("skills/autopilot/placeholder");
++        write_skill_md(&skill);
++        // A variant directory with neither SKILL.md nor agent.toml.
++        std::fs::create_dir_all(skill.join("codex")).unwrap();
++
++        let entries = discover_skills(root).unwrap();
++        let entry = entries.iter().find(|e| e.name == "placeholder").unwrap();
++        let codex_file = entry.skill_file(Some("codex")).expect("codex file");
++        assert_eq!(codex_file.kind, SkillFileKind::Skill);
++        match &codex_file.resolution {
++            ResolutionStatus::Missing { reason } => assert!(
++                reason.contains("codex"),
++                "reason should name the placeholder directory, got: {reason}"
++            ),
++            ResolutionStatus::Resolved => panic!("expected a missing skill file"),
++        }
++        assert!(entry.is_failed());
++    }
++
+     fn entry(
+         name: &str,
+         source: &str,
+@@ -612,14 +942,30 @@ mod tests {
+         variants: &[&str],
+         codex_agent: bool,
+     ) -> ExpectedSetEntry {
++        let source_dir = PathBuf::from(format!("/fixture/{name}"));
++        let skill_files: Vec<SkillFile> = std::iter::once(None)
++            .chain(variants.iter().map(|variant| Some(variant.to_string())))
++            .map(|variant| {
++                let dir = match &variant {
++                    Some(variant) => source_dir.join(variant),
++                    None => source_dir.clone(),
++                };
++                SkillFile {
++                    variant,
++                    path: dir.join("SKILL.md"),
++                    kind: SkillFileKind::Skill,
++                    resolution: ResolutionStatus::Resolved,
++                }
++            })
++            .collect();
+         ExpectedSetEntry {
+             name: name.to_string(),
+             source: source.to_string(),
+             skill_type,
+             variants: variants.iter().map(|v| v.to_string()).collect(),
+             codex_agent,
+-            source_dir: PathBuf::from(format!("/fixture/{name}")),
+-            resolution: ResolutionStatus::Resolved,
++            source_dir,
++            skill_files,
+         }
+     }
+ 
+@@ -686,9 +1032,14 @@ mod tests {
+                 variants: vec![],
+                 codex_agent: false,
+                 source_dir: PathBuf::from("/missing/ghost"),
+-                resolution: ResolutionStatus::Missing {
+-                    reason: "directory not found: /missing/ghost".to_string(),
+-                },
++                skill_files: vec![SkillFile {
++                    variant: None,
++                    path: PathBuf::from("/missing/ghost/SKILL.md"),
++                    kind: SkillFileKind::Skill,
++                    resolution: ResolutionStatus::Missing {
++                        reason: "directory not found: /missing/ghost".to_string(),
++                    },
++                }],
+             },
+         ];
+         let manifest = generate_manifest(&skills, "v1");
+diff --git a/crates/validation-runner/src/lib.rs b/crates/validation-runner/src/lib.rs
+index 2cb7fcb..2e9352b 100644
+--- a/crates/validation-runner/src/lib.rs
++++ b/crates/validation-runner/src/lib.rs
+@@ -1,16 +1,16 @@
+ //! Validation runner — discovers skills, validates frontmatter, and generates reports.
+ //!
+ //! Migrated from `validation/run.rs`.  Consumes `skill_index::discover_skills()`
+-//! — the Expected-set enumerator — for every skill source; failed entries are
+-//! reported as FAIL rather than silently dropped, including resolved entries
+-//! whose skill file is missing.
++//! — the Expected-set enumerator — for every skill source (ADR 0044, ADR 0045).
++//! Validation targets are the Skill files the enumerator resolved, so a missing
++//! file fails by name instead of dropping out of the report.
+ //!
+ //! Public API:
+ //! - `run_validation(project_root)` → `Result<ValidationReport>`
+-//! - `expand_skills(project_root)` → `Result<Vec<Skill>>`
+-//! - `validate_all(project_root, skills)` → `Vec<SkillResult>`
+-//! - `generate_report(skills, results, project_root)` → `String`
+-//! - `check_codex_status(project_root, skills)` → `Vec<String>`
++//! - `build_validation_targets(project_root)` → `Result<Vec<ValidationTarget>>`
++//! - `validate_all(project_root, targets)` → `Vec<(ValidationTarget, SkillResult)>`
++//! - `generate_report(validated, project_root)` → `String`
++//! - `check_codex_status(entries)` → `Vec<String>`
+ 
+ use std::collections::HashMap;
+ use std::fmt::Write;
+@@ -36,22 +36,35 @@ macro_rules! wln {
+ 
+ // ── Types ──────────────────────────────────────────────────────────────────
+ 
+-/// A skill ready for validation — flattened from an Expected-set entry with a
+-/// concrete file path.
++/// One validation target: a Skill file the enumerator resolved, together with
++/// the Expected-set entry that owns it.
++///
++/// The entry is owned here so a report row carries identity and result
++/// together — there is no positional pairing between two lists (ADR 0045).
+ #[derive(Debug, Clone)]
+-pub struct Skill {
+-    pub name: String,
+-    /// Relative path from project root to the SKILL.md file — the expected
+-    /// location even when the file is missing.
++pub struct ValidationTarget {
++    /// The Expected-set entry that owns this file.
++    pub entry: skill_index::ExpectedSetEntry,
++    /// The skill file under validation (expected path, even when missing).
++    pub file: skill_index::SkillFile,
++    /// Project-relative path used for display and file access.
+     pub relative_path: String,
++}
++
++impl ValidationTarget {
++    pub fn name(&self) -> &str {
++        &self.entry.name
++    }
++
+     /// "upstream", "vendor", or "autopilot".
+-    pub source: String,
+-    /// Runtime variant: None for runtime-agnostic, Some("reasonix") etc.
+-    pub variant: Option<String>,
+-    /// Why this entry fails validation, if it does — an Expected-set
+-    /// resolution failure, or a missing skill file for a resolved entry.
+-    /// A failed entry fails validation immediately, without reading content.
+-    pub failed_reason: Option<String>,
++    pub fn source(&self) -> &str {
++        &self.entry.source
++    }
++
++    /// Runtime variant: None for the root fallback, Some("reasonix") etc.
++    pub fn variant(&self) -> Option<&str> {
++        self.file.variant.as_deref()
++    }
+ }
+ 
+ /// The result of validating a single skill.
+@@ -67,141 +80,117 @@ pub struct ValidationReport {
+     pub has_failures: bool,
+ }
+ 
+-// ── Skill expansion: Expected-set entries → Vec<Skill> ─────────────────────
++/// One validated target: a validation target together with its result.
++pub type ValidatedSkill<'a> = (&'a ValidationTarget, &'a SkillResult);
++
++// ── Validation targets: Expected-set Skill files ───────────────────────────
+ 
+-/// Expand the Expected set into flat `Skill` entries with concrete file paths.
++/// Build the validation targets for a project: one per Skill file the
++/// Expected-set entries own, in enumeration order.
+ ///
+-/// Failed entries keep their identity and carry the failure as
+-/// `failed_reason`, so validation reports them as FAIL instead of dropping
+-/// them.  Every Expected-set entry yields at least one `Skill`: a resolved
+-/// entry whose skill file is missing becomes a failed entry naming that file.
+-/// The one exemption is a codex variant that ships an `agent.toml`
+-/// custom-agent definition instead of a `SKILL.md` (reported as INFO by
+-/// [`check_codex_status`]); it yields no variant entry and no failure.
+-pub fn expand_skills(project_root: &Path) -> Result<Vec<Skill>, anyhow::Error> {
++/// The enumerator already resolved which files each entry owns and which of
++/// them are missing (ADR 0045), so this is a projection — no layout is
++/// rebuilt here, and no target can be dropped.
++pub fn build_validation_targets(
++    project_root: &Path,
++) -> Result<Vec<ValidationTarget>, anyhow::Error> {
+     let entries = skill_index::discover_skills(project_root)?;
+-    let mut skills: Vec<Skill> = Vec::new();
++    let mut targets: Vec<ValidationTarget> = Vec::new();
+ 
+     for entry in entries {
+-        let relative_dir = entry
+-            .source_dir
+-            .strip_prefix(project_root)
+-            .unwrap_or(&entry.source_dir);
+-
+-        match &entry.resolution {
+-            skill_index::ResolutionStatus::Missing { reason } => {
+-                skills.push(Skill {
+-                    name: entry.name.clone(),
+-                    relative_path: skill_relative_path(relative_dir, None),
+-                    source: entry.source.clone(),
+-                    variant: None,
+-                    failed_reason: Some(reason.clone()),
+-                });
+-            }
+-            skill_index::ResolutionStatus::Resolved => {
+-                skills.push(entry_skill(
+-                    &entry,
+-                    relative_dir,
+-                    None,
+-                    &entry.source_dir.join("SKILL.md"),
+-                ));
+-                for variant in &entry.variants {
+-                    let variant_skill = entry.source_dir.join(variant).join("SKILL.md");
+-                    if variant == "codex" && entry.codex_agent && !variant_skill.is_file() {
+-                        continue;
+-                    }
+-                    skills.push(entry_skill(
+-                        &entry,
+-                        relative_dir,
+-                        Some(variant),
+-                        &variant_skill,
+-                    ));
+-                }
+-            }
++        for file in &entry.skill_files {
++            targets.push(ValidationTarget {
++                entry: entry.clone(),
++                relative_path: relative_skill_path(project_root, &file.path),
++                file: file.clone(),
++            });
+         }
+     }
+ 
+-    Ok(skills)
+-}
+-
+-/// Build the `Skill` for one Expected-set entry's skill file.
+-///
+-/// A missing file yields the failed-entry shape: the entry keeps its identity
+-/// and the reason names the file that should have been there.
+-fn entry_skill(
+-    entry: &skill_index::ExpectedSetEntry,
+-    relative_dir: &Path,
+-    variant: Option<&str>,
+-    skill_file: &Path,
+-) -> Skill {
+-    Skill {
+-        name: entry.name.clone(),
+-        relative_path: skill_relative_path(relative_dir, variant),
+-        source: entry.source.clone(),
+-        variant: variant.map(|v| v.to_string()),
+-        failed_reason: (!skill_file.is_file())
+-            .then(|| format!("skill file not found: {}", skill_file.display())),
+-    }
++    Ok(targets)
+ }
+ 
+-/// Project-relative path to a skill's SKILL.md, with an optional variant
+-/// subdirectory.
+-fn skill_relative_path(relative_dir: &Path, variant: Option<&str>) -> String {
+-    let path = match variant {
+-        Some(variant) => relative_dir.join(variant).join("SKILL.md"),
+-        None => relative_dir.join("SKILL.md"),
+-    };
+-    path.to_string_lossy().to_string()
++/// Project-relative display path for a Skill file; falls back to the absolute
++/// path when the file lives outside the project root.
++fn relative_skill_path(project_root: &Path, path: &Path) -> String {
++    path.strip_prefix(project_root)
++        .unwrap_or(path)
++        .to_string_lossy()
++        .to_string()
+ }
+ 
+ // ── Batch validation ───────────────────────────────────────────────────────
+ 
+-/// Validate every skill in the list against its file content.
++/// Validate every target against its file content.
+ ///
+-/// Failed Expected-set entries fail immediately with the entry's reason;
+-/// everything else is read and validated from disk.
+-pub fn validate_all(project_root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
+-    skills
++/// A target whose skill file is missing fails immediately with the
++/// enumerator's reason; everything else is read and validated from disk.
++/// Each result stays attached to the target it came from.
++pub fn validate_all(
++    project_root: &Path,
++    targets: &[ValidationTarget],
++) -> Vec<(ValidationTarget, SkillResult)> {
++    targets
+         .iter()
+-        .map(|skill| {
+-            if let Some(reason) = &skill.failed_reason {
+-                return SkillResult {
++        .map(|target| {
++            let result = match &target.file.resolution {
++                skill_index::ResolutionStatus::Missing { reason } => SkillResult {
+                     result: ValidationResult {
+                         passed: false,
+                         issues: vec![reason.clone()],
+                     },
+                     frontmatter: None,
+-                };
+-            }
+-            let full_path = project_root.join(&skill.relative_path);
+-            let content = match fs::read_to_string(&full_path) {
+-                Ok(c) => c,
+-                Err(_) => {
+-                    return SkillResult {
+-                        result: ValidationResult {
+-                            passed: false,
+-                            issues: vec![format!("File not found: {}", full_path.display())],
+-                        },
+-                        frontmatter: None,
++                },
++                skill_index::ResolutionStatus::Resolved => {
++                    let full_path = project_root.join(&target.relative_path);
++                    let content = match fs::read_to_string(&full_path) {
++                        Ok(c) => c,
++                        Err(_) => {
++                            return (
++                                target.clone(),
++                                SkillResult {
++                                    result: ValidationResult {
++                                        passed: false,
++                                        issues: vec![format!(
++                                            "File not found: {}",
++                                            full_path.display()
++                                        )],
++                                    },
++                                    frontmatter: None,
++                                },
++                            );
++                        }
+                     };
++                    // An agent definition is not a SKILL.md: it has no
++                    // frontmatter contract to validate, so it counts as
++                    // resolved for the report without being parsed.
++                    let validation_result =
++                        if target.file.kind == skill_index::SkillFileKind::AgentDefinition {
++                            ValidationResult {
++                                passed: true,
++                                issues: vec![],
++                            }
++                        } else {
++                            let variant = match target.variant() {
++                                Some("reasonix") => SkillVariant::Reasonix,
++                                Some("codex") => SkillVariant::Codex,
++                                Some("kimi") => SkillVariant::Kimi,
++                                _ => SkillVariant::Agnostic,
++                            };
++                            validate_skill_with_variant(&content, variant)
++                        };
++                    let frontmatter = if target.source() == "autopilot" {
++                        parse_frontmatter(&content).ok()
++                    } else {
++                        None
++                    };
++                    SkillResult {
++                        result: validation_result,
++                        frontmatter,
++                    }
+                 }
+             };
+-            let variant = match skill.variant.as_deref() {
+-                Some("reasonix") => SkillVariant::Reasonix,
+-                Some("codex") => SkillVariant::Codex,
+-                Some("kimi") => SkillVariant::Kimi,
+-                _ => SkillVariant::Agnostic,
+-            };
+-            let validation_result = validate_skill_with_variant(&content, variant);
+-            let frontmatter = if skill.source == "autopilot" {
+-                parse_frontmatter(&content).ok()
+-            } else {
+-                None
+-            };
+-            SkillResult {
+-                result: validation_result,
+-                frontmatter,
+-            }
++            (target.clone(), result)
+         })
+         .collect()
+ }
+@@ -209,23 +198,17 @@ pub fn validate_all(project_root: &Path, skills: &[Skill]) -> Vec<SkillResult> {
+ // ── Report generation ──────────────────────────────────────────────────────
+ 
+ /// Generate the full human-readable validation report.
+-pub fn generate_report(
+-    skills: &[Skill],
+-    results: &[SkillResult],
+-    project_root: Option<&Path>,
+-) -> String {
++pub fn generate_report(validated: &[ValidatedSkill], project_root: Option<&Path>) -> String {
+     let sep = "=".repeat(70);
+     let date_str = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
+ 
+-    let total = skills.len();
+-    let pass_count = results.iter().filter(|r| r.result.passed).count();
++    let total = validated.len();
++    let pass_count = validated.iter().filter(|(_, r)| r.result.passed).count();
+     let fail_count = total - pass_count;
+ 
+-    let (upstream_total, upstream_pass, upstream_fail) =
+-        count_by_source(skills, results, "upstream");
+-    let (autopilot_total, autopilot_pass, autopilot_fail) =
+-        count_by_source(skills, results, "autopilot");
+-    let (vendor_total, vendor_pass, vendor_fail) = count_by_source(skills, results, "vendor");
++    let (upstream_total, upstream_pass, upstream_fail) = count_by_source(validated, "upstream");
++    let (autopilot_total, autopilot_pass, autopilot_fail) = count_by_source(validated, "autopilot");
++    let (vendor_total, vendor_pass, vendor_fail) = count_by_source(validated, "vendor");
+ 
+     let mut report = String::new();
+ 
+@@ -255,13 +238,13 @@ pub fn generate_report(
+         upstream_fail
+     );
+     wln!(report);
+-    write_skill_entries(&mut report, skills, results, "upstream", true, project_root);
++    write_skill_entries(&mut report, validated, "upstream", true, project_root);
+ 
+     // ── Vendor section ──
+     wln!(report, "--- Vendor Skills ({}) ---", vendor_total);
+     wln!(report, "Passed: {} / Failed: {}", vendor_pass, vendor_fail);
+     wln!(report);
+-    write_skill_entries(&mut report, skills, results, "vendor", true, project_root);
++    write_skill_entries(&mut report, validated, "vendor", true, project_root);
+ 
+     // ── Autopilot section ──
+     wln!(report, "--- Autopilot Skills ({}) ---", autopilot_total);
+@@ -272,18 +255,15 @@ pub fn generate_report(
+         autopilot_fail
+     );
+     wln!(report);
+-    write_skill_entries(
+-        &mut report,
+-        skills,
+-        results,
+-        "autopilot",
+-        false,
+-        project_root,
+-    );
++    write_skill_entries(&mut report, validated, "autopilot", false, project_root);
+ 
+     // ── Codex variant status ──
+-    if let Some(root) = project_root {
+-        let codex_status = check_codex_status(root, skills);
++    {
++        let entries: Vec<skill_index::ExpectedSetEntry> = validated
++            .iter()
++            .map(|(target, _)| target.entry.clone())
++            .collect();
++        let codex_status = check_codex_status(&entries);
+         if !codex_status.is_empty() {
+             wln!(report, "--- Codex Variant Status ---");
+             wln!(report);
+@@ -301,11 +281,10 @@ pub fn generate_report(
+     wln!(report);
+ 
+     // Check 1: 0 opencode-specific fields (exclude codex and kimi variants)
+-    let oc_count: usize = skills
++    let oc_count: usize = validated
+         .iter()
+-        .zip(results.iter())
+-        .filter(|(s, _)| {
+-            let v = s.variant.as_deref();
++        .filter(|(target, _)| {
++            let v = target.variant();
+             v != Some("codex") && v != Some("kimi")
+         })
+         .map(|(_, r)| {
+@@ -316,10 +295,10 @@ pub fn generate_report(
+                 .count()
+         })
+         .sum();
+-    let non_codex_count = skills
++    let non_codex_count = validated
+         .iter()
+-        .filter(|s| {
+-            let v = s.variant.as_deref();
++        .filter(|(target, _)| {
++            let v = target.variant();
+             v != Some("codex") && v != Some("kimi")
+         })
+         .count();
+@@ -341,7 +320,7 @@ pub fn generate_report(
+     wln!(report);
+ 
+     // Check 2: all subagent skills have allowed-tools
+-    let sub_missing = find_subagent_missing_allowed_tools(skills, project_root);
++    let sub_missing = find_subagent_missing_allowed_tools(validated);
+     wln!(
+         report,
+         "Check: All subagent skills have allowed-tools defined"
+@@ -375,16 +354,12 @@ pub fn generate_report(
+ }
+ 
+ /// Returns (total, pass, fail) for a given source.
+-fn count_by_source(
+-    skills: &[Skill],
+-    results: &[SkillResult],
+-    source: &str,
+-) -> (usize, usize, usize) {
++fn count_by_source(validated: &[ValidatedSkill], source: &str) -> (usize, usize, usize) {
+     let mut total = 0;
+     let mut pass = 0;
+     let mut fail = 0;
+-    for (skill, result) in skills.iter().zip(results.iter()) {
+-        if skill.source != source {
++    for (target, result) in validated {
++        if target.source() != source {
+             continue;
+         }
+         total += 1;
+@@ -400,25 +375,24 @@ fn count_by_source(
+ /// Write per-skill entries for one source group.
+ fn write_skill_entries(
+     report: &mut String,
+-    skills: &[Skill],
+-    results: &[SkillResult],
++    validated: &[ValidatedSkill],
+     source: &str,
+     show_checkmark: bool,
+     project_root: Option<&Path>,
+ ) {
+-    for (skill, result) in skills.iter().zip(results.iter()) {
+-        if skill.source != source {
++    for (target, result) in validated {
++        if target.source() != source {
+             continue;
+         }
+         // Build display label: name + optional variant tag
+-        let display_name = match skill.variant.as_deref() {
+-            Some(v) => format!("{} ({})", skill.name, v),
+-            None => skill.name.clone(),
++        let display_name = match target.variant() {
++            Some(variant) => format!("{} ({})", target.name(), variant),
++            None => target.name().to_string(),
+         };
+         // Path display: use project_root if provided, else relative path
+         let path_display = match project_root {
+-            Some(root) => root.join(&skill.relative_path).display().to_string(),
+-            None => skill.relative_path.clone(),
++            Some(root) => root.join(&target.relative_path).display().to_string(),
++            None => target.relative_path.clone(),
+         };
+         if result.result.passed {
+             wln!(report, "  [PASS] {}", display_name);
+@@ -448,29 +422,16 @@ fn write_skill_entries(
+ 
+ /// Find skills where runAs=subagent but allowed-tools is missing/empty.
+ ///
+-/// When `project_root` is None, only reports the skill name without reading
+-/// frontmatter (used in test contexts where file access isn't needed).
+-fn find_subagent_missing_allowed_tools(
+-    skills: &[Skill],
+-    project_root: Option<&Path>,
+-) -> Vec<String> {
++/// Reads the frontmatter captured during validation — the same bytes the
++/// validation verdict was produced from — instead of re-reading files.
++fn find_subagent_missing_allowed_tools(validated: &[ValidatedSkill]) -> Vec<String> {
+     let mut missing = Vec::new();
+-    for skill in skills {
+-        let content = match project_root {
+-            Some(root) => {
+-                let full_path = root.join(&skill.relative_path);
+-                match fs::read_to_string(&full_path) {
+-                    Ok(c) => c,
+-                    Err(_) => continue,
+-                }
+-            }
+-            None => continue,
+-        };
+-        if let Ok(fm) = parse_frontmatter(&content) {
++    for (target, result) in validated {
++        if let Some(fm) = &result.frontmatter {
+             if fm.get("runAs").is_some_and(|v| v == "subagent")
+                 && fm.get("allowed-tools").is_none_or(|v| v.is_empty())
+             {
+-                missing.push(skill.name.clone());
++                missing.push(target.name().to_string());
+             }
+         }
+     }
+@@ -479,55 +440,26 @@ fn find_subagent_missing_allowed_tools(
+ 
+ // ── Codex status check ─────────────────────────────────────────────────────
+ 
+-/// Check codex variant status for autopilot skills.
++/// Project the codex variant status from enumerated Expected-set entries.
+ ///
+-/// Returns informational lines about which skills lack codex SKILL.md.
+-/// **Data-driven**: uses the filesystem to determine whether a missing codex
+-/// SKILL.md is because the skill uses agent.toml instead (codex/agent.toml
+-/// exists) or is simply a placeholder directory (no agent.toml).
+-///
+-/// The placeholder line only surfaces for callers that pass a `skills` list
+-/// which does not carry the skill's codex variant: through [`expand_skills`]
+-/// such a directory is already a failed entry, so validation FAILs it instead
+-/// of reporting INFO.
+-pub fn check_codex_status(project_root: &Path, skills: &[Skill]) -> Vec<String> {
+-    let mut lines: Vec<String> = Vec::new();
+-    let autopilot_dir = project_root.join("skills/autopilot");
+-    if !autopilot_dir.is_dir() {
+-        return lines;
+-    }
+-    if let Ok(read_dir) = fs::read_dir(&autopilot_dir) {
+-        for entry in read_dir.flatten() {
+-            let path = entry.path();
+-            if path.is_dir() {
+-                let codex_skill = path.join("codex/SKILL.md");
+-                let codex_dir = path.join("codex");
+-                if codex_dir.is_dir() {
+-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+-                    let has_codex = codex_skill.is_file();
+-                    let already_found = skills
+-                        .iter()
+-                        .any(|s| s.name == name && s.variant.as_deref() == Some("codex"));
+-                    if !has_codex && !already_found {
+-                        // Data-driven: check filesystem instead of hardcoded names
+-                        let has_agent_toml = codex_dir.join("agent.toml").is_file();
+-                        if has_agent_toml {
+-                            lines.push(format!(
+-                                "[INFO] {}: no codex/SKILL.md (uses agent.toml instead)",
+-                                name
+-                            ));
+-                        } else {
+-                            lines.push(format!(
+-                                "[INFO] {}: no codex/SKILL.md (placeholder directory)",
+-                                name
+-                            ));
+-                        }
+-                    }
+-                }
+-            }
+-        }
+-    }
++/// A codex variant that ships an agent definition rather than a `SKILL.md`
++/// is an informational note; a variant that ships neither is a missing skill
++/// file, which validation already FAILs, so no placeholder line is emitted.
++pub fn check_codex_status(entries: &[skill_index::ExpectedSetEntry]) -> Vec<String> {
++    let mut lines: Vec<String> = entries
++        .iter()
++        .filter_map(|entry| {
++            let file = entry.skill_file(Some("codex"))?;
++            (file.kind == skill_index::SkillFileKind::AgentDefinition).then(|| {
++                format!(
++                    "[INFO] {}: no codex/SKILL.md (uses agent.toml instead)",
++                    entry.name
++                )
++            })
++        })
++        .collect();
+     lines.sort();
++    lines.dedup();
+     lines
+ }
+ 
+@@ -544,10 +476,14 @@ pub fn any_validation_failed(results: &[SkillResult]) -> bool {
+ ///
+ /// Returns the report string and whether any failures were found.
+ pub fn run_validation(project_root: &Path) -> Result<ValidationReport, anyhow::Error> {
+-    let skills = expand_skills(project_root)?;
+-    let results = validate_all(project_root, &skills);
+-    let report = generate_report(&skills, &results, Some(project_root));
+-    let has_failures = any_validation_failed(&results);
++    let targets = build_validation_targets(project_root)?;
++    let validated = validate_all(project_root, &targets);
++    let pairs: Vec<ValidatedSkill> = validated
++        .iter()
++        .map(|(target, result)| (target, result))
++        .collect();
++    let report = generate_report(&pairs, Some(project_root));
++    let has_failures = validated.iter().any(|(_, result)| !result.result.passed);
+     Ok(ValidationReport {
+         report,
+         has_failures,
+@@ -559,6 +495,7 @@ pub fn run_validation(project_root: &Path) -> Result<ValidationReport, anyhow::E
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use std::path::PathBuf;
+ 
+     // ── Helpers ─────────────────────────────────────────────────────────
+ 
+@@ -582,16 +519,88 @@ mod tests {
+         }
+     }
+ 
+-    fn test_skill(name: &str, source: &str) -> Skill {
+-        Skill {
++    /// A synthetic Expected-set entry owning one resolved root skill file.
++    fn test_entry(name: &str, source: &str) -> skill_index::ExpectedSetEntry {
++        let relative_dir = match source {
++            "upstream" => format!("skills/upstream/skills/engineering/{name}"),
++            other => format!("skills/{other}/{name}"),
++        };
++        skill_index::ExpectedSetEntry {
+             name: name.to_string(),
+-            relative_path: format!("skills/{}/{}/SKILL.md", source, name),
+             source: source.to_string(),
+-            variant: None,
+-            failed_reason: None,
++            skill_type: skill_index::SkillType::Agnostic,
++            variants: vec![],
++            codex_agent: false,
++            source_dir: PathBuf::from(&relative_dir),
++            skill_files: vec![skill_index::SkillFile {
++                variant: None,
++                path: PathBuf::from(format!("{relative_dir}/SKILL.md")),
++                kind: skill_index::SkillFileKind::Skill,
++                resolution: skill_index::ResolutionStatus::Resolved,
++            }],
+         }
+     }
+ 
++    /// A synthetic Expected-set entry carrying one variant skill file.
++    fn test_variant_entry(
++        name: &str,
++        source: &str,
++        variant: &str,
++    ) -> skill_index::ExpectedSetEntry {
++        let mut entry = test_entry(name, source);
++        let rel = format!("{}/{variant}/SKILL.md", entry.source_dir.display());
++        entry.variants = vec![variant.to_string()];
++        entry.skill_files.push(skill_index::SkillFile {
++            variant: Some(variant.to_string()),
++            path: PathBuf::from(&rel),
++            kind: skill_index::SkillFileKind::Skill,
++            resolution: skill_index::ResolutionStatus::Resolved,
++        });
++        entry
++    }
++
++    /// A synthetic validation target for a report test.
++    fn test_target(name: &str, source: &str) -> ValidationTarget {
++        test_target_with_variant(name, source, None)
++    }
++
++    fn test_target_with_variant(
++        name: &str,
++        source: &str,
++        variant: Option<&str>,
++    ) -> ValidationTarget {
++        let entry = match variant {
++            Some(variant) => test_variant_entry(name, source, variant),
++            None => test_entry(name, source),
++        };
++        let file = match variant {
++            Some(variant) => entry.skill_file(Some(variant)).unwrap().clone(),
++            None => entry.skill_file(None).unwrap().clone(),
++        };
++        ValidationTarget {
++            relative_path: file.path.to_string_lossy().to_string(),
++            entry,
++            file,
++        }
++    }
++
++    /// Build (target, result) pairs straight from a synthetic target list.
++    fn pairs_for(
++        targets: &[ValidationTarget],
++        results: Vec<SkillResult>,
++    ) -> Vec<(ValidationTarget, SkillResult)> {
++        targets.iter().cloned().zip(results).collect()
++    }
++
++    /// Render a report from owned pairs.
++    fn render(validated: &[(ValidationTarget, SkillResult)]) -> String {
++        let pairs: Vec<ValidatedSkill> = validated
++            .iter()
++            .map(|(target, result)| (target, result))
++            .collect();
++        generate_report(&pairs, None)
++    }
++
+     // ── any_validation_failed ───────────────────────────────────────────
+ 
+     #[test]
+@@ -616,9 +625,9 @@ mod tests {
+ 
+     #[test]
+     fn report_header_contains_expected_banner() {
+-        let skills = vec![test_skill("my-skill", "upstream")];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("my-skill", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("FRONTMATTER VALIDATION REPORT — reasonix compatibility"));
+         assert!(report.contains("=".repeat(70).as_str()));
+         assert!(report.contains("Date: "));
+@@ -626,62 +635,65 @@ mod tests {
+ 
+     #[test]
+     fn report_shows_total_pass_fail_counts() {
+-        let skills = vec![
+-            test_skill("pass-1", "upstream"),
+-            test_skill("fail-1", "upstream"),
+-            test_skill("pass-2", "autopilot"),
+-        ];
+-        let results = vec![
+-            pass_result(),
+-            fail_result("missing description"),
+-            pass_result(),
++        let targets = vec![
++            test_target("pass-1", "upstream"),
++            test_target("fail-1", "upstream"),
++            test_target("pass-2", "autopilot"),
+         ];
+-        let report = generate_report(&skills, &results, None);
++        let pairs = pairs_for(
++            &targets,
++            vec![
++                pass_result(),
++                fail_result("missing description"),
++                pass_result(),
++            ],
++        );
++        let report = render(&pairs);
+         assert!(report.contains("Total skills validated: 3 | Passed: 2 | Failed: 1"));
+     }
+ 
+     #[test]
+     fn report_passing_skill_shows_pass_label() {
+-        let skills = vec![test_skill("good-skill", "upstream")];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("good-skill", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("[PASS] good-skill"));
+     }
+ 
+     #[test]
+     fn report_failing_skill_shows_fail_label_and_issues() {
+-        let skills = vec![test_skill("bad-skill", "upstream")];
+-        let results = vec![fail_result("Missing required field: name")];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("bad-skill", "upstream")];
++        let pairs = pairs_for(&targets, vec![fail_result("Missing required field: name")]);
++        let report = render(&pairs);
+         assert!(report.contains("[FAIL] bad-skill"));
+         assert!(report.contains("Missing required field: name"));
+     }
+ 
+     #[test]
+     fn report_all_pass_shows_overall_pass() {
+-        let skills = vec![test_skill("s1", "upstream")];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("s1", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("All skills PASS validation."));
+     }
+ 
+     #[test]
+     fn report_any_fail_shows_overall_fail_count() {
+-        let skills = vec![test_skill("s1", "upstream"), test_skill("s2", "upstream")];
+-        let results = vec![pass_result(), fail_result("issue")];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("s1", "upstream"), test_target("s2", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result(), fail_result("issue")]);
++        let report = render(&pairs);
+         assert!(report.contains("1 skill(s) FAIL validation."));
+     }
+ 
+     #[test]
+     fn report_shows_upstream_vendor_and_autopilot_sections() {
+-        let skills = vec![
+-            test_skill("up-skill", "upstream"),
+-            test_skill("vendor-skill", "vendor"),
+-            test_skill("auto-skill", "autopilot"),
++        let targets = vec![
++            test_target("up-skill", "upstream"),
++            test_target("vendor-skill", "vendor"),
++            test_target("auto-skill", "autopilot"),
+         ];
+-        let results = vec![pass_result(), pass_result(), pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let pairs = pairs_for(&targets, vec![pass_result(), pass_result(), pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("Upstream Skills"));
+         assert!(report.contains("Vendor Skills"));
+         assert!(report.contains("Autopilot Skills"));
+@@ -689,9 +701,9 @@ mod tests {
+ 
+     #[test]
+     fn report_includes_global_checks_section() {
+-        let skills = vec![test_skill("s1", "upstream")];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("s1", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("GLOBAL CHECKS"));
+         assert!(report.contains("opencode-specific fields"));
+         assert!(report.contains("subagent skills have allowed-tools"));
+@@ -699,9 +711,9 @@ mod tests {
+ 
+     #[test]
+     fn report_trailing_newline_matches_bash_output_convention() {
+-        let skills = vec![test_skill("s1", "upstream")];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target("s1", "upstream")];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(!report.is_empty(), "report must not be empty");
+         assert!(
+             report.ends_with('\n'),
+@@ -713,59 +725,37 @@ mod tests {
+ 
+     #[test]
+     fn report_shows_variant_tag_in_skill_name() {
+-        let skills = vec![Skill {
+-            name: "my-skill".to_string(),
+-            relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
+-            source: "autopilot".to_string(),
+-            variant: Some("reasonix".to_string()),
+-            failed_reason: None,
+-        }];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target_with_variant(
++            "my-skill",
++            "autopilot",
++            Some("reasonix"),
++        )];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("[PASS] my-skill (reasonix)"));
+     }
+ 
+     #[test]
+     fn report_codex_variant_not_counted_in_opencode_global_check() {
+-        let skills = vec![Skill {
+-            name: "my-skill".to_string(),
+-            relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
+-            source: "autopilot".to_string(),
+-            variant: Some("codex".to_string()),
+-            failed_reason: None,
+-        }];
+-        let results = vec![pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let targets = vec![test_target_with_variant(
++            "my-skill",
++            "autopilot",
++            Some("codex"),
++        )];
++        let pairs = pairs_for(&targets, vec![pass_result()]);
++        let report = render(&pairs);
+         assert!(report.contains("✓ PASS"));
+     }
+ 
+     #[test]
+     fn report_shows_non_codex_count_in_global_check() {
+-        let skills = vec![
+-            Skill {
+-                name: "reasonix-skill".to_string(),
+-                relative_path: "skills/autopilot/my-skill/reasonix/SKILL.md".to_string(),
+-                source: "autopilot".to_string(),
+-                variant: Some("reasonix".to_string()),
+-                failed_reason: None,
+-            },
+-            Skill {
+-                name: "codex-skill".to_string(),
+-                relative_path: "skills/autopilot/my-skill/codex/SKILL.md".to_string(),
+-                source: "autopilot".to_string(),
+-                variant: Some("codex".to_string()),
+-                failed_reason: None,
+-            },
+-            Skill {
+-                name: "kimi-skill".to_string(),
+-                relative_path: "skills/autopilot/my-skill/kimi/SKILL.md".to_string(),
+-                source: "autopilot".to_string(),
+-                variant: Some("kimi".to_string()),
+-                failed_reason: None,
+-            },
++        let targets = vec![
++            test_target_with_variant("reasonix-skill", "autopilot", Some("reasonix")),
++            test_target_with_variant("codex-skill", "autopilot", Some("codex")),
++            test_target_with_variant("kimi-skill", "autopilot", Some("kimi")),
+         ];
+-        let results = vec![pass_result(), pass_result(), pass_result()];
+-        let report = generate_report(&skills, &results, None);
++        let pairs = pairs_for(&targets, vec![pass_result(), pass_result(), pass_result()]);
++        let report = render(&pairs);
+         assert!(
+             report.contains("1 non-codex/kimi"),
+             "global check should show 1 non-codex/kimi, got:\n{}",
+@@ -773,7 +763,7 @@ mod tests {
+         );
+     }
+ 
+-    // ── expand_skills (integration with real repo) ──────────────────────
++    // ── build_validation_targets (integration with real repo) ───────────
+ 
+     fn repo_root() -> &'static Path {
+         // Use compile-time path to find the real repo root
+@@ -786,36 +776,38 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn expand_skills_finds_all_sources() {
++    fn validation_targets_cover_all_sources() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        assert!(!skills.is_empty(), "should find at least some skills");
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        assert!(!targets.is_empty(), "should find at least some targets");
+ 
+-        let has_upstream = skills.iter().any(|s| s.source == "upstream");
+-        let has_vendor = skills.iter().any(|s| s.source == "vendor");
+-        let has_autopilot = skills.iter().any(|s| s.source == "autopilot");
++        let has_upstream = targets.iter().any(|t| t.source() == "upstream");
++        let has_vendor = targets.iter().any(|t| t.source() == "vendor");
++        let has_autopilot = targets.iter().any(|t| t.source() == "autopilot");
+         assert!(has_upstream, "should find upstream skills");
+         assert!(has_vendor, "should find vendor skills");
+         assert!(has_autopilot, "should find autopilot skills");
+ 
+-        let show_me = skills
++        let show_me = targets
+             .iter()
+-            .find(|s| s.name == "show-me")
++            .find(|t| t.name() == "show-me")
+             .expect("show-me should be discovered as a vendor skill");
+-        assert_eq!(show_me.source, "vendor");
++        assert_eq!(show_me.source(), "vendor");
+     }
+ 
+     #[test]
+-    fn expanded_skills_have_relative_paths() {
++    fn validation_targets_have_resolved_relative_paths() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        for skill in &skills {
+-            let full_path = root.join(&skill.relative_path);
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        for target in &targets {
++            let full_path = root.join(&target.relative_path);
+             assert!(
+                 full_path.exists(),
+-                "skill '{}' path '{}' must exist at {:?}",
+-                skill.name,
+-                skill.relative_path,
++                "skill file '{}' path '{}' must exist at {:?}",
++                target.name(),
++                target.relative_path,
+                 full_path
+             );
+         }
+@@ -962,9 +954,9 @@ mod tests {
+     /// validation pipeline over it.
+     ///
+     /// States that cannot occur for a source are rejected by construction:
+-    /// autopilot entries come from a directory scan (their resolution never
+-    /// fails), and vendor entries resolve through `vendorPath` (a malformed
+-    /// `skillPath` cannot orphan them).
++    /// autopilot entries come from a directory scan (their directory is
++    /// always present), and vendor entries resolve through `vendorPath` (a
++    /// malformed `skillPath` cannot orphan them).
+     fn matrix_case(source: &str, state: EntryState) -> (tempfile::TempDir, ValidationReport) {
+         let tmp = tempfile::tempdir().unwrap();
+         let root = tmp.path();
+@@ -1114,9 +1106,9 @@ mod tests {
+     // ── Variant expansion tests (temp fixtures) ─────────────────────────
+ 
+     /// Build a temp fixture with one autopilot skill carrying the given
+-    /// variant directories and a root SKILL.md, then expand it through the
+-    /// public interface.
+-    fn expand_with_variants(variant_dirs: &[&str]) -> Vec<Skill> {
++    /// variant directories and a root SKILL.md, then enumerate the validation
++    /// targets through the public interface.
++    fn targets_with_variants(variant_dirs: &[&str]) -> Vec<ValidationTarget> {
+         let tmp = tempfile::tempdir().unwrap();
+         let root = tmp.path();
+         let skill_dir = root.join("skills/autopilot/fixture-skill");
+@@ -1138,64 +1130,64 @@ mod tests {
+             .unwrap();
+         }
+ 
+-        expand_skills(root).expect("expand_skills should succeed")
++        build_validation_targets(root).expect("build_validation_targets should succeed")
+     }
+ 
+     #[test]
+     fn discovers_kimi_variant() {
+-        let skills = expand_with_variants(&["kimi"]);
++        let targets = targets_with_variants(&["kimi"]);
+         assert!(
+-            skills
++            targets
+                 .iter()
+-                .any(|s| s.name == "fixture-skill" && s.variant.as_deref() == Some("kimi")),
++                .any(|t| t.name() == "fixture-skill" && t.variant() == Some("kimi")),
+             "should discover kimi variant, got: {:?}",
+-            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
++            targets.iter().map(|t| &t.relative_path).collect::<Vec<_>>()
+         );
+     }
+ 
+     #[test]
+-    fn codex_variant_with_agent_toml_yields_no_skill_entry() {
+-        // classify_skill only returns variants whose directories exist.
+-        // A codex variant may carry an agent.toml custom-agent definition
+-        // instead of a SKILL.md, so it is the one variant shape that is not
+-        // expected to carry a skill file.
++    fn codex_variant_with_agent_toml_is_an_agent_definition() {
++        // A codex variant that ships an agent.toml is an agent definition,
++        // not a skill file under validation; the missing root SKILL.md is
++        // still a named failure.
+         let tmp = tempfile::tempdir().unwrap();
+-        let codex_dir = tmp.path().join("skills/autopilot/fixture-skill/codex");
++        let skill_dir = tmp.path().join("skills/autopilot/fixture-skill");
++        let codex_dir = skill_dir.join("codex");
+         fs::create_dir_all(&codex_dir).unwrap();
+         fs::write(codex_dir.join("agent.toml"), "name = \"fixture\"\n").unwrap();
+ 
+-        // classify_skill returns variants based on directory existence
+-        let (_type, variants, _codex_agent) =
+-            skill_index::classify_skill(&tmp.path().join("skills/autopilot/fixture-skill"));
+-        // codex dir exists, so it's in variants
+-        assert!(variants.contains(&"codex".to_string()));
+-
+-        // When expanding, the agent.toml-only codex variant produces no entry
+-        // (check_codex_status reports it as INFO), but the missing root
+-        // fallback SKILL.md is a named failure — the entry must not vanish.
+-        let skills = expand_skills(tmp.path()).expect("expand_skills should succeed");
+-        assert!(
+-            !skills.iter().any(|s| s.variant.as_deref() == Some("codex")),
+-            "an agent.toml-only codex variant must not produce a Skill entry, got: {:?}",
+-            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
++        let targets =
++            build_validation_targets(tmp.path()).expect("build_validation_targets should succeed");
++        let codex_target = targets
++            .iter()
++            .find(|t| t.variant() == Some("codex"))
++            .expect("the agent definition is a target of its own kind");
++        assert_eq!(
++            codex_target.file.kind,
++            skill_index::SkillFileKind::AgentDefinition,
++            "an agent.toml-only codex variant must be an agent definition"
+         );
+-        let failed: Vec<&Skill> = skills
++        let failed: Vec<&ValidationTarget> = targets
+             .iter()
+-            .filter(|s| s.failed_reason.is_some())
++            .filter(|t| {
++                matches!(
++                    t.file.resolution,
++                    skill_index::ResolutionStatus::Missing { .. }
++                )
++            })
+             .collect();
+         assert_eq!(
+             failed.len(),
+             1,
+             "the missing root SKILL.md must yield exactly one failed entry, got: {:?}",
+-            skills.iter().map(|s| &s.relative_path).collect::<Vec<_>>()
++            targets.iter().map(|t| &t.relative_path).collect::<Vec<_>>()
+         );
+         assert!(
+             failed[0]
+-                .failed_reason
+-                .as_deref()
+-                .is_some_and(|reason| reason.contains("skills/autopilot/fixture-skill/SKILL.md")),
+-            "the failed entry must name the missing root skill file, got: {:?}",
+-            failed[0].failed_reason
++                .relative_path
++                .contains("skills/autopilot/fixture-skill/SKILL.md"),
++            "the failed target must name the missing root skill file, got: {:?}",
++            failed[0].relative_path
+         );
+     }
+ 
+@@ -1293,9 +1285,12 @@ mod tests {
+             "the failure must name the missing codex skill file, got:\n{}",
+             report.report
+         );
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        let entries: Vec<skill_index::ExpectedSetEntry> =
++            targets.iter().map(|t| t.entry.clone()).collect();
+         assert!(
+-            check_codex_status(root, &skills).is_empty(),
++            check_codex_status(&entries).is_empty(),
+             "the pipeline reports the codex directory as FAIL, not as a placeholder INFO line"
+         );
+     }
+@@ -1303,7 +1298,8 @@ mod tests {
+     #[test]
+     fn discovers_reasonix_variants_for_coupled_skills() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
+         let coupled_names = [
+             "audit-autopilot",
+             "autopilot-implementer",
+@@ -1311,9 +1307,9 @@ mod tests {
+             "autopilot-reviewer",
+         ];
+         for name in coupled_names {
+-            let found = skills
++            let found = targets
+                 .iter()
+-                .any(|s| s.name == name && s.variant.as_deref() == Some("reasonix"));
++                .any(|t| t.name() == name && t.variant() == Some("reasonix"));
+             assert!(found, "should discover reasonix variant for {}", name);
+         }
+     }
+@@ -1321,10 +1317,11 @@ mod tests {
+     #[test]
+     fn variant_skills_use_correct_relative_path() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        let orchestrator = skills.iter().find(|s| {
+-            s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("reasonix")
+-        });
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        let orchestrator = targets
++            .iter()
++            .find(|t| t.name() == "autopilot-orchestrator" && t.variant() == Some("reasonix"));
+         assert!(
+             orchestrator.is_some(),
+             "should find autopilot-orchestrator reasonix variant"
+@@ -1339,10 +1336,11 @@ mod tests {
+     #[test]
+     fn discovers_codex_skill_variants() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        let orchestrator = skills
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        let orchestrator = targets
+             .iter()
+-            .find(|s| s.name == "autopilot-orchestrator" && s.variant.as_deref() == Some("codex"));
++            .find(|t| t.name() == "autopilot-orchestrator" && t.variant() == Some("codex"));
+         assert!(
+             orchestrator.is_some(),
+             "should find autopilot-orchestrator codex variant"
+@@ -1353,9 +1351,9 @@ mod tests {
+             "skills/autopilot/autopilot-orchestrator/codex/SKILL.md"
+         );
+ 
+-        let audit = skills
++        let audit = targets
+             .iter()
+-            .find(|s| s.name == "audit-autopilot" && s.variant.as_deref() == Some("codex"));
++            .find(|t| t.name() == "audit-autopilot" && t.variant() == Some("codex"));
+         assert!(audit.is_some(), "should find audit-autopilot codex variant");
+         let audit = audit.unwrap();
+         assert_eq!(
+@@ -1367,11 +1365,12 @@ mod tests {
+     #[test]
+     fn runtime_agnostic_skills_have_no_variant() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        let toolkit = skills.iter().find(|s| s.name == "toolkit-setup");
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        let toolkit = targets.iter().find(|t| t.name() == "toolkit-setup");
+         assert!(toolkit.is_some(), "should find toolkit-setup");
+         assert_eq!(
+-            toolkit.unwrap().variant,
++            toolkit.unwrap().variant(),
+             None,
+             "toolkit-setup should have no variant"
+         );
+@@ -1382,78 +1381,22 @@ mod tests {
+     #[test]
+     fn check_codex_status_reports_missing_codex() {
+         let root = repo_root();
+-        let skills = expand_skills(root).expect("expand_skills should succeed");
+-        let status = check_codex_status(root, &skills);
++        let targets =
++            build_validation_targets(root).expect("build_validation_targets should succeed");
++        let entries: Vec<skill_index::ExpectedSetEntry> =
++            targets.iter().map(|t| t.entry.clone()).collect();
++        let status = check_codex_status(&entries);
+         assert!(status
+             .iter()
+             .any(|l| l.contains("autopilot-implementer") && l.contains("agent.toml")));
+         assert!(status
+             .iter()
+             .any(|l| l.contains("autopilot-reviewer") && l.contains("agent.toml")));
+-        assert!(
+-            !status.iter().any(|l| l.contains("audit-autopilot") && l.contains("placeholder")),
+-            "audit-autopilot has a codex/SKILL.md and should no longer be reported as a placeholder"
+-        );
+         assert!(
+             !status
+                 .iter()
+-                .any(|l| l.contains("autopilot-orchestrator") && l.contains("placeholder")),
+-            "orchestrator has a codex/SKILL.md and should no longer be reported as a placeholder"
+-        );
+-    }
+-
+-    // ── Data-driven codex status ────────────────────────────────────────
+-
+-    #[test]
+-    fn codex_status_is_data_driven_not_hardcoded_names() {
+-        // Create a temp fixture with a skill that has codex/agent.toml but no codex/SKILL.md
+-        let tmp = tempfile::tempdir().unwrap();
+-        let root = tmp.path();
+-
+-        // Set up autopilot skill dir
+-        let skill_dir = root.join("skills/autopilot/test-skill");
+-        fs::create_dir_all(skill_dir.join("codex")).unwrap();
+-        fs::write(
+-            skill_dir.join("codex").join("agent.toml"),
+-            "[agent]\nname = \"test\"\n",
+-        )
+-        .unwrap();
+-
+-        // The skill list is empty (no codex variant discovered)
+-        let skills: Vec<Skill> = vec![];
+-        let status = check_codex_status(root, &skills);
+-
+-        // Should report "uses agent.toml" because agent.toml exists
+-        // (data-driven: based on filesystem, not hardcoded name)
+-        assert!(
+-            status
+-                .iter()
+-                .any(|l| l.contains("test-skill") && l.contains("agent.toml")),
+-            "should detect agent.toml for a skill with any name, got: {:?}",
+-            status
+-        );
+-    }
+-
+-    #[test]
+-    fn codex_status_placeholder_for_dir_without_agent_toml() {
+-        let tmp = tempfile::tempdir().unwrap();
+-        let root = tmp.path();
+-
+-        let skill_dir = root.join("skills/autopilot/placeholder-skill");
+-        fs::create_dir_all(skill_dir.join("codex")).unwrap();
+-        // No agent.toml, no SKILL.md — just an empty codex dir.  An empty
+-        // skills list still reaches this line; through the validation
+-        // pipeline the same directory FAILs (see
+-        // codex_variant_without_skill_md_or_agent_toml_fails_validation).
+-
+-        let skills: Vec<Skill> = vec![];
+-        let status = check_codex_status(root, &skills);
+-
+-        assert!(
+-            status
+-                .iter()
+-                .any(|l| l.contains("placeholder-skill") && l.contains("placeholder")),
+-            "should report placeholder for skill without agent.toml, got: {:?}",
++                .any(|l| l.contains("audit-autopilot") || l.contains("autopilot-orchestrator")),
++            "skills with a codex/SKILL.md must not be reported as agent definitions, got: {:?}",
+             status
+         );
+     }
+diff --git a/docs/adr/0045-expected-set-entry-resolves-its-skill-files.md b/docs/adr/0045-expected-set-entry-resolves-its-skill-files.md
+new file mode 100644
+index 0000000..5c65979
+--- /dev/null
++++ b/docs/adr/0045-expected-set-entry-resolves-its-skill-files.md
+@@ -0,0 +1,77 @@
++# ADR 0045: An Expected-set Entry Resolves Its Skill Files
++
++> Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single
++> discoverable router). Sharpens the term recorded as **Skill file** in
++> `CONTEXT.md`.
++
++## Context
++
++ADR 0044 made `skill-index` the single owner of Expected-set enumeration, but the
++entry it returns only resolved a *directory* (`source_dir`, `resolution`). Which
++files that directory owes the toolkit — the root `SKILL.md`, one per runtime
++variant, and the two codex variants that ship `agent.toml` instead — stayed
++per-consumer folklore. `validation-runner` rebuilt the layout (`source_dir.join
++("SKILL.md")`, `variant.join("SKILL.md")`) and privately owned the codex
++exemption; `check_codex_status` re-walked `skills/autopilot/*/codex` and de-duped
++against the caller's skill list. A resolved entry whose `SKILL.md` was absent
++vanished from validation's report while the gate still said PASS — ticket #118
++patched that consumer, not the interface.
++
++## Decision
++
++An Expected-set entry resolves the **skill files** it owns, and those files carry
++the failure vocabulary. Each skill file records its variant, its resolved path,
++its kind (`Skill` for a `SKILL.md`, `AgentDefinition` for an `agent.toml`), and
++its resolution (`Resolved`, or `Missing { reason }`). The entry-level resolution
++status retires: an entry is a failed entry when any file it owns is missing, and an
++entry that malformed-provenance cannot ground reports one missing file anchored at
++its source root. A variant that ships an `agent.toml` appears as a resolved
++`AgentDefinition`; a variant directory with neither file is a missing `Skill`.
++
++Strictness stays at the consumer, exactly as ADR 0044 recorded it: `dev` warns and
++skips failed entries, `pack` fails, validation FAILs. What changed is where the
++facts come from — consumers read the resolved file list instead of rebuilding the
++source layout. Layout knowledge for the *source tree* (which files an entry owns)
++lives in the enumerator; layout policy for the *installed tree* (router, instruction
++renaming, runtime directories, fallback priority) stays in `deploy` per ADR 0036.
++
++`validation-runner` stops shadowing the entry with a flattened `Skill` record:
++validation targets are built as one list that carries identity and result together,
++so report grouping can no longer misalign skills and results. `check_codex_status`
++becomes a pure projection of the file list and drops its placeholder-directory INFO
++line, which was unreachable through the shipped validation pipeline (such a
++directory already fails validation).
++
++## Alternatives considered
++
++### A. Keep directory-level resolution and let consumers derive files
++
++Rejected: it is the status quo that produced #118. Two consumers derived the codex
++exemption differently, and the interface could not distinguish "resolved directory"
++from "resolved directory with the files the toolkit needs".
++
++### B. A second, file-level status alongside the entry-level one
++
++Rejected: two failure vocabularies for one fact invite drift — the same failure
++would be reported at whichever level a consumer happened to read.
++
++### C. Keep the placeholder-directory INFO line in `check_codex_status`
++
++Rejected: unreachable in the shipped pipeline (validation FAILs such a directory),
++and it existed only because the function re-derived facts the enumerator now owns.
++
++## Consequences
++
++- Deliberate behavior changes: `check_codex_status` no longer emits the
++  placeholder-directory INFO line; entry-level `resolution` and its reason strings
++  leave the `ExpectedSetEntry` interface; an `agent.toml` variant is reported as a
++  resolved agent definition instead of being parsed as frontmatter; and packaging
++  now fails on a skill whose directory exists but whose root `SKILL.md` is absent
++  (a state the old directory-level check could not see).
++- Everything else keeps its behavior: `dev` policy, `pack` strictness, tarball
++  layout, validation verdicts for present, missing-directory, missing-`SKILL.md`,
++  and malformed-`skillPath` entries.
++- Adding a runtime variant, or a variant that ships a non-`SKILL.md` artifact,
++  becomes one enumerator change instead of a change in every consumer.
++- `validation-runner`'s skill/result parallel arrays retire; the report iterates one
++  list.
+diff --git a/skills/autopilot/toolkit-setup/SKILL.md b/skills/autopilot/toolkit-setup/SKILL.md
+index 1560884..84d760a 100644
+--- a/skills/autopilot/toolkit-setup/SKILL.md
++++ b/skills/autopilot/toolkit-setup/SKILL.md
+@@ -34,20 +34,26 @@ logic manually.
+    rust-script "$PROJECT_ROOT/deploy.rs" link-principles "$PROJECT_ROOT/principles"
+    ```
+ 
+-4. Derive the expected skill names from `.skill-lock.json` (upstream),
+-   `.vendor-lock.json` (vendor), and `skills/autopilot/*/` (autopilot); do not
+-   hardcode the list. Vendor directories without a `.vendor-lock.json` entry
+-   are orphans — report them, do not install them.
+-5. Verify every expected shared entry is a valid directory or symlink.
+-6. For every source skill that has any of `codex/`, `kimi/`, or `reasonix/`,
+-   verify:
++4. Enumerate the Expected set through the toolkit's own enumerator
++   (`skill-index`'s `discover_skills`, reaching it via `deploy.rs` output or a
++   small `rust-script` probe). Read each entry's facts from that enumeration —
++   its Skill source, its Skill files and their kinds, and any missing skill
++   file — instead of re-deriving names or instruction files from the lock
++   files and a directory scan. Do not hardcode the list. Vendor directories
++   without a `.vendor-lock.json` entry are orphans — report them, do not
++   install them.
++5. Verify every enumerated entry resolves all its Skill files, and that every
++   expected shared entry is a valid directory or symlink.
++6. For every Skill file whose kind is an agent definition (`agent.toml`),
++   check the codex agent link rather than an instruction file. For every entry
++   that owns runtime variant skill files, verify:
+    - the installed tree contains exactly one file named `SKILL.md`;
+    - `runtime/default/INSTRUCTIONS.md` exists;
+-   - each source runtime `SKILL.md` has a corresponding installed
+-     `runtime/<runtime>/INSTRUCTIONS.md`;
++   - each enumerated variant skill file has a corresponding installed
++     `runtime/<variant>/INSTRUCTIONS.md`;
+    - no same-name entry exists in the Codex or Reasonix exclusive skill
+      directory.
+-7. If `codex/agent.toml` exists, verify the corresponding
++7. For every enumerated agent definition, verify the corresponding
+    `~/.codex/agents/<skill>.toml` link.
+ 8. Verify `${AGENTS_PRINCIPLES_DIR:-$HOME/.agents/principles}` points to
+    `$PROJECT_ROOT/principles`.
+diff --git a/tests/test_build.rs b/tests/test_build.rs
+index d096ddc..f68f879 100644
+--- a/tests/test_build.rs
++++ b/tests/test_build.rs
+@@ -84,6 +84,14 @@ fn setup_mock_project_for_distill(root: &Path) {
+     fs::copy(install_script(), root.join("deploy.rs")).unwrap();
+ 
+     let distill_skill = root.join("skills/autopilot/autopilot-distill");
++    // The root fallback SKILL.md belongs to every coupled skill (ADR-0036);
++    // pack fails without it (ADR-0045).
++    fs::create_dir_all(&distill_skill).unwrap();
++    fs::write(
++        distill_skill.join("SKILL.md"),
++        "---\nname: autopilot-distill\ndescription: Distill router\n---\n",
++    )
++    .unwrap();
+     for variant in &["codex", "kimi", "reasonix"] {
+         let dir = distill_skill.join(variant);
+         fs::create_dir_all(&dir).unwrap();
+diff --git a/tests/test_toolkit_setup.rs b/tests/test_toolkit_setup.rs
+index 41badd6..6ab8b3f 100644
+--- a/tests/test_toolkit_setup.rs
++++ b/tests/test_toolkit_setup.rs
+@@ -37,6 +37,8 @@ fn project_root() -> PathBuf {
+     panic!("Cannot find project root (deploy.rs not found)");
+ }
+ 
++// ── Tests ────────────────────────────────────────────────────────────────
++
+ /// Position of a Skill source in the deterministic Expected-set order.
+ fn source_rank(source: &str) -> u8 {
+     match source {
+@@ -47,16 +49,15 @@ fn source_rank(source: &str) -> u8 {
+     }
+ }
+ 
+-// ── Tests ────────────────────────────────────────────────────────────────
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     /// The repo's own source tree enumerates to a complete, deterministically
+-    /// ordered Expected set — no failed entries, no duplicate names.
++    /// ordered Expected set: every entry resolves every Skill file it owns,
++    /// and no entry is a failed entry (ADR-0045).
+     #[test]
+-    fn expected_set_resolves_from_the_repo_tree() {
++    fn repo_tree_resolves_every_skill_file() {
+         let entries = skill_index::discover_skills(&project_root())
+             .expect("enumerate the Expected set from the repo tree");
+ 
+@@ -67,20 +68,30 @@ mod tests {
+ 
+         let failed: Vec<String> = entries
+             .iter()
+-            .filter_map(|entry| match &entry.resolution {
+-                skill_index::ResolutionStatus::Missing { reason } => {
+-                    Some(format!("{}: {reason}", entry.name))
+-                }
+-                skill_index::ResolutionStatus::Resolved => None,
++            .filter(|entry| entry.is_failed())
++            .map(|entry| {
++                let missing: Vec<String> = entry
++                    .skill_files
++                    .iter()
++                    .filter_map(|file| match &file.resolution {
++                        skill_index::ResolutionStatus::Missing { reason } => Some(format!(
++                            "{} ({:?}): {reason}",
++                            file.path.display(),
++                            file.variant
++                        )),
++                        skill_index::ResolutionStatus::Resolved => None,
++                    })
++                    .collect();
++                format!("{}: {}", entry.name, missing.join("; "))
+             })
+             .collect();
+         assert!(
+             failed.is_empty(),
+-            "every entry must resolve in the repo tree:\n{failed:#?}"
++            "every entry must resolve all its Skill files in the repo tree:\n{failed:#?}"
+         );
+ 
+-        // Deterministic order: autopilot, then vendor, then upstream,
+-        // name-sorted within each group.
++        // Entry order: autopilot, then vendor, then upstream; name-sorted
++        // within each group.
+         let order: Vec<(u8, &str)> = entries
+             .iter()
+             .map(|entry| (source_rank(&entry.source), entry.name.as_str()))
+@@ -92,6 +103,36 @@ mod tests {
+             "entries must be in deterministic source-then-name order"
+         );
+ 
++        // Skill-file order: root fallback first, then variants in runtime order.
++        let runtime_rank = |variant: &str| {
++            skill_index::RUNTIME_VARIANTS
++                .iter()
++                .position(|known| *known == variant)
++                .unwrap_or_else(|| panic!("unknown runtime variant {variant}"))
++        };
++        for entry in &entries {
++            assert_eq!(
++                entry.skill_files.first().and_then(|f| f.variant.as_deref()),
++                None,
++                "entry '{}' must list its root fallback skill file first",
++                entry.name
++            );
++            let ranks: Vec<usize> = entry
++                .skill_files
++                .iter()
++                .skip(1)
++                .filter_map(|file| file.variant.as_deref())
++                .map(runtime_rank)
++                .collect();
++            let mut sorted = ranks.clone();
++            sorted.sort_unstable();
++            assert_eq!(
++                ranks, sorted,
++                "entry '{}' must list variants in runtime order",
++                entry.name
++            );
++        }
++
+         let mut names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+         names.sort_unstable();
+         let mut deduped = names.clone();

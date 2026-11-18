@@ -1,0 +1,338 @@
+diff --git a/CONTEXT.md b/CONTEXT.md
+index ef1139d..0ae573d 100644
+--- a/CONTEXT.md
++++ b/CONTEXT.md
+@@ -13,7 +13,7 @@ The authoritative list of toolkit skills, derived at runtime by reading `.skill-
+ _Avoid_: skill inventory, skill manifest
+ 
+ **Expected-set entry**:
+-One skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and whether that location was resolved. An entry whose provenance points at a missing directory is a failed entry.
++One skill belonging to the Expected set: its identity, its Skill source, its location in the source tree, and the Skill files it owns. An entry whose provenance points at a missing directory is a failed entry.
+ _Avoid_: skill record, discovery result, skill item
+ 
+ **Skill file**:
+diff --git a/IMPLEMENTER_REPORT.md b/IMPLEMENTER_REPORT.md
+new file mode 100644
+index 0000000..3d183d9
+--- /dev/null
++++ b/IMPLEMENTER_REPORT.md
+@@ -0,0 +1,25 @@
++IMPLEMENTER_REPORT:
++ROUND: 0
++STATUS: DONE
++SUGGESTION_RESOLUTIONS:
++none
++SELF_REVIEW:
++- TDD evidence: RED first. Added `generate_manifest_derives_failure_from_skill_files` (crates/skill-index/src/lib.rs) and `entry_failure_reasons_keep_their_wording_on_the_skill_file`. Before the implementation `cargo test -p skill-index` failed only on the manifest test: "assertion `left == right` failed: a failed entry must not invent a manifest entry / left: [\"gated\", \"open\"] / right: [\"open\"]" (a directory that exists but lacks its root SKILL.md was not skipped, because `generate_manifest` consulted the directory-level status). After the implementation both tests pass.
++- AC1 (entry no longer exposes directory-level status; failure derived from skill files): removed `pub resolution: ResolutionStatus` from `ExpectedSetEntry` and every construction site (`discover_skills`, `resolved_entry`, `failed_entry`, test `entry()` helper, synthetic manifest test literal). `failed_entry` keeps the reason on the root `SkillFile` only. `generate_manifest` now uses `skill.is_failed()` — failure is derived from the skill files the entry owns (ADR-0045).
++- AC2 (messages keep naming the missing location and reason): new `entry_failure_reasons_keep_their_wording_on_the_skill_file` pins the exact previous strings on the root skill file: "vendor skill directory not found: <abs path>", "upstream skill directory not found: <path>", and `malformed skillPath "<path>": expected a path ending in /SKILL.md`. The existing missing-vendor / missing-upstream enumerator tests were migrated to the root skill file and still require the reason class plus the missing path. Packaging (`reject_failed_entries` formats `'name' (source skill, file): reason`) and validation matrix wording tests were untouched and stay green.
++- AC3 (compiles, workspace tests green, no reader of the retired status, clippy clean): `cargo test --workspace` passes; `cargo clippy --workspace --all-targets -- -D warnings` passes; grep confirms no `entry.resolution` / `skill.resolution` reads — the only `.resolution` reads are on `SkillFile` (`file.resolution`, `skill_file(..).resolution`).
++- AC4 (behavior unchanged): dev policy, pack strictness, tarball/installed layout, lock format, and all five entry-state verdicts are unchanged; the existing referee suites pass. Deliberate changes, both required by ADR-0045: (a) the entry-level `resolution` field and its reason strings leave the `ExpectedSetEntry` interface; (b) `generate_manifest` derives failure from skill files, which closes the latent #118 path where a present directory with a missing root SKILL.md could still invent a manifest entry (the shipped pack flow is unchanged because packaging rejects failed entries before generating the manifest). `ResolutionStatus` itself stays as the Skill-file state; the reason vocabulary moved onto the file. CONTEXT.md's **Expected-set entry** definition and the `ResolutionStatus` docs were updated to match.
++- AC5 (no assertion relaxed): the touched enumerator assertions were migrated, not weakened (`assert_eq!(entry.resolution, Resolved)` became `assert!(!entry.is_failed(), ...)` plus root-skill-file checks; failure tests now require the reason class and missing path instead of only a name fragment). No existing assertion was deleted or loosened.
++- Regression evidence: final `cargo test --workspace` exit 0, every suite ok (35, 113, 3, 8, 15, 9, 17, 1, 4, 1, 4, 17, 24, 23, 28, 34, plus doc-tests; only pre-existing `unused dependency anyhow/serde_json` warnings in crates/validation/Cargo.toml). Note: one intermediate full run hit a pre-existing flake outside this change — `crates/distill-cli` `transition::tests::commit_writes_run_artifact_with_exact_bytes` raced its sibling `events_are_appended_before_state_is_written`, which exports the process-global `DISTILL_FAIL_WRITE_STATE_FOR_RUN=run-1` while tests share a process (crates/distill-cli/src/transition.rs:272-281); the immediate rerun was green and distill-cli is untouched by this diff. `bash scripts/sandboxed-rust-script.sh --test tests/test_install.rs` 7 passed; `bash scripts/sandboxed-rust-script.sh --test tests/test_toolkit_setup.rs` 1 passed. `cargo fmt -p skill-index -- --check` and `cargo fmt -p validation-runner -- --check` are clean (the repo has pre-existing rustfmt drift in unrelated crates; those files were not touched). No scope creep: no type renames, no doc rewrites beyond the affected terms, no test files edited.
++CHANGED_FILES:
++- crates/skill-index/src/lib.rs (removed `ExpectedSetEntry::resolution` and its construction sites; `generate_manifest` derives failure via `is_failed()`; `ResolutionStatus`/`SkillFile` docs updated; enumerator tests migrated and two new tests added)
++- crates/validation-runner/src/lib.rs (test helper no longer sets the retired field; failure-section and matrix-case comments updated)
++- CONTEXT.md (Expected-set entry definition now names the Skill files the entry owns)
++- crates/deploy/src/dev.rs (pre-existing) — already derives skip/warning from skill files
++- crates/deploy/src/pack.rs (pre-existing) — already rejects and names every missing skill file
++- tests/test_install.rs (pre-existing) — dev/pack referee suite
++- tests/test_toolkit_setup.rs (pre-existing) — reads `is_failed()` / `file.resolution`
++- docs/adr/0045-expected-set-entry-resolves-its-skill-files.md (pre-existing) — decision this ticket completes
++- corpus/issue-121.json (pre-existing) — parent spec
++- corpus/issue-126.json (pre-existing) — this ticket
++SUMMARY: Retired the entry-level resolution status: `ExpectedSetEntry` no longer carries a directory-level verdict, `generate_manifest` derives failure from the skill files the entry owns, and all dev/pack/validation messages, verdicts, and layouts keep their previous wording and behavior.
+diff --git a/crates/skill-index/src/lib.rs b/crates/skill-index/src/lib.rs
+index 7902115..15abf25 100644
+--- a/crates/skill-index/src/lib.rs
++++ b/crates/skill-index/src/lib.rs
+@@ -23,14 +23,13 @@ pub enum SkillType {
+     Coupled,
+ }
+ 
+-/// Whether an Expected-set entry's source directory resolved.
++/// Whether a Skill file resolved on disk.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum ResolutionStatus {
+-    /// The source directory exists.
++    /// The file exists.
+     Resolved,
+-    /// The failed-entry state (CONTEXT.md): the provenance points at a
+-    /// directory that does not exist. The entry is still returned, with its
+-    /// reason.
++    /// The failed-entry state (CONTEXT.md): the file the entry owns is missing.
++    /// The entry is still returned, with the reason on its Skill file.
+     Missing { reason: String },
+ }
+ 
+@@ -77,12 +76,9 @@ pub struct ExpectedSetEntry {
+     /// The skill's source directory, joined to the project root. For a failed
+     /// entry this is the expected location that was not found.
+     pub source_dir: PathBuf,
+-    /// Whether `source_dir` exists. Retained for consumers that apply
+-    /// directory-level strictness; the skill-file list is authoritative for
+-    /// "which files does this entry own".
+-    pub resolution: ResolutionStatus,
+     /// The Skill files this entry owns, in deterministic order: the root
+-    /// fallback first, then each runtime variant in runtime order.
++    /// fallback first, then each runtime variant in runtime order. They carry
++    /// the failure vocabulary (ADR-0045); there is no entry-level status.
+     pub skill_files: Vec<SkillFile>,
+ }
+ 
+@@ -222,7 +218,6 @@ pub fn discover_skills(project_root: &Path) -> Result<Vec<ExpectedSetEntry>, any
+                             variants: vec![],
+                             codex_agent: false,
+                             source_dir: src_dir,
+-                            resolution: ResolutionStatus::Resolved,
+                             skill_files: vec![skill_file(
+                                 None,
+                                 skill_md.clone(),
+@@ -294,7 +289,6 @@ fn resolved_entry(name: String, source: &str, source_dir: PathBuf) -> ExpectedSe
+         variants,
+         codex_agent,
+         source_dir,
+-        resolution: ResolutionStatus::Resolved,
+         skill_files,
+     }
+ }
+@@ -368,10 +362,11 @@ fn skill_file(
+     }
+ }
+ 
+-/// Build a failed entry for provenance that points at a missing directory.
++/// Build a failed entry for provenance that points at a missing file.
+ ///
+ /// A missing directory cannot be classified, so the type metadata defaults to
+-/// agnostic with no variants.
++/// agnostic with no variants. The reason lives on the root skill file, which is
++/// the entry's whole failure vocabulary (ADR-0045).
+ fn failed_entry(
+     name: String,
+     source: &str,
+@@ -386,9 +381,6 @@ fn failed_entry(
+         variants: vec![],
+         codex_agent: false,
+         source_dir,
+-        resolution: ResolutionStatus::Missing {
+-            reason: reason.clone(),
+-        },
+         skill_files: vec![SkillFile {
+             variant: None,
+             path: root_file,
+@@ -403,11 +395,12 @@ fn failed_entry(
+ /// Generate a manifest.json document from discovered skills.
+ ///
+ /// Failed entries are skipped: they have no shipped skill directory, so they
+-/// must not invent manifest entries.
++/// must not invent manifest entries. Failure is derived from the skill files
++/// the entry owns (ADR-0045), never from a directory-level status.
+ pub fn generate_manifest(skills: &[ExpectedSetEntry], version: &str) -> Manifest {
+     let mut map = BTreeMap::new();
+     for skill in skills {
+-        if !matches!(skill.resolution, ResolutionStatus::Resolved) {
++        if skill.is_failed() {
+             continue;
+         }
+         let skill_type_str = match skill.skill_type {
+@@ -546,7 +539,7 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn expected_set_entries_carry_resolved_dirs_and_status() {
++    fn expected_set_entries_carry_resolved_dirs_and_complete_skill_files() {
+         let tmp = tempfile::tempdir().unwrap();
+         let root = tmp.path();
+ 
+@@ -575,7 +568,7 @@ mod tests {
+         assert_eq!(alpha.skill_type, SkillType::Agnostic);
+         assert!(alpha.variants.is_empty());
+         assert!(!alpha.codex_agent);
+-        assert_eq!(alpha.resolution, ResolutionStatus::Resolved);
++        assert!(!alpha.is_failed(), "every owned skill file must resolve");
+         assert_eq!(alpha.source_dir, root.join("skills/autopilot/alpha"));
+ 
+         let beta = entries.iter().find(|e| e.name == "beta").unwrap();
+@@ -587,13 +580,13 @@ mod tests {
+         let show_me = entries.iter().find(|e| e.name == "show-me").unwrap();
+         assert_eq!(show_me.source, "vendor");
+         assert_eq!(show_me.skill_type, SkillType::Agnostic);
+-        assert_eq!(show_me.resolution, ResolutionStatus::Resolved);
++        assert!(!show_me.is_failed(), "every owned skill file must resolve");
+         assert_eq!(show_me.source_dir, root.join("skills/vendor/show-me"));
+ 
+         let tdd = entries.iter().find(|e| e.name == "tdd").unwrap();
+         assert_eq!(tdd.source, "upstream");
+         assert_eq!(tdd.skill_type, SkillType::Agnostic);
+-        assert_eq!(tdd.resolution, ResolutionStatus::Resolved);
++        assert!(!tdd.is_failed(), "every owned skill file must resolve");
+         assert_eq!(
+             tdd.source_dir,
+             root.join("skills/upstream/skills/engineering/tdd")
+@@ -630,9 +623,11 @@ mod tests {
+             .expect("a failed entry must still be returned");
+         assert_eq!(ghost.source, "vendor");
+         assert_eq!(ghost.source_dir, root.join("skills/vendor/ghost"));
+-        match &ghost.resolution {
++        assert!(ghost.is_failed(), "a missing directory yields a failed entry");
++        match &ghost.skill_file(None).expect("root skill file").resolution {
+             ResolutionStatus::Missing { reason } => assert!(
+-                reason.contains("ghost"),
++                reason.contains("vendor skill directory not found")
++                    && reason.contains("skills/vendor/ghost"),
+                 "reason should name the missing location, got: {reason}"
+             ),
+             ResolutionStatus::Resolved => panic!("expected a failed entry"),
+@@ -655,15 +650,63 @@ mod tests {
+             gone.source_dir,
+             root.join("skills/upstream/skills/engineering/gone")
+         );
+-        match &gone.resolution {
++        assert!(gone.is_failed(), "a missing directory yields a failed entry");
++        match &gone.skill_file(None).expect("root skill file").resolution {
+             ResolutionStatus::Missing { reason } => assert!(
+-                reason.contains("gone"),
++                reason.contains("upstream skill directory not found")
++                    && reason.contains("skills/upstream/skills/engineering/gone"),
+                 "reason should name the missing location, got: {reason}"
+             ),
+             ResolutionStatus::Resolved => panic!("expected a failed entry"),
+         }
+     }
+ 
++    /// The provenance failures keep their exact wording on the skill file, so
++    /// every consumer's message still names the missing location and reason.
++    #[test]
++    fn entry_failure_reasons_keep_their_wording_on_the_skill_file() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++        write_vendor_lock(root, &[("ghost", "skills/vendor/ghost")]);
++        write_upstream_lock(
++            root,
++            &[
++                ("gone", "skills/engineering/gone/SKILL.md"),
++                ("odd", "skills/engineering/odd/README.md"),
++            ],
++        );
++
++        let entries = discover_skills(root).unwrap();
++        let reason_of = |name: &str| {
++            let entry = entries.iter().find(|e| e.name == name).expect("entry");
++            match &entry.skill_file(None).expect("root skill file").resolution {
++                ResolutionStatus::Missing { reason } => reason.clone(),
++                ResolutionStatus::Resolved => {
++                    panic!("entry '{name}' should own a missing skill file")
++                }
++            }
++        };
++
++        assert_eq!(
++            reason_of("ghost"),
++            format!(
++                "vendor skill directory not found: {}",
++                root.join("skills/vendor/ghost").display()
++            )
++        );
++        assert_eq!(
++            reason_of("gone"),
++            format!(
++                "upstream skill directory not found: {}",
++                root.join("skills/upstream/skills/engineering/gone").display()
++            )
++        );
++        assert_eq!(
++            reason_of("odd"),
++            "malformed skillPath \"skills/engineering/odd/README.md\": expected a path ending in /SKILL.md"
++        );
++    }
++
+     #[test]
+     fn missing_locks_yield_no_locked_entries() {
+         let tmp = tempfile::tempdir().unwrap();
+@@ -965,7 +1008,6 @@ mod tests {
+             variants: variants.iter().map(|v| v.to_string()).collect(),
+             codex_agent,
+             source_dir,
+-            resolution: ResolutionStatus::Resolved,
+             skill_files,
+         }
+     }
+@@ -1033,9 +1075,6 @@ mod tests {
+                 variants: vec![],
+                 codex_agent: false,
+                 source_dir: PathBuf::from("/missing/ghost"),
+-                resolution: ResolutionStatus::Missing {
+-                    reason: "directory not found: /missing/ghost".to_string(),
+-                },
+                 skill_files: vec![SkillFile {
+                     variant: None,
+                     path: PathBuf::from("/missing/ghost/SKILL.md"),
+@@ -1055,6 +1094,33 @@ mod tests {
+         );
+     }
+ 
++    /// Failure is derived from the skill files an entry owns (ADR-0045): a
++    /// directory that exists but lacks a file it owes is a failed entry, and
++    /// `generate_manifest` must not invent a manifest entry for it.
++    #[test]
++    fn generate_manifest_derives_failure_from_skill_files() {
++        let tmp = tempfile::tempdir().unwrap();
++        let root = tmp.path();
++
++        // The #118 shape: the directory exists and ships a reasonix variant,
++        // but the root fallback SKILL.md is absent.
++        write_skill_md(&root.join("skills/autopilot/gated/reasonix"));
++        write_skill_md(&root.join("skills/autopilot/open"));
++
++        let entries = discover_skills(root).unwrap();
++        let gated = entries.iter().find(|e| e.name == "gated").expect("gated");
++        assert!(gated.is_failed(), "a missing root SKILL.md fails the entry");
++
++        let manifest = generate_manifest(&entries, "v1");
++        let mut names: Vec<&str> = manifest.skills.keys().map(String::as_str).collect();
++        names.sort_unstable();
++        assert_eq!(
++            names,
++            vec!["open"],
++            "a failed entry must not invent a manifest entry"
++        );
++    }
++
+     #[test]
+     fn discover_skills_in_this_repo() {
+         // Integration-style: discover skills from the actual repo root
+diff --git a/crates/validation-runner/src/lib.rs b/crates/validation-runner/src/lib.rs
+index 6831385..fc41bc1 100644
+--- a/crates/validation-runner/src/lib.rs
++++ b/crates/validation-runner/src/lib.rs
+@@ -532,7 +532,6 @@ mod tests {
+             variants: vec![],
+             codex_agent: false,
+             source_dir: PathBuf::from(&relative_dir),
+-            resolution: skill_index::ResolutionStatus::Resolved,
+             skill_files: vec![skill_index::SkillFile {
+                 variant: None,
+                 path: PathBuf::from(format!("{relative_dir}/SKILL.md")),
+@@ -814,7 +813,7 @@ mod tests {
+         }
+     }
+ 
+-    // ── Failed entries (Expected-set resolution failures) ───────────────
++    // ── Failed entries (Expected-set skill-file failures) ───────────────
+ 
+     /// Write a temp fixture's `.skill-lock.json` from a raw skills map.
+     fn write_skill_lock(root: &Path, skills_json: &str) {
+@@ -955,9 +954,10 @@ mod tests {
+     /// validation pipeline over it.
+     ///
+     /// States that cannot occur for a source are rejected by construction:
+-    /// autopilot entries come from a directory scan (their resolution never
+-    /// fails), and vendor entries resolve through `vendorPath` (a malformed
+-    /// `skillPath` cannot orphan them).
++    /// autopilot entries come from a directory scan (their skill-file
++    /// resolution never fails for a missing directory), and vendor entries
++    /// resolve through `vendorPath` (a malformed `skillPath` cannot orphan
++    /// them).
+     fn matrix_case(source: &str, state: EntryState) -> (tempfile::TempDir, ValidationReport) {
+         let tmp = tempfile::tempdir().unwrap();
+         let root = tmp.path();
