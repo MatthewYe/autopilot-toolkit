@@ -10,6 +10,8 @@ d:prd-0004 a d:PrdDraft ;
     d:section "Testing Decisions" ;
     d:section "User Stories" ;
     d:source "corpus/specs/0004-self-contained-tarball-install.md" ;
+    d:problemBodyChars 517 ;
+    d:solutionBodyChars 552 ;
     d:storyCount 14 ;
     d:numberedStoryCount 14 ;
     d:wellFormedStoryCount 11 ;

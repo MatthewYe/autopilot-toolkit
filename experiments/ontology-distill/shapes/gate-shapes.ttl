@@ -20,7 +20,10 @@ d:PrdShape a sh:NodeShape ;
       PREFIX d: <https://example.org/autopilot/distill#>
       SELECT $this WHERE {
         $this a d:PrdDraft .
-        FILTER NOT EXISTS { $this d:section "Problem Statement" }
+        FILTER (
+          NOT EXISTS { $this d:section "Problem Statement" } ||
+          EXISTS { $this d:emptySection "Problem Statement" }
+        )
       }""" ;
   ] ;
 
@@ -30,7 +33,10 @@ d:PrdShape a sh:NodeShape ;
       PREFIX d: <https://example.org/autopilot/distill#>
       SELECT $this WHERE {
         $this a d:PrdDraft .
-        FILTER NOT EXISTS { $this d:section "Solution" }
+        FILTER (
+          NOT EXISTS { $this d:section "Solution" } ||
+          EXISTS { $this d:emptySection "Solution" }
+        )
       }""" ;
   ] ;
 
@@ -104,6 +110,16 @@ d:IssueShape a sh:NodeShape ;
 
 d:IssueSetShape a sh:NodeShape ;
   sh:targetClass d:IssueSet ;
+
+  sh:sparql [
+    sh:message "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:IssueSet .
+        FILTER NOT EXISTS { $this d:dependenciesDeclared true }
+      }""" ;
+  ] ;
 
   sh:sparql [
     sh:message "T03: the blocked-by graph contains a cycle." ;

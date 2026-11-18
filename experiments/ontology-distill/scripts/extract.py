@@ -91,7 +91,11 @@ def _story_facts(body: str) -> tuple[int, int, int]:
 
 def extract_prd(path: Path, facts: dict, artifact_id: str, source: str) -> dict:
     """Turn one spec markdown file into a PRD feature dict."""
-    text = path.read_text()
+    return extract_prd_text(path.read_text(), facts, artifact_id, source)
+
+
+def extract_prd_text(text: str, facts: dict, artifact_id: str, source: str) -> dict:
+    """Turn spec markdown into a PRD feature dict (shared with fixtures)."""
     sections = _sections(text)
     stories, numbered, well_formed = _story_facts(sections.get("User Stories", ""))
 
@@ -107,14 +111,15 @@ def extract_prd(path: Path, facts: dict, artifact_id: str, source: str) -> dict:
     )
     lowered = text.lower()
     runtime_plan = runtime_mentions >= 2 and "fallback" in lowered
+    empty_sections = sorted(name for name in sections if len(sections[name]) < 20)
     return {
         "kind": "prd",
         "id": artifact_id,
         "source": source,
         "sections": sorted(sections),
-        "empty_sections": sorted(
-            name for name in sections if len(sections[name]) < 20
-        ),
+        "empty_sections": empty_sections,
+        "problemBodyChars": len(sections.get("Problem Statement", "")),
+        "solutionBodyChars": len(sections.get("Solution", "")),
         "storyCount": stories,
         "numberedStoryCount": numbered,
         "wellFormedStoryCount": well_formed,
@@ -167,7 +172,7 @@ def _has_cycle(edges: dict[int, list[int]]) -> bool:
         for nxt in edges.get(node, []):
             if colour.get(nxt, BLACK) == GREY:
                 return True
-            if colour.get(nxt, WHITE) and visit(nxt):
+            if colour.get(nxt, WHITE) == WHITE and visit(nxt):
                 return True
         colour[node] = BLACK
         return False
@@ -177,14 +182,22 @@ def _has_cycle(edges: dict[int, list[int]]) -> bool:
 
 def extract_issues(paths: list[Path], facts: dict, artifact_id: str) -> dict:
     """Turn a set of published issues into an IssueSet feature dict."""
+    payloads = [json.loads(path.read_text()) for path in paths]
+    return extract_issues_from_payloads(
+        payloads, facts, artifact_id, ", ".join(str(p) for p in paths))
+
+
+def extract_issues_from_payloads(payloads: list[dict], facts: dict,
+                                 artifact_id: str, source: str) -> dict:
+    """Turn issue payloads into an IssueSet feature dict (shared with fixtures)."""
     issues = []
     numbers = set()
     bodies: dict[int, str] = {}
-    for path in paths:
-        payload = json.loads(path.read_text())
+    for payload in payloads:
         number = int(payload["number"])
         numbers.add(number)
         bodies[number] = payload.get("body") or ""
+    declared = []
     for number in sorted(numbers):
         sections = _issue_sections(bodies[number])
         parent = sections.get("Parent", "")
@@ -193,6 +206,7 @@ def extract_issues(paths: list[Path], facts: dict, artifact_id: str) -> dict:
             [m for m in map(STORY_RE.match, criteria.splitlines()) if m]
         )
         blocked = _blocked_numbers(sections.get("Blocked by", ""))
+        declared.append("Blocked by" in sections)
         issues.append(
             {
                 "number": number,
@@ -203,13 +217,17 @@ def extract_issues(paths: list[Path], facts: dict, artifact_id: str) -> dict:
                 "hasBuild": bool(sections.get("What to build", "").strip()),
             }
         )
+    dependencies_declared = all(declared)
     edges = {issue["number"]: issue["blockedBy"] for issue in issues}
     return {
         "kind": "issues",
         "id": artifact_id,
-        "source": ", ".join(str(p) for p in paths),
+        "source": source,
         "issues": issues,
-        "hasCycle": _has_cycle(edges),
+        "dependenciesDeclared": dependencies_declared,
+        # A partial graph cannot prove acyclicity; the gate rejects undeclared
+        # dependencies instead of treating "no section" as "no edges".
+        "hasCycle": _has_cycle(edges) if dependencies_declared else False,
         "hasDanglingBlocker": any(issue["dangling"] for issue in issues),
         "multiSlice": bool(facts.get("multiSlice", False)),
     }
@@ -235,6 +253,8 @@ def prd_ttl(feature: dict) -> str:
     fields = []
     for section in feature["sections"]:
         fields.append(f'    d:section {_ttl_value(section)}')
+    for section in feature["empty_sections"]:
+        fields.append(f'    d:emptySection {_ttl_value(section)}')
     for key, value in feature.items():
         if key in {"kind", "id", "sections", "empty_sections"}:
             continue
@@ -249,6 +269,7 @@ def issues_ttl(feature: dict) -> str:
         "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
         "",
         f"d:{feature['id']} a d:IssueSet ;",
+        f"    d:dependenciesDeclared {_ttl_value(feature['dependenciesDeclared'])} ;",
         f"    d:hasCycle {_ttl_value(feature['hasCycle'])} ;",
         f"    d:hasDanglingBlocker {_ttl_value(feature['hasDanglingBlocker'])} ;",
         f"    d:multiSlice {_ttl_value(feature['multiSlice'])} ;",

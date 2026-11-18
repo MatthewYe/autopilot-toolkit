@@ -50,7 +50,7 @@ When the change spans runtimes, the spec states the variant plan and the fallbac
 
 When skill sources change, the spec names the repository validation and check commands as verification.
 
-## Context pointers (10)
+## Context pointers (9)
 
 - `docs/adr/0013-distill-adapts-skills-without-modifying-them.md:1-14` — ADR 0013: adapt skills without modifying them
   > # Distill adapts skills without modifying them Distill-owned stage executor adapters wrap existing natural-language skills with stable input, completion-evidence, and artifact-validation contracts. The vendored `grill-wi
@@ -66,8 +66,6 @@ When skill sources change, the spec names the repository validation and check co
   > # ADR 0008: Self-Contained Tarball Install with Bootstrap Symlinks > Superseded for runtime-coupled skill layout and bootstrap behavior by > [ADR 0036](0036-single-discoverable-runtime-router.md). The self-contained > ta
 - `GLOSSARY.md:1-40` — Repository glossary (canonical vocabulary)
   > # Autopilot Toolkit A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 41 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`
-- `docs/prd/0004-self-contained-tarball-install.md:1-30` — PRD 0004: install exemplar
-  > # PRD 0004: Self-Contained Tarball Install **Status**: ready-for-agent **Parent**: — **ADR**: [0008-self-contained-tarball-install](../adr/0008-self-contained-tarball-install.md) ## Problem Statement autopilot-toolkit cu
 - `skills/upstream/skills/engineering/to-spec/SKILL.md:1-75` — to-spec: PRD template and testing seam
   > --- name: to-spec description: \"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\" disable-model-invocation: true --- 
 - `docs/agents/issue-tracker.md:1-38` — Issue tracker configuration

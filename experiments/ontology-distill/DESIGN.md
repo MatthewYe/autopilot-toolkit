@@ -6,9 +6,9 @@
 ## 0. 结论摘要
 
 - **可行的改造点不是重写技能，而是在技能外面加一层“事实驱动的上下文包”**：把三个阶段的规则拆成 45 条带来源锚点的 clause（其中 8 条由 runner 强制，不注入），把 25 张仓库文档卡作为按条件检索的 context，阶段开始时按 `stage + task facts` 选出最小包注入给模型。
-- **条件注入的收益主要来自“少注入”而不是“多注入”**：相对“整阶段包”，本体选择把 clause 精度从 0.845 提到 1.000，注入字符从 6110 降到 4263（−30%）；相对“全量注入”降 70%。但 clause 精度是同一作者用同一批事实写 gold 与条件得到的，**不是独立证据**；可复核的信号只有 stage→ontology 的增量与关键词检索的表现，context 精度同样依赖单人标注，只是标注对象不同。
+- **条件注入的收益主要来自“少注入”而不是“多注入”**：相对“整阶段包”，本体选择把 clause 精度从 0.845 提到 1.000，注入字符从 5487 降到 4016（−26.8%）；相对“全量注入”降 68%。但 clause 精度是同一作者用同一批事实写 gold 与条件得到的，**不是独立证据**；可复核的信号只有 stage→ontology 的增量与关键词检索的表现，context 精度同样依赖单人标注，只是标注对象不同。
 - **约束层必须放在“人确认之前”**：现在 distill 的 checkpoint 只校验证据 JSON 的结构，不校验草稿内容；人确认后再跑门禁会使确认失效。方案是把 SHACL 门禁放在 `testing-seam-confirmed` / `slice-breakdown-approved` 之前，并把草稿哈希写进 checkpoint 证据。
-- **门禁只能拦结构不变量**：用 4 份真实 PRD（0002/0003/0004/#121）和 1 组真实 issue 集（#122–#126）回放，18/18 夹具符合预期；5/5 已批准工件通过 blocking 层，0 个 blocking 失败。条件型规则（跨运行时计划、迁移说明、验证命令、CI 触发、文件路径）在历史工件上普遍不满足，只能先做 advisory——**如果直接设成 blocking，会拒绝 3/4 份人已批准的 PRD**。
+- **门禁只能拦结构不变量**：用 4 份真实 PRD（0002/0003/0004/#121）和 1 组真实 issue 集（#122–#126）回放，21/21 夹具符合预期；5/5 已批准工件通过 blocking 层，0 个 blocking 失败。条件型规则（跨运行时计划、迁移说明、验证命令、CI 触发、文件路径）在历史工件上普遍不满足，只能先做 advisory——**如果直接设成 blocking，会拒绝 3/4 份人已批准的 PRD**。
 - **在线模型消融尚未执行**：本环境没有模型 API 凭据，也没有可复现的 runner 预算。本文给出预注册的在线实验方案（5 臂 × 8 任务 × 3 次重复）与判定规则，离线部分只回答“选择与门禁是否按设计工作”，不回答“模型产出是否更好”。
 
 ## 1. 现状与缺口
@@ -93,7 +93,7 @@ contexts = { x | stage ∈ x.stages ∨ Cross ∈ x.stages,
   "run_id": "...", "stage": "prd", "task_facts": {"crossRuntime": true, "...": "..."},
   "clauses": [{"id": "P10", "text": "...", "check": "Gate"}],
   "contexts": [{"id": "ADR_0044", "path": "docs/adr/0044-...md", "startLine": 1, "endLine": 40, "excerpt": "..."}],
-  "dropped": [], "budget": {"chars": 4596, "cap": 6000}
+  "dropped": [], "budget": {"chars": 4205, "cap": 6000}
 }
 ```
 
@@ -141,24 +141,30 @@ runner 改动牵涉工作流 JSON、checkpoint 证据 schema、双运行时（DS
 
 ### 5.1 选择消融（24 个 task-stage，5 臂）
 
-| arm | clause recall | clause precision | context recall | context precision | exact set | mean chars (full) | mean chars (hybrid) |
-|---|---|---|---|---|---|---|---|
-| none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0 | 0 |
-| generic | 1.000 | 0.281 | 1.000 | 0.263 | 0.000 | 14235 | 5097 |
-| stage | 1.000 | 0.845 | 1.000 | 0.614 | 0.000 | 6110 | 1850 |
-| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 0.000 | 1900 | 351 |
-| ontology | 1.000 | 1.000 | 1.000 | 0.857 | 0.417 | 4263 | 1427 |
+| arm | clause R | clause P | context R | context P | hist. context R | hist. context P | exact clauses | exact contexts | exact both | mean chars (full) | mean hybrid |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 433 | 433 |
+| generic | 1.000 | 0.281 | 1.000 | 0.264 | 1.000 | 0.185 | 0.000 | 0.000 | 0.000 | 12520 | 6923 |
+| stage | 1.000 | 0.845 | 1.000 | 0.615 | 1.000 | 0.432 | 0.042 | 0.042 | 0.000 | 5487 | 2871 |
+| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 0.293 | 0.352 | 0.000 | 0.000 | 0.000 | 1922 | 966 |
+| ontology | 1.000 | 1.000 | 1.000 | 0.859 | 1.000 | 0.610 | 1.000 | 0.417 | 0.417 | 4016 | 2281 |
+
+`mean chars (full)` 是 `render_payload` 的真实渲染长度，包含固定的任务事实与标题（空包也有 433 字符）；`none` 的 433 即该固定开销。`hist.` 两列只统计任务日期之前已存在的上下文卡，单独计量“事后材料”，不参与选择。
+
+在全部臂中，每个任务的 `targetArtifact`（T1–T5 的 PRD/issue 文档）先从候选集中剔除；否则回放可以读到自己的答案（尤其是 T3 的 PRD 0004）。T6–T8 的目标在 GitHub issue，不在卡片集中。
 
 读法：
 
-- `stage` 是“阶段包、忽略条件”，是条件注入的真正对照。ontology 相对它：clause 精度 +0.155，字符 −30%，context 精度 +0.243。
+- `stage` 是“阶段包、忽略条件”，是条件注入的真正对照。ontology 相对它：clause 精度 +0.155，context 精度 +0.244，注入字符 −26.8%（5487 → 4016），刚好越过 H2 的 25% 门槛；若只看包内容、扣除 433 字符固定头，则从 5054 降到 3583（−29.1%）。
 - `keyword` 的 clause recall 只有 0.095：规则的抽象措辞（“seam 是最高点”）与需求原文几乎没有词面重叠，词面检索在本任务上不可用。这条是否定“用 RAG 代替本体”的直接证据。
 - **clause precision 1.000 不可当作独立证据**：gold 与 `when*` 条件由同一作者依据同一批事实写成，存在循环。相对可复核的是 stage→ontology 的增量与 keyword 的失败；context 精度换了标注对象，但仍出自同一标注者。
-- context 仍有 14% 过注入（0.857）：粗粒度 `surface` 让 ADR 0044/0045/0008、PRD 0004 范例卡进入并不需要它们的 skill/install 任务。要修只能把卡片拆细或引入更细的 facts，这会让 facts 赋值成本上升——当前选择是接受 14%，换取可解释性。
+- context 仍有 14.1% 过注入（0.859）：粗粒度 `surface` 让 ADR 0044/0045/0008 进入并不需要它们的 skill/install 任务。要修只能把卡片拆细或引入更细的 facts，这会让 facts 赋值成本上升——当前选择是接受 14%，换取可解释性。
+- `hist. context P` 只有 0.610，且 T1/T2 明显更低：这两份 PRD 早于 distill 自己的技能与 ADR（2026-06/07），按任务日期标注时大多数过程文档尚未存在。该列是“事后材料占比”的诊断，不是选择质量指标；完整 gold 仍定义为今天重跑该任务所需的最小包。
 
 ### 5.2 门禁夹具与真实语料回放
 
-- 18 个夹具全部按预期：blocking 突变（缺 Problem、故事不编号、无 seam、无 out-of-scope、issue 缺 Parent/AC、DAG 环、悬空 blocked-by）全部被对应 shape 拒绝；advisory 六种条件各产生恰好 1 条警告；空图返回 exit 2（conformance undetermined），门禁 fail closed。
+- 21 个夹具全部按预期：blocking 突变（缺 Problem、Problem/Solution 只留标题清空正文、故事不编号、无 seam、无 out-of-scope、issue 缺 Parent/AC/Blocked by、DAG 环、悬空 blocked-by）全部被对应 shape 拒绝；advisory 六种条件各产生恰好 1 条警告；空图返回 exit 2（conformance undetermined），门禁 fail closed。
+- P01/P02 先看章节是否存在，再看正文是否为空（`d:emptySection`）；T03 在 issue 集没有声明任何 blocked-by 信息时拒绝，而不是把“未声明”当成“无依赖”。这两条是评审回归，不是事后放宽。
 - 真实语料：4 份 PRD + 1 组 issue 集，**blocking 0 失败**；advisory 分布：0002/0003 缺运行时计划（P10），0004/#121 缺验证命令（P12），全部 PRD 引用源码路径（P04），0004 故事句式漂移（P03）。
 
 ### 5.3 这些数字不能证明什么
@@ -176,7 +182,7 @@ runner 改动牵涉工作流 JSON、checkpoint 证据 schema、双运行时（DS
 - **设计**：5 臂（none / generic / stage / keyword / ontology）× 8 任务 × 3 次重复 = 120 次运行；任务内配对，运行顺序随机化；gate 始终开启（gate 本身由夹具与回放单独验证）。
 - **主指标**：最终 issue 集与 PRD 的 blocking gate 通过率（二元）。
 - **次指标**：advisory 数、盲评 rubric（0–2/条）、输入 token、墙钟时间、人工修改行数。
-- **判定**：H1 ontology 对 stage 非劣（差值 ≥ −10pp）；H2 ontology 注入字符比 stage 少 ≥25%；H3 ontology 优于 keyword；H4 advisory 数低于 stage。任一主指标未达则不上默认，保留 stage pack。
+- **判定**：H1 ontology 对 stage 非劣（gate 通过率差值 ≥ −10pp）；H2 ontology 注入字符比 stage 少 ≥25%；H3 ontology 的 gate 通过率比 keyword 高 ≥10pp（相等不算通过）；H4 advisory 数低于 stage。任一主指标未达则不上默认，保留 stage pack。
 - **为什么不现在跑**：本环境无模型凭据；且 8 任务的配对检验只能发现大效应，预注册里明确写出“若 Phase 2 要检测 10pp 差异，需要 16+ 任务”。
 
 ## 7. 分阶段落地

@@ -1,26 +1,26 @@
 Distill selection ablation
 
-arm         recall    prec    ctxR    ctxP  exact   chars  hybrid
------------------------------------------------------------------
-none         0.000   0.000   0.000   0.000  0.000       0       0
-generic      1.000   0.281   1.000   0.263  0.000   14235    5097
-stage        1.000   0.845   1.000   0.614  0.000    6110    1850
-keyword      0.095   0.476   0.393   0.618  0.000    1900     351
-ontology     1.000   1.000   1.000   0.857  0.417    4263    1427
+arm         recall    prec    ctxR    ctxP  hCtxR  hCtxP xClause   xCtx  xBoth   chars  hybrid
+----------------------------------------------------------------------------------------------
+none         0.000   0.000   0.000   0.000  0.000  0.000   0.000  0.000  0.000     433     433
+generic      1.000   0.281   1.000   0.264  1.000  0.185   0.000  0.000  0.000   12520    6923
+stage        1.000   0.845   1.000   0.615  1.000  0.432   0.042  0.042  0.000    5487    2871
+keyword      0.095   0.476   0.393   0.618  0.293  0.352   0.000  0.000  0.000    1922     966
+ontology     1.000   1.000   1.000   0.859  1.000  0.610   1.000  0.417  0.417    4016    2281
 
 stage          arm         recall    prec   chars
-Clarification  none         0.000   0.000       0
-Clarification  generic      1.000   0.307   14235
-Clarification  stage        1.000   0.875    5604
-Clarification  keyword      0.010   0.125    1575
-Clarification  ontology     1.000   1.000    4952
-Prd            none         0.000   0.000       0
-Prd            generic      1.000   0.284   14235
-Prd            stage        1.000   0.808    8376
-Prd            keyword      0.129   0.552    2699
-Prd            ontology     1.000   1.000    4596
-Issues         none         0.000   0.000       0
-Issues         generic      1.000   0.253   14235
-Issues         stage        1.000   0.852    4350
-Issues         keyword      0.146   0.750    1425
-Issues         ontology     1.000   1.000    3241
+Clarification  none         0.000   0.000     438
+Clarification  generic      1.000   0.307   12525
+Clarification  stage        1.000   0.875    5212
+Clarification  keyword      0.010   0.125    1625
+Clarification  ontology     1.000   1.000    4658
+Prd            none         0.000   0.000     428
+Prd            generic      1.000   0.284   12515
+Prd            stage        1.000   0.808    7152
+Prd            keyword      0.129   0.552    2572
+Prd            ontology     1.000   1.000    4205
+Issues         none         0.000   0.000     431
+Issues         generic      1.000   0.253   12518
+Issues         stage        1.000   0.852    4095
+Issues         keyword      0.146   0.750    1569
+Issues         ontology     1.000   1.000    3184

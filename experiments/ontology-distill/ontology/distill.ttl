@@ -68,6 +68,9 @@ d:whenWideRefactor a owl:ObjectProperty .
 d:whenUserFacing a owl:ObjectProperty .
 d:whenHasExistingSeam a owl:ObjectProperty .
 d:whenAmbiguity a owl:ObjectProperty .
+d:introducedAt a owl:ObjectProperty .
+d:targetArtifact a owl:ObjectProperty .
+d:dependenciesDeclared a owl:ObjectProperty .
 d:asOf a owl:DatatypeProperty .
 
 # Clauses

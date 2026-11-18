@@ -19,7 +19,7 @@ unexecuted online design are in [`ABLATION.md`](ABLATION.md).
 | `data/corpus.json` | replay manifest: 4 accepted PRDs + one accepted issue set, with the facts and reason for each |
 | `shapes/gate-shapes.ttl` | blocking structural invariants (sections, numbered stories, seam, out-of-scope, Parent, acceptance criteria, DAG cycles/dangling) |
 | `shapes/advisory-shapes.ttl` | conditional rules that historical artifacts do not satisfy yet (file paths, runtime plan, migration, validation command, CI trigger, story-template drift) |
-| `fixtures/` | 18 fixtures, each a single mutation of a real artifact, plus `EXPECTED.json` |
+| `fixtures/` | 21 fixtures: single mutations of real artifacts, empty-body/dependency regressions, plus `EXPECTED.json` |
 | `scripts/build_artifacts.py` | single source for the ontology, cards and tasks |
 | `scripts/lib.py` | `open-ontologies` wrapper, environment matching and selection |
 | `scripts/select_ablation.py` | five selection arms, metrics and rendered packs |
@@ -48,21 +48,27 @@ fixture does not behave as `fixtures/EXPECTED.json` says.
 
 Selection over 24 task-stages:
 
-| arm | clause R | clause P | context R | context P | mean chars |
-|---|---|---|---|---|---|
-| none | 0.000 | 0.000 | 0.000 | 0.000 | 0 |
-| generic | 1.000 | 0.281 | 1.000 | 0.263 | 14235 |
-| stage | 1.000 | 0.845 | 1.000 | 0.614 | 6110 |
-| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 1900 |
-| ontology | 1.000 | 1.000 | 1.000 | 0.857 | 4263 |
+| arm | clause R | clause P | context R | context P | exact clauses | mean chars |
+|---|---|---|---|---|---|---|
+| none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 433 |
+| generic | 1.000 | 0.281 | 1.000 | 0.264 | 0.000 | 12520 |
+| stage | 1.000 | 0.845 | 1.000 | 0.615 | 0.042 | 5487 |
+| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 0.000 | 1922 |
+| ontology | 1.000 | 1.000 | 1.000 | 0.859 | 1.000 | 4016 |
+
+`mean chars` is the actual `render_payload` length; every pack has a 433-char
+fixed header, so the incremental clause+context payload drops from 5054 to
+3583 (−29.1%), or −26.8% including the header. Each task's own target artifact
+is excluded from candidates in every arm. Exact context sets match in 10/24
+packs (0.417), reported separately because the clause set is the primary unit.
 
 Clause precision 1.000 is **not** independent evidence: the gold labels and the
 `when*` conditions were written by the same author from the same facts. The
-comparison worth reading is the delta over the stage pack (characters −30% at
+comparison worth reading is the delta over the stage pack (characters −26.8% at
 higher context precision); lexical retrieval's recall of 0.095 is the negative
 control.
 
-Gate: 18/18 fixtures as expected; replay of 5 human-approved artifacts has
+Gate: 21/21 fixtures as expected; replay of 5 human-approved artifacts has
 **0 blocking failures**. Six rule checks (story form, file paths, runtime plan, migration note,
 validation command, CI trigger) had to be demoted from blocking to advisory
 after they rejected accepted PRDs; that deviation is recorded in `ABLATION.md`

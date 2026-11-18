@@ -11,6 +11,8 @@ d:prd-0002 a d:PrdDraft ;
     d:section "Testing Decisions" ;
     d:section "User Stories" ;
     d:source "corpus/specs/0002-dual-runtime-compatibility.md" ;
+    d:problemBodyChars 774 ;
+    d:solutionBodyChars 747 ;
     d:storyCount 9 ;
     d:numberedStoryCount 9 ;
     d:wellFormedStoryCount 8 ;

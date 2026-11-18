@@ -34,6 +34,13 @@
     "tier": "blocking",
     "undetermined": false
   },
+  "issues-no-blocked-by": {
+    "advisory_count": 0,
+    "note": "#122 loses its 'Blocked by' section: the DAG is unverifiable and T03 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
   "issues-valid": {
     "advisory_count": 0,
     "note": "Real #122-#126 set: parents, acceptance criteria and DAG all hold.",
@@ -88,6 +95,20 @@
     "note": "Advisory case: P12 reports exactly one warning.",
     "pass": true,
     "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-empty-problem": {
+    "advisory_count": 0,
+    "note": "#121 with the body of 'Problem Statement' emptied: P01/P02 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-empty-solution": {
+    "advisory_count": 0,
+    "note": "#121 with the body of 'Solution' emptied: P01/P02 must reject.",
+    "pass": false,
+    "tier": "blocking",
     "undetermined": false
   },
   "prd-missing-problem": {

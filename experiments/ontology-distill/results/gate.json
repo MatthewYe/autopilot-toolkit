@@ -71,6 +71,20 @@
       ]
     },
     {
+      "fixture": "issues-no-blocked-by",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#122 loses its 'Blocked by' section: the DAG is unverifiable and T03 must reject.",
+      "messages": [
+        "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating."
+      ]
+    },
+    {
       "fixture": "issues-valid",
       "tier": "blocking",
       "expected": "pass",
@@ -176,6 +190,34 @@
       "note": "Advisory case: P12 reports exactly one warning.",
       "messages": [
         "P12: skill sources change but the spec names no validation command."
+      ]
+    },
+    {
+      "fixture": "prd-empty-problem",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with the body of 'Problem Statement' emptied: P01/P02 must reject.",
+      "messages": [
+        "P01: the draft has no non-empty 'Problem Statement' section."
+      ]
+    },
+    {
+      "fixture": "prd-empty-solution",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with the body of 'Solution' emptied: P01/P02 must reject.",
+      "messages": [
+        "P02: the draft has no non-empty 'Solution' section."
       ]
     },
     {

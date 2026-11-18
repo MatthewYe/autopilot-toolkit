@@ -10,6 +10,7 @@ d:CTX_GRIL a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 30 ;
     d:excerpt "--- name: grilling description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases. --- Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it. Work th …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Clarification .
 
 d:CTX_DOMSKILL a d:ContextCard ;
@@ -19,6 +20,7 @@ d:CTX_DOMSKILL a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 50 ;
     d:excerpt "--- name: domain-modeling description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR. --- # Domain Modeling Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenar …" ;
+    d:introducedAt "2026-09-10" ;
     d:stage d:Clarification ;
     d:whenDomainDocs "true"^^xsd:boolean .
 
@@ -29,6 +31,7 @@ d:CTX_GLOSSARY a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 40 ;
     d:excerpt "# Autopilot Toolkit A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 41 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`), plus 8 autopilot (custom, living in `skills/autopilot/`). 35 skills are runtime-agnostic (work on any Agent Skills-compliant agent); 6 au …" ;
+    d:introducedAt "2026-10-02" ;
     d:stage d:Cross .
 
 d:CTX_DOMAIN a d:ContextCard ;
@@ -38,6 +41,7 @@ d:CTX_DOMAIN a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 35 ;
     d:excerpt "# Domain Docs How the engineering skills should consume this repo's domain documentation when exploring the codebase. ## Before exploring, read these - **`GLOSSARY.md`** at the repo root; if absent, read legacy **`CONTEXT.md`**. - **`docs/adr/`** — read ADRs that touch the area you're about to work in. If any of these files don't exist, **proceed silently**. …" ;
+    d:introducedAt "2026-06-23" ;
     d:stage d:Clarification ;
     d:stage d:Prd ;
     d:whenDomainDocs "true"^^xsd:boolean .
@@ -49,6 +53,7 @@ d:CTX_TRACKER a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 38 ;
     d:excerpt "# Issue tracker: GitHub Issues and PRDs for this repo live as GitHub issues on `MatthewYe/autopilot-toolkit`. Use the `gh` CLI for all operations. ## Conventions - **Create an issue**: `gh issue create --title \"...\" --body \"...\"`. Use a heredoc for multi-line bodies. - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and als …" ;
+    d:introducedAt "2026-06-23" ;
     d:stage d:Cross .
 
 d:CTX_WORKFLOW a d:ContextCard ;
@@ -58,6 +63,7 @@ d:CTX_WORKFLOW a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 33 ;
     d:excerpt "{ \"version\": \"distill.v1\", \"stages\": [ { \"id\": \"intake\", \"executor\": \"runner\", \"skill\": null, \"checkpoint\": \"explicit-text-captured\", \"next_action\": \"capture-text-requirement\" }, { \"id\": \"clarification\", \"executor\": \"skill\", \"skill\": \"grill-with-docs\", \"checkpoint\": \"clarification-complete\", \"next_action\": \"invoke-skill\" }, { \"id\": \"prd\", \"executor\": \"skill\" …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Clarification .
 
 d:CTX_ADR10 a d:ContextCard ;
@@ -67,6 +73,7 @@ d:CTX_ADR10 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# Distill snapshots requirement inputs Every Distill run captures an immutable snapshot of its original requirement inputs, including user text, uploaded file contents, and fetched link contents with provenance and content hashes. Later stages read the snapshot instead of mutable source files or URLs, trading additional storage and data-handling responsibili …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Clarification .
 
 d:CTX_ADR26 a d:ContextCard ;
@@ -76,6 +83,7 @@ d:CTX_ADR26 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# Distill separates user and executor authority Only explicit user instructions may abort, purge, or take over a Distill run. Stage executors may declare waiting, blocked, completed, reconciliation, or a reasoned supersession according to their contracts, while the runner validates each transition and records successor links. Distill never treats deletion of …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Clarification .
 
 d:CTX_ADR30 a d:ContextCard ;
@@ -85,6 +93,7 @@ d:CTX_ADR30 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# autopilot-distill skills run to the next boundary Once invoked, an `autopilot-distill` skill variant repeatedly executes the runner's currently authorized action and advances completed stages without requiring another user invocation. It yields only at `waiting`, `blocked`, `needs-reconciliation`, or a terminal run state, and every yield reports the run id …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Clarification .
 
 d:CTX_TOSPEC a d:ContextCard ;
@@ -94,6 +103,7 @@ d:CTX_TOSPEC a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 75 ;
     d:excerpt "--- name: to-spec description: \"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\" disable-model-invocation: true --- This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize w …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Prd .
 
 d:CTX_ADR7 a d:ContextCard ;
@@ -103,6 +113,7 @@ d:CTX_ADR7 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0007: Dual-Runtime Skill Variants with Agent-Exclusive Install Directories > Superseded for installation and discovery by > [ADR 0036](0036-single-discoverable-runtime-router.md). Per-runtime source > variants remain. ## Context autopilot-toolkit targets both Reasonix and Codex. While 17 of 19 skills are runtime-agnostic (pure methodology instructions) …" ;
+    d:introducedAt "2026-06-30" ;
     d:stage d:Prd ;
     d:whenCrossRuntime "true"^^xsd:boolean .
 
@@ -113,6 +124,7 @@ d:CTX_ADR9 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# 代码架构深化：共享基础设施 crate + 逻辑下沉 将代码架构中的重复代码消除、模块化拆分、强类型化三项改善统一执行。延续 ADR-0005 的\"rust-script 薄入口 + workspace crate 承载业务逻辑\"模式，新建 `crates/shared/`、`crates/deploy/`、`crates/validation-runner/`、`crates/skill-check/` 四个 workspace crate。 ## 核心决策 ### 1. 新建 `crates/shared/` 作为公共基础设施 项目根目录推导逻辑在 6+ 处重复，`.skill-lock.json` 解析在 4 处使用 `serde_json::Value` 手动提取。统一抽取到 `shared` cr …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Prd ;
     d:whenSurface d:State .
 
@@ -123,6 +135,7 @@ d:CTX_ADR36 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0036: Single Discoverable Router for Runtime-Coupled Skills ## Context The self-contained install placed a fallback `SKILL.md` and each runtime variant's `SKILL.md` beneath the same shared skill directory. Codex recursively discovers that directory, so one logical Autopilot skill appeared four times. Agent-exclusive symlinks did not isolate the variant …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Prd ;
     d:whenCrossRuntime "true"^^xsd:boolean .
 
@@ -133,6 +146,7 @@ d:CTX_ADR13 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# Distill adapts skills without modifying them Distill-owned stage executor adapters wrap existing natural-language skills with stable input, completion-evidence, and artifact-validation contracts. The vendored `grill-with-docs`, `to-prd`, and `to-issues` skills remain unchanged and independently upgradable; replacing a workflow step changes its adapter assi …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Prd ;
     d:stage d:Issues ;
     d:whenSurface d:Skills .
@@ -144,6 +158,7 @@ d:CTX_ADR40 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# Distill run state is a typed module > Amended by [ADR 0050](0050-run-state-persistence-substrate.md) for the storage substrate: the single-consumer rejection applies to the state schema, which stays in-crate. ## Context distill-cli's run state (`state.json`) was manipulated through string-key `serde_json::Value` access scattered across the binary: the repo …" ;
+    d:introducedAt "2026-09-03" ;
     d:stage d:Prd ;
     d:stage d:Issues ;
     d:whenSurface d:State .
@@ -155,6 +170,7 @@ d:CTX_ADR41 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# Distill state machine owns workflow control > **Renumbered**: this ADR was previously `0009-distill-state-machine-owns-workflow-control`. It was renumbered to 0041 to resolve the duplicate number with `0009-codebase-deepening-shared-crate-and-logic-sink`; \"ADR-0009\" now unambiguously refers to the codebase-deepening ADR. Distill will use a resumable state- …" ;
+    d:introducedAt "2026-09-03" ;
     d:stage d:Prd ;
     d:stage d:Issues ;
     d:whenSurface d:State .
@@ -166,6 +182,7 @@ d:CTX_ADR44 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0044: Single Owner for the Expected Set > Implements spec [#110](https://github.com/MatthewYe/autopilot-toolkit/issues/110) > (one owner for the Expected set). Builds on ADR 0001 (selfcheck derives the expected > set from the sources of truth) and ADR 0009 (skill-index as the discovery crate), and > completes the vendor-source work of ADR 0042. ## Cont …" ;
+    d:introducedAt "2026-09-11" ;
     d:stage d:Prd ;
     d:stage d:Issues ;
     d:whenSurface d:Skills .
@@ -177,6 +194,7 @@ d:CTX_ADR45 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0045: An Expected-set Entry Resolves Its Skill Files > Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single > discoverable router). Sharpens the term recorded as **Skill file** in > `CONTEXT.md`. ## Context ADR 0044 made `skill-index` the single owner of Expected-set enumeration, but the entry it returns only resolved a *director …" ;
+    d:introducedAt "2026-09-15" ;
     d:stage d:Prd ;
     d:whenSurface d:Skills .
 
@@ -187,6 +205,7 @@ d:CTX_ADR52 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0052: Record the Upstream Ref as a Machine-Verifiable Pin > Extends [ADR 0037](0037-upstream-sync-full-replacement.md) (the snapshot is > replaced verbatim) and [ADR 0049](0049-typed-lock-write-path-and-upstream-sync-crate.md) > (machine-written lock, thin sync CLI) with the metadata that answers \"which > upstream commit is vendored?\". Written by the s …" ;
+    d:introducedAt "2026-11-07" ;
     d:stage d:Prd ;
     d:whenSurface d:Ci .
 
@@ -197,6 +216,7 @@ d:CTX_ADR8 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 14 ;
     d:excerpt "# ADR 0008: Self-Contained Tarball Install with Bootstrap Symlinks > Superseded for runtime-coupled skill layout and bootstrap behavior by > [ADR 0036](0036-single-discoverable-runtime-router.md). The self-contained > tarball decision remains in force. ## Context The current install model creates symlinks from agent skills directories (`~/.agents/skills/`, ` …" ;
+    d:introducedAt "2026-07-24" ;
     d:stage d:Prd ;
     d:whenSurface d:Install .
 
@@ -207,6 +227,7 @@ d:CTX_UPSTREAM a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 40 ;
     d:excerpt "# Upstream Sync Runbook How to replace the vendored snapshot at `skills/upstream/` with a newer [mattpocock/skills](https://github.com/mattpocock/skills) revision. Audience: a maintainer or an agent running a one-shot sync. The design is recorded in [ADR 0037](../adr/0037-upstream-sync-full-replacement.md) (verbatim replacement), [ADR 0043](../adr/0043-upstr …" ;
+    d:introducedAt "2026-11-07" ;
     d:stage d:Prd ;
     d:whenSurface d:Ci .
 
@@ -217,6 +238,7 @@ d:CTX_DSHDOC a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 60 ;
     d:excerpt "# DSH（DeepSeek Harness）支持 本文面向\"想让本仓库的 skill 在 DSH 下好用\"的读者：skill 作者、变体维护者，以及在 DSH 里跑 autopilot 工作流的用户。 结论基于 **DSH desktop 0.2.0-rc.2** 包内源码（`dsh-skill`、`dsh-skill-filesystem`、 `dsh-tool-skill`）的调研。DSH 升级后请按第 5 节重新验收。 ## 结论摘要 - **不需要为 DSH 增加专门的安装目标。** `rust-script deploy.rs dev` 把 skill 链接到 `~/.agents/skills/`，这正是 DSH 的默认扫描根之一；发布版安装脚本落到同一位置。Reasonix / Codex / …" ;
+    d:introducedAt "2026-10-02" ;
     d:stage d:Clarification ;
     d:stage d:Prd ;
     d:whenRuntime d:Dsh .
@@ -228,6 +250,7 @@ d:CTX_PRD4 a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 30 ;
     d:excerpt "# PRD 0004: Self-Contained Tarball Install **Status**: ready-for-agent **Parent**: — **ADR**: [0008-self-contained-tarball-install](../adr/0008-self-contained-tarball-install.md) ## Problem Statement autopilot-toolkit currently installs skills as symlinks from agent skills directories into the local source repo. This fails when `~/.agents/skills/` is synced …" ;
+    d:introducedAt "2026-07-24" ;
     d:stage d:Prd ;
     d:whenSurface d:Install .
 
@@ -238,6 +261,7 @@ d:CTX_TOTICK a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 105 ;
     d:excerpt "--- name: to-tickets description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker). disable-model-invocation: true --- # To Tickets Break a plan, spec, or convers …" ;
+    d:introducedAt "2026-07-27" ;
     d:stage d:Issues .
 
 d:CTX_TRIAGE a d:ContextCard ;
@@ -247,4 +271,5 @@ d:CTX_TRIAGE a d:ContextCard ;
     d:startLine 1 ;
     d:endLine 15 ;
     d:excerpt "# Triage Labels The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker. | Label in mattpocock/skills | Label in our tracker | Meaning | | -------------------------- | -------------------- | ---------------------------------------- | | `needs-triage` | `needs-triage` | …" ;
+    d:introducedAt "2026-06-23" ;
     d:stage d:Issues .

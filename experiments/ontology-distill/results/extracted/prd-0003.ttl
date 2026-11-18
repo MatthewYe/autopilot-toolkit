@@ -10,6 +10,8 @@ d:prd-0003 a d:PrdDraft ;
     d:section "Testing Decisions" ;
     d:section "User Stories" ;
     d:source "corpus/specs/0003-kimi-code-adaptation.md" ;
+    d:problemBodyChars 1133 ;
+    d:solutionBodyChars 914 ;
     d:storyCount 18 ;
     d:numberedStoryCount 18 ;
     d:wellFormedStoryCount 17 ;

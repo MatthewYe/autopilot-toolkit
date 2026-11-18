@@ -16,6 +16,8 @@ from pathlib import Path
 from extract import (
     ROOT,
     extract_artifact,
+    extract_issues_from_payloads,
+    extract_prd_text,
     issues_ttl,
     load_manifest,
     prd_ttl,
@@ -32,6 +34,43 @@ def _prd_base() -> dict:
 def _issues_base() -> dict:
     entry = next(e for e in load_manifest() if e["id"] == "issues-121")
     return extract_artifact(entry)
+
+
+def _prd_source_text() -> str:
+    return (ROOT / "corpus" / "specs" / "121-expected-set-resolves-skill-files.md").read_text()
+
+
+def _empty_section(text: str, heading: str) -> str:
+    """Keep the level-2 heading, drop the body up to the next heading."""
+    out, skipping = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            skipping = line.strip() == f"## {heading}"
+            out.append(line)
+        elif not skipping:
+            out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def _issue_payloads() -> list[dict]:
+    return [
+        json.loads((ROOT / "corpus" / "issues" / f"{n}.json").read_text())
+        for n in (122, 123, 124, 125, 126)
+    ]
+
+
+def _drop_blocked_by(payload: dict) -> dict:
+    out, skipping = [], False
+    for line in (payload.get("body") or "").splitlines():
+        if line.startswith("## "):
+            skipping = line.strip() == "## Blocked by"
+            if skipping:
+                continue
+        if not skipping:
+            out.append(line)
+    mutated = copy.deepcopy(payload)
+    mutated["body"] = "\n".join(out)
+    return mutated
 
 
 def build() -> dict:
@@ -56,6 +95,22 @@ def build() -> dict:
          "Real #121 spec: all structural invariants hold.")
     emit("issues-valid", issues_ttl(issues), "blocking", True,
          "Real #122-#126 set: parents, acceptance criteria and DAG all hold.")
+
+    # Markdown-level regressions: extract from text, not from a pre-built graph.
+    for section in ("Problem Statement", "Solution"):
+        feature = extract_prd_text(
+            _empty_section(_prd_source_text(), section),
+            {}, f"prd-empty-{section.split()[0].lower()}", "mutated #121 markdown")
+        emit(f"prd-empty-{section.split()[0].lower()}", prd_ttl(feature),
+             "blocking", False,
+             f"#121 with the body of '{section}' emptied: P01/P02 must reject.")
+
+    payloads = _issue_payloads()
+    payloads[0] = _drop_blocked_by(payloads[0])
+    undeclared = extract_issues_from_payloads(
+        payloads, {"multiSlice": True}, "issues-no-blocked-by", "mutated #122 set")
+    emit("issues-no-blocked-by", issues_ttl(undeclared), "blocking", False,
+         "#122 loses its 'Blocked by' section: the DAG is unverifiable and T03 must reject.")
 
     # ── blocking mutations ────────────────────────────────────────────────
     cases = [

@@ -13,7 +13,7 @@
 | 次指标 | advisory 数；盲评 rubric；输入 token；墙钟；人工修改行数 |
 | H1 | ontology 对 stage 非劣：gate 通过率差值 ≥ −10pp |
 | H2 | ontology 平均注入字符比 stage 少 ≥ 25% |
-| H3 | ontology 的 gate 通过率不低于 keyword |
+| H3 | ontology 的 gate 通过率比 keyword 高 ≥ 10pp（严格优于；相等不算通过） |
 | H4 | ontology 的 advisory 数低于 stage（支持性，不作采纳门槛） |
 | 采纳规则 | H1 ∧ H2 ∧ H3 同时成立才切默认；否则保留 stage pack |
 | 停止规则 | 120 次全部跑完才分析；中途不看分组结果 |
@@ -25,7 +25,7 @@
 
 - 若 ontology ≈ stage（H1 成立但 H2 不成立），说明条件选择没省成本，只是把同样的规则换了存放位置——不值得改 runner。
 - 若 ontology < stage（H1 失败），说明条件裁剪漏掉了模型真正需要的上下文——应退回阶段包，只保留 gate。
-- 若 keyword ≈ ontology（H3 失败），说明词面检索足够，本体是过度设计。
+- 若 ontology 对 keyword 的优势 <10pp（H3 失败），说明词面检索已经够用，本体是过度设计。
 
 这三个结果都会导致“不改默认”，因此实验不是为方案背书。
 
@@ -36,13 +36,14 @@
 - 分析单位：task × stage，共 8 × 3 = 24 个 pack。
 - 任务：T1 PRD 0002（双运行时）、T2 PRD 0003（Kimi）、T3 PRD 0004（自包含 tarball）、T4 #19（director 状态写路径拆分）、T5 #20（state-store 抽取）、T6 #151（upstream 漂移检查）、T7 #144（DSH 运行时）、T8 #121（Expected-set 技能文件解析）。
 - 任务事实是人工依据工件与需求文本赋值的，记录在 `data/tasks.ttl`，并在每个 pack 头部展示。
+- **目标工件排除**：每个任务带一个 `targetArtifact`（T1–T5 为对应 PRD/issue 文档）。选择前先从候选卡中删除该路径，所有臂同等处理。T3 的 PRD 0004 曾作为“范例卡”出现在自己的 pack 里，等于把答案交给被测选择器；T6–T8 的目标是 GitHub issue，不在卡集中。同 commit 的决策 ADR（如 T3 的 ADR 0008）仍保留：它是 PRD 的输入，不是输出。
 
 ### 2.2 臂
 
 | 臂 | 注入内容 | 目的 |
 |---|---|---|
 | none | 空 | 下界：模型只靠技能正文 |
-| generic | 全部 37 条可注入 clause + 全部 25 张卡 | 上界：全量塞入 |
+| generic | 全部 37 条可注入 clause + 全部可用卡（目标工件已排除） | 上界：全量塞入 |
 | stage | 当前 stage 的 clause + 该 stage 的卡，忽略条件 | 主对照：条件是否有价值 |
 | keyword | 词面 top-12 clause + top-6 卡（停用词过滤） | 否定对照：RAG 是否足够 |
 | ontology | `stage + when*` 条件选择，排除 runner-owned | 方案 |
@@ -53,30 +54,36 @@
 
 - clause recall / precision：相对 `data/gold.json` 的集合。
 - context recall / precision：同上。
-- exact set：24 个 pack 中 clause 集合与 gold 完全一致的比例。
-- chars：clause 全文 + context excerpt 的字符数；hybrid = id + 摘要 + 指针。
+- exact clauses / exact contexts / exact both：24 个 pack 中集合与 gold 完全一致的比例，三者分开报告。gold 的最小单位是 clause 集；context 集是否完全一致单独看，避免掩盖 clause 命中。
+- chars：`render_payload` 实际渲染长度（任务事实 + 标题 + clause 正文 + 220 字符 context 摘要）。hybrid = 同一渲染器不输出摘要、只留指针。
+- historical context R/P：只拿“任务日期之前已存在”的 gold 卡计算，单独计量事后材料；主表的 context R/P 使用当前重跑所需的最小 gold 包。
 - token 估算：`(chars + 3) // 4`（仅用于量级，不用于显著性检验）。
 
 ### 2.4 结果
 
 （表见 `results/selection.md`；以下为汇总。）
 
-| arm | clause R | clause P | context R | context P | exact | mean chars | mean hybrid |
-|---|---|---|---|---|---|---|---|
-| none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0 | 0 |
-| generic | 1.000 | 0.281 | 1.000 | 0.263 | 0.000 | 14235 | 5097 |
-| stage | 1.000 | 0.845 | 1.000 | 0.614 | 0.000 | 6110 | 1850 |
-| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 0.000 | 1900 | 351 |
-| ontology | 1.000 | 1.000 | 1.000 | 0.857 | 0.417 | 4263 | 1427 |
+| arm | clause R | clause P | context R | context P | hist. ctx R | hist. ctx P | exact clauses | exact contexts | exact both | mean chars | mean hybrid |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 433 | 433 |
+| generic | 1.000 | 0.281 | 1.000 | 0.264 | 1.000 | 0.185 | 0.000 | 0.000 | 0.000 | 12520 | 6923 |
+| stage | 1.000 | 0.845 | 1.000 | 0.615 | 1.000 | 0.432 | 0.042 | 0.042 | 0.000 | 5487 | 2871 |
+| keyword | 0.095 | 0.476 | 0.393 | 0.618 | 0.293 | 0.352 | 0.000 | 0.000 | 0.000 | 1922 | 966 |
+| ontology | 1.000 | 1.000 | 1.000 | 0.859 | 1.000 | 0.610 | 1.000 | 0.417 | 0.417 | 4016 | 2281 |
 
-分阶段（ontology full chars）：Clarification 4952、Prd 4596、Issues 3241；stage 分别为 5604、8376、4350。
+`none` 的 433 字符是固定头部（任务事实 + 标题），不是选择结果；比较增量时应扣除。
+
+分阶段（ontology full chars）：Clarification 4658、Prd 4205、Issues 3184；stage 分别为 5212、7152、4095。
 
 ### 2.5 解释
 
-- **条件选择在 PRD 阶段省得最多**：stage 8376 → ontology 4596（−45%），因为 PRD 阶段的无条件条款多、条件条款少，阶段包把大量不相关上下文塞进来。
-- **Issues 阶段省得最少**：4350 → 3241（−25%），因为 issue 结构规则几乎对所有任务都适用，条件性弱。
+- **条件选择在 PRD 阶段省得最多**：stage 7152 → ontology 4205（−41.2%），因为 PRD 阶段的无条件条款多、条件条款少，阶段包把大量不相关上下文塞进来。
+- **Clarification 省得最少**：5212 → 4658（−10.6%），因为该阶段大半规则是顺序/访谈纪律，对所有任务都适用，条件性最弱。
+- **Issues 居中**：4095 → 3184（−22.2%）。
+- **整体 26.8%**（5487 → 4016）刚好越过 H2 的 25%；扣掉 433 字符固定头后为 29.1%。这个余量很薄，在线实验必须按真实渲染长度复核。
 - **keyword 失败是结构性的**：clause 文本是抽象规范（“seam 是最高点”），需求文本是具体变更描述，二者词汇重叠极低；提高 top-k 只会增加噪声。
-- **14% context 过注入**是可接受的残余：继续调条件会引入更多 facts，赋值成本与争议随之上升。
+- **14.1% context 过注入**是可接受的残余：继续调条件会引入更多 facts，赋值成本与争议随之上升。
+- **历史材料单独看**：`hist. ctx P` 从 stage 0.432 升到 ontology 0.610，但 T1/T2 仍低——两份 PRD 早于 distill 技能与多数 ADR，按日期只有少数卡存在。这是时间错位的诊断值，不应拿去否定今天的重跑选择。
 
 ### 2.6 效度威胁
 
@@ -85,6 +92,8 @@
 3. **库存偏差**：45 条 clause 从同一批技能/ADR 提炼，可能系统性遗漏“技能没写但人知道”的规则。
 4. **任务选择**：8 个任务都有完整工件可回放，偏向“文档齐全”的项目；对文档缺失的项目，context 选择可能更差。
 5. **字符 ≠ token ≠ 注意力**：字符成本只是代理指标；模型是否真正使用注入内容，离线实验无法回答。
+6. **目标排除不彻底**：只删了 `targetArtifact` 路径；同 commit 的 ADR（T3 的 ADR 0008）、GitHub issue 任务（T6–T8）仍在候选集中。若把它们也算答案，T3/T6–T8 的 precision 应更低。
+7. **历史 gold 与当前 gold 混用**：主表用“今天重跑所需”的 gold，时间列只是诊断；两者不能相加解释。
 
 ## 3. 实验 B：门禁夹具与真实语料回放（已执行，离线）
 
@@ -98,7 +107,7 @@
 
 ### 3.2 结果
 
-- 夹具 18/18 符合预期。
+- 夹具 21/21 符合预期（新增 Problem/Solution 清空正文、issue 缺 Blocked by 声明三条回归）。
 - 回放 blocking：5/5 通过，0 失败。
 - advisory：0002 P10+P04；0003 P10+P04；0004 P12+P04+P03；#121 P12+P04；issue 集 0。
 - 空图 fixture 返回 exit 2，门禁按 fail closed 处理（`conforms: null` 不能当通过）。

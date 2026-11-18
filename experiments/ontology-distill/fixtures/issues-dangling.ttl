@@ -2,6 +2,7 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 d:issues-121 a d:IssueSet ;
+    d:dependenciesDeclared true ;
     d:hasCycle false ;
     d:hasDanglingBlocker true ;
     d:multiSlice true ;

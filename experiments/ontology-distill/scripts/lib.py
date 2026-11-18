@@ -139,9 +139,10 @@ SELECT ?id ?p ?v WHERE {{
     contexts: dict[str, dict] = {}
     for row in store.query(
         f"""PREFIX d: <{PREFIX}>
-SELECT ?x ?id ?title ?path ?start ?end ?excerpt WHERE {{
+SELECT ?x ?id ?title ?path ?start ?end ?excerpt ?introduced WHERE {{
   ?x d:contextId ?id ; d:title ?title ; d:path ?path ;
-     d:startLine ?start ; d:endLine ?end ; d:excerpt ?excerpt .
+     d:startLine ?start ; d:endLine ?end ; d:excerpt ?excerpt ;
+     d:introducedAt ?introduced .
 }}"""
     ):
         contexts[row["id"]] = {
@@ -152,6 +153,7 @@ SELECT ?x ?id ?title ?path ?start ?end ?excerpt WHERE {{
             "start": int(row["start"]),
             "end": int(row["end"]),
             "excerpt": row["excerpt"],
+            "introducedAt": row["introduced"],
             "stages": [],
             "conditions": {},
         }
@@ -198,6 +200,8 @@ SELECT ?id ?p ?v WHERE {{
         "wideRefactor": "wideRefactor",
         "userFacing": "userFacing",
         "hasExistingSeam": "hasExistingSeam",
+        "asOf": "asOf",
+        "targetArtifact": "targetArtifact",
     }
     for row in store.query(
         f"""PREFIX d: <{PREFIX}>
@@ -212,7 +216,8 @@ SELECT ?t ?p ?v WHERE {{
         task = tasks.setdefault(row["t"], {"iri": row["t"]})
         key = task_props[prop]
         value = row["v"]
-        if key in {"id", "title", "requirement", "sourceAnchor", "ambiguity"}:
+        if key in {"id", "title", "requirement", "sourceAnchor", "ambiguity",
+                   "asOf", "targetArtifact"}:
             task[key] = short(value) if prop in {"ambiguity"} else value
         elif key == "stage":
             task.setdefault("stages", []).append(short(value))
@@ -221,7 +226,10 @@ SELECT ?t ?p ?v WHERE {{
                      "hasExistingSeam"}:
             task[key] = value.lower() == "true"
         else:
-            task.setdefault(key, []).append(short(value))
+            task.setdefault(key, [])
+            item = short(value)
+            if item != "None":  # sentinel for a known-empty set
+                task[key].append(item)
     for task in tasks.values():
         task.setdefault("stages", [])
     return clauses, tasks, contexts
@@ -235,23 +243,51 @@ def matches(conditions: dict, task: dict, stage: str) -> bool:
                 return False
             continue
         if key == "ambiguity":
-            if task.get("ambiguity") not in {short(v) for v in values}:
+            if task.get("ambiguity") is None:  # not yet collected: inject
+                continue
+            if task["ambiguity"] not in {short(v) for v in values}:
                 return False
             continue
         if key in {"changeKind", "surface", "runtime"}:
             task_key = {"changeKind": "changeKinds", "surface": "surfaces",
                         "runtime": "runtimes"}[key]
-            if not ({short(v) for v in values} & set(task.get(task_key, []))):
+            if task_key not in task:  # unknown fact: inject conservatively
+                continue
+            if not ({short(v) for v in values} & set(task[task_key])):
                 return False
             continue
         if key in {"multiModule", "crossRuntime", "multiSlice", "domainDocs", "adr",
                    "newAdr", "externalTracker", "wideRefactor", "userFacing",
                    "hasExistingSeam"}:
-            if (values[0].lower() == "true") != bool(task.get(key)):
+            if key not in task:  # unknown fact: inject conservatively
+                continue
+            if (values[0].lower() == "true") != bool(task[key]):
                 return False
             continue
         raise ValueError(f"unknown condition {key}")
     return True
+
+
+def eligible_contexts(contexts: dict, task: dict) -> dict:
+    """Drop the task's own target artifact before any arm selects contexts.
+
+    A replay that can read the accepted answer is not a replay.  The filter
+    lives here, not in the ontology arm, so ``stage`` and ``generic`` pay the
+    same price.
+    """
+    target = task.get("targetArtifact")
+    return {cid: card for cid, card in contexts.items() if card["path"] != target}
+
+
+def historical(contexts: dict, ids: list[str], task: dict) -> list[str]:
+    """Ground truth as it could have been referenced on the task date.
+
+    The main gold set is the minimal useful pack for a current re-run; some of
+    those documents postdate the historical artifact.  This subset measures
+    that anachronism separately instead of letting it inflate recall.
+    """
+    as_of = task.get("asOf", "9999-12-31")
+    return [cid for cid in ids if contexts[cid]["introducedAt"][:10] <= as_of]
 
 
 def select(clauses: dict, contexts: dict, task: dict, stage: str):

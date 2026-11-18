@@ -10,6 +10,8 @@ d:prd-121 a d:PrdDraft ;
     d:section "Testing Decisions" ;
     d:section "User Stories" ;
     d:source "corpus/specs/121-expected-set-resolves-skill-files.md" ;
+    d:problemBodyChars 1271 ;
+    d:solutionBodyChars 790 ;
     d:storyCount 20 ;
     d:numberedStoryCount 20 ;
     d:wellFormedStoryCount 20 ;

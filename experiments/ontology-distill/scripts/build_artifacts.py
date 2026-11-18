@@ -263,8 +263,39 @@ CONTEXTS = [
      "docs/agents/triage-labels.md", 1, 15, ["Issues"], {}),
 ]
 
+# First commit date of each card's file, from `git log --follow --format=%aI
+# --reverse -- <path>`.  Selection may only use documents that already existed
+# on the task date; otherwise a replay leaks later decisions into the answer.
+INTRODUCED = {
+    "skills/upstream/skills/productivity/grilling/SKILL.md": "2026-07-27",
+    "skills/upstream/skills/engineering/domain-modeling/SKILL.md": "2026-09-10",
+    "GLOSSARY.md": "2026-10-02",
+    "docs/agents/domain.md": "2026-06-23",
+    "docs/agents/issue-tracker.md": "2026-06-23",
+    "crates/distill-cli/workflows/distill.v1.json": "2026-07-27",
+    "docs/adr/0010-distill-snapshots-requirement-inputs.md": "2026-07-27",
+    "docs/adr/0026-distill-separates-user-and-executor-authority.md": "2026-07-27",
+    "docs/adr/0030-distill-skills-run-to-the-next-boundary.md": "2026-07-27",
+    "skills/upstream/skills/engineering/to-spec/SKILL.md": "2026-07-27",
+    "docs/adr/0007-dual-runtime-skill-variants.md": "2026-06-30",
+    "docs/adr/0009-codebase-deepening-shared-crate-and-logic-sink.md": "2026-07-27",
+    "docs/adr/0036-single-discoverable-runtime-router.md": "2026-07-27",
+    "docs/adr/0013-distill-adapts-skills-without-modifying-them.md": "2026-07-27",
+    "docs/adr/0040-distill-run-state-typed-module.md": "2026-09-03",
+    "docs/adr/0041-distill-state-machine-owns-workflow-control.md": "2026-09-03",
+    "docs/adr/0044-single-owner-for-the-expected-set.md": "2026-09-11",
+    "docs/adr/0045-expected-set-entry-resolves-its-skill-files.md": "2026-09-15",
+    "docs/adr/0052-upstream-pin-and-drift-check.md": "2026-11-07",
+    "docs/adr/0008-self-contained-tarball-install.md": "2026-07-24",
+    "docs/agents/upstream-sync.md": "2026-11-07",
+    "docs/agents/runtimes/dsh.md": "2026-10-02",
+    "docs/prd/0004-self-contained-tarball-install.md": "2026-07-24",
+    "skills/upstream/skills/engineering/to-tickets/SKILL.md": "2026-07-27",
+    "docs/agents/triage-labels.md": "2026-06-23",
+}
+
 # ── tasks ──────────────────────────────────────────────────────────────────
-# id, title, requirement, sourceAnchor, stage facts, asOf
+# id, title, requirement, sourceAnchor, stage facts, asOf, target artifact
 TASKS = [
     ("T1", "Dual-runtime skill compatibility",
      "Allow one skill asset set to install and run on both Reasonix and Codex, without the two runtime directories polluting each other, while keeping the vendored upstream snapshot trackable.",
@@ -273,7 +304,8 @@ TASKS = [
       "runtimes": ["Reasonix", "Codex"], "multiModule": True, "crossRuntime": True,
       "multiSlice": True, "ambiguity": "Medium", "domainDocs": True, "adr": True,
       "newAdr": True, "externalTracker": True, "wideRefactor": False,
-      "userFacing": True, "hasExistingSeam": False}, "2026-06-30"),
+      "userFacing": True, "hasExistingSeam": False}, "2026-06-30",
+     "docs/prd/0002-dual-runtime-compatibility.md"),
     ("T2", "Kimi Code runtime adaptation",
      "Add Kimi Code as a supported runtime, fix the frontmatter parsing that made skills disappear there, and leave Reasonix and Codex behaviour unchanged.",
      "corpus/specs/0003-kimi-code-adaptation.md",
@@ -281,7 +313,8 @@ TASKS = [
       "runtimes": ["Kimi", "Reasonix", "Codex"], "multiModule": True, "crossRuntime": True,
       "multiSlice": True, "ambiguity": "Low", "domainDocs": True, "adr": False,
       "newAdr": False, "externalTracker": True, "wideRefactor": False,
-      "userFacing": True, "hasExistingSeam": False}, "2026-07-24"),
+      "userFacing": True, "hasExistingSeam": False}, "2026-07-24",
+     "docs/prd/0003-kimi-code-adaptation.md"),
     ("T3", "Self-contained tarball install",
      "Provide a self-contained tarball install: one curl pipe command, skills deployed as real files so the directory is portable across machines, and upgrades that never touch user-owned skills.",
      "corpus/specs/0004-self-contained-tarball-install.md",
@@ -289,7 +322,8 @@ TASKS = [
       "runtimes": ["Reasonix", "Codex", "Kimi"], "multiModule": True, "crossRuntime": True,
       "multiSlice": True, "ambiguity": "Medium", "domainDocs": False, "adr": True,
       "newAdr": False, "externalTracker": True, "wideRefactor": False,
-      "userFacing": True, "hasExistingSeam": True}, "2026-07-24"),
+      "userFacing": True, "hasExistingSeam": True}, "2026-07-24",
+     "docs/prd/0004-self-contained-tarball-install.md"),
     ("T4", "Director write-path convergence",
      "Make every director-cli state mutation a pure record method behind one commit seam, matching the distill-cli layering, with zero behaviour change.",
      "corpus/specs/19-director-state-mutation-persistence-split.md",
@@ -297,7 +331,8 @@ TASKS = [
       "runtimes": [], "multiModule": False, "crossRuntime": False,
       "multiSlice": False, "ambiguity": "Low", "domainDocs": True, "adr": True,
       "newAdr": False, "externalTracker": True, "wideRefactor": False,
-      "userFacing": False, "hasExistingSeam": True}, "2026-10-02"),
+      "userFacing": False, "hasExistingSeam": True}, "2026-10-02",
+     "docs/issues/19-director-state-mutation-persistence-split.md"),
     ("T5", "Shared run-state substrate",
      "Extract the duplicated state-directory hygiene and atomic-write substrate from director and distill into one shared crate, removing the drifted atomic-write behaviour while keeping both CLIs working.",
      "corpus/specs/20-run-state-persistence-substrate.md",
@@ -305,7 +340,8 @@ TASKS = [
       "runtimes": [], "multiModule": True, "crossRuntime": False,
       "multiSlice": False, "ambiguity": "Low", "domainDocs": True, "adr": True,
       "newAdr": True, "externalTracker": True, "wideRefactor": False,
-      "userFacing": False, "hasExistingSeam": True}, "2026-10-02"),
+      "userFacing": False, "hasExistingSeam": True}, "2026-10-02",
+     "docs/issues/20-run-state-persistence-substrate.md"),
     ("T6", "Scheduled upstream drift check",
      "Compare the vendored upstream pin with the newest release tag on a weekly schedule, open or update exactly one issue when drift exists, and never sync or merge automatically.",
      "https://github.com/MatthewYe/autopilot-toolkit/issues/151",
@@ -313,7 +349,7 @@ TASKS = [
       "runtimes": [], "multiModule": False, "crossRuntime": False,
       "multiSlice": False, "ambiguity": "Low", "domainDocs": True, "adr": True,
       "newAdr": True, "externalTracker": True, "wideRefactor": False,
-      "userFacing": False, "hasExistingSeam": True}, "2026-11-06"),
+      "userFacing": False, "hasExistingSeam": True}, "2026-11-06", ""),
     ("T7", "DSH as a first-class skill runtime",
      "Add DeepSeek Harness as a first-class runtime: DSH variant sources, router selection, variant validation and runtime documentation, without changing the other runtimes.",
      "https://github.com/MatthewYe/autopilot-toolkit/issues/144",
@@ -321,7 +357,7 @@ TASKS = [
       "runtimes": ["Dsh", "Reasonix", "Codex", "Kimi"], "multiModule": True, "crossRuntime": True,
       "multiSlice": True, "ambiguity": "Medium", "domainDocs": True, "adr": True,
       "newAdr": False, "externalTracker": True, "wideRefactor": False,
-      "userFacing": True, "hasExistingSeam": False}, "2026-10-01"),
+      "userFacing": True, "hasExistingSeam": False}, "2026-10-01", ""),
     ("T8", "Expected-set entry resolves its skill files",
      "Make an Expected-set entry resolve every skill file it owns, root and per-runtime variants, so failure is reported per file; ship it as an expand, migrate, contract sequence.",
      "https://github.com/MatthewYe/autopilot-toolkit/issues/121",
@@ -329,7 +365,7 @@ TASKS = [
       "runtimes": [], "multiModule": True, "crossRuntime": False,
       "multiSlice": True, "ambiguity": "Low", "domainDocs": True, "adr": True,
       "newAdr": True, "externalTracker": True, "wideRefactor": True,
-      "userFacing": False, "hasExistingSeam": True}, "2026-09-11"),
+      "userFacing": False, "hasExistingSeam": True}, "2026-09-11", ""),
 ]
 
 BOOLEAN_FACTS = ["multiModule", "crossRuntime", "multiSlice", "domainDocs", "adr",
@@ -407,7 +443,8 @@ def build_ontology() -> str:
                  "whenMultiModule", "whenCrossRuntime", "whenMultiSlice",
                  "whenDomainDocs", "whenAdr", "whenNewAdr", "whenExternalTracker",
                  "whenWideRefactor", "whenUserFacing", "whenHasExistingSeam",
-                 "whenAmbiguity"]:
+                 "whenAmbiguity", "introducedAt", "targetArtifact",
+                 "dependenciesDeclared"]:
         lines.append(f"d:{prop} a owl:ObjectProperty .")
     lines.append("d:asOf a owl:DatatypeProperty .")
     lines.append("")
@@ -453,6 +490,7 @@ def build_contexts() -> str:
         lines.append(f"    d:startLine {start} ;")
         lines.append(f"    d:endLine {end} ;")
         lines.append(f"    d:excerpt {lit(excerpt(path, start, end))} ;")
+        lines.append(f"    d:introducedAt {lit(INTRODUCED[path])} ;")
         for stage_name in stage:
             lines.append(f"    d:stage d:{stage_name} ;")
         cond = conditions_ttl(conditions)
@@ -472,21 +510,24 @@ def build_tasks() -> str:
         "# requirement text and the resulting merged artifacts, not from the",
         "# ontology's own conditions.",
     ]
-    for task_id, title, requirement, anchor, facts, as_of in TASKS:
+    for task_id, title, requirement, anchor, facts, as_of, target in TASKS:
         lines.append(f"d:{task_id} a d:Task ;")
         lines.append(f"    d:taskId {lit(task_id)} ;")
         lines.append(f"    d:title {lit(title)} ;")
         lines.append(f"    d:requirement {lit(requirement)} ;")
         lines.append(f"    d:sourceAnchor {lit(anchor)} ;")
         lines.append(f"    d:asOf {lit(as_of)} ;")
+        if target:
+            lines.append(f"    d:targetArtifact {lit(target)} ;")
         for stage_name in ("Clarification", "Prd", "Issues"):
             lines.append(f"    d:stage d:{stage_name} ;")
         for key in ("changeKinds", "surfaces", "runtimes"):
-            if key == "runtimes" and not facts["runtimes"]:
-                continue
-            for value in facts[key]:
-                prop = {"changeKinds": "changeKind", "surfaces": "surface",
-                        "runtimes": "runtime"}[key]
+            prop = {"changeKinds": "changeKind", "surfaces": "surface",
+                    "runtimes": "runtime"}[key]
+            # Explicit sentinel so an empty set stays "known empty" after
+            # loading; an absent triple would mean "not collected", and the
+            # conservative matcher would then inject every conditional clause.
+            for value in facts[key] or ["None"]:
                 lines.append(f"    d:{prop} d:{value} ;")
         lines.append(f"    d:ambiguity d:{facts['ambiguity']} ;")
         for key in BOOLEAN_FACTS:

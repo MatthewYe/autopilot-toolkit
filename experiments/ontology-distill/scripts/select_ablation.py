@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib import (Store, chars, estimate_tokens, load_inventory, metrics, select)
+from lib import (Store, eligible_contexts, historical, load_inventory, metrics, select)
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -90,7 +90,8 @@ ARMS = {
 }
 
 
-def render_payload(task: dict, stage: str, clause_list, context_list) -> str:
+def render_payload(task: dict, stage: str, clause_list, context_list,
+                   include_excerpt: bool = True) -> str:
     lines = [
         f"# Distill context pack: {task['id']} / {stage}",
         "",
@@ -114,7 +115,8 @@ def render_payload(task: dict, stage: str, clause_list, context_list) -> str:
         lines.append(
             f"- `{context['path']}:{context['start']}-{context['end']}` — {context['title']}"
         )
-        lines.append(f"  > {' '.join(context['excerpt'].split())[:220]}")
+        if include_excerpt:
+            lines.append(f"  > {' '.join(context['excerpt'].split())[:220]}")
     return "\n".join(lines) + "\n"
 
 
@@ -128,16 +130,24 @@ def main() -> int:
     rows = []
     for task_id in sorted(tasks):
         task = tasks[task_id]
+        pool = eligible_contexts(contexts, task)
         for stage in STAGES:
             expected = gold["tasks"][task_id][stage]
+            ineligible = sorted(set(expected["contexts"]) - set(pool))
+            if ineligible:
+                raise SystemExit(
+                    f"gold for {task_id}/{stage} names ineligible contexts: {ineligible}"
+                )
             for arm, fn in ARMS.items():
-                clause_list, context_list = fn(clauses, contexts, task, stage)
+                clause_list, context_list = fn(clauses, pool, task, stage)
                 clause_ids = sorted(c["id"] for c in clause_list)
                 context_ids = sorted(c["id"] for c in context_list)
                 c_recall, c_precision, c_hit, c_sel, c_gold = metrics(
                     clause_ids, expected["clauses"])
                 x_recall, x_precision, x_hit, x_sel, x_gold = metrics(
                     context_ids, expected["contexts"])
+                h_recall, h_precision, _, _, _ = metrics(
+                    context_ids, historical(contexts, expected["contexts"], task))
                 rows.append({
                     "task": task_id,
                     "stage": stage,
@@ -148,13 +158,19 @@ def main() -> int:
                     "clause_precision": round(c_precision, 4),
                     "context_recall": round(x_recall, 4),
                     "context_precision": round(x_precision, 4),
+                    "context_recall_historical": round(h_recall, 4),
+                    "context_precision_historical": round(h_precision, 4),
                     "combined_recall": round((c_hit + x_hit) / (c_gold + x_gold), 4),
                     "combined_precision": round((c_hit + x_hit) / (c_sel + x_sel), 4)
                     if (c_sel + x_sel) else 0.0,
-                    "exact": clause_ids == sorted(expected["clauses"])
-                             and context_ids == sorted(expected["contexts"]),
-                    "chars_full": chars(clause_list, context_list, "full"),
-                    "chars_hybrid": chars(clause_list, context_list, "hybrid"),
+                    "exact_clauses": clause_ids == sorted(expected["clauses"]),
+                    "exact_contexts": context_ids == sorted(expected["contexts"]),
+                    "exact_both": clause_ids == sorted(expected["clauses"])
+                                  and context_ids == sorted(expected["contexts"]),
+                    "chars_full": len(render_payload(task, stage, clause_list,
+                                                     context_list, True)),
+                    "chars_hybrid": len(render_payload(task, stage, clause_list,
+                                                       context_list, False)),
                     "clause_chars": sum(len(c["text"]) for c in clause_list),
                     "context_chars": sum(len(x["excerpt"]) for x in context_list),
                 })
@@ -168,9 +184,13 @@ def main() -> int:
             "clause_precision": round(sum(r["clause_precision"] for r in subset) / len(subset), 4),
             "context_recall": round(sum(r["context_recall"] for r in subset) / len(subset), 4),
             "context_precision": round(sum(r["context_precision"] for r in subset) / len(subset), 4),
+            "context_recall_historical": round(sum(r["context_recall_historical"] for r in subset) / len(subset), 4),
+            "context_precision_historical": round(sum(r["context_precision_historical"] for r in subset) / len(subset), 4),
             "combined_recall": round(sum(r["combined_recall"] for r in subset) / len(subset), 4),
             "combined_precision": round(sum(r["combined_precision"] for r in subset) / len(subset), 4),
-            "exact": round(sum(r["exact"] for r in subset) / len(subset), 4),
+            "exact_clauses": round(sum(r["exact_clauses"] for r in subset) / len(subset), 4),
+            "exact_contexts": round(sum(r["exact_contexts"] for r in subset) / len(subset), 4),
+            "exact_both": round(sum(r["exact_both"] for r in subset) / len(subset), 4),
             "mean_chars_full": round(sum(r["chars_full"] for r in subset) / len(subset)),
             "mean_chars_hybrid": round(sum(r["chars_hybrid"] for r in subset) / len(subset)),
             "mean_clause_chars": round(sum(r["clause_chars"] for r in subset) / len(subset)),
@@ -191,7 +211,9 @@ def main() -> int:
     payload_dir.mkdir(exist_ok=True)
     for task_id in sorted(tasks):
         for stage in STAGES:
-            clause_list, context_list = arm_ontology(clauses, contexts, tasks[task_id], stage)
+            task = tasks[task_id]
+            clause_list, context_list = arm_ontology(
+                clauses, eligible_contexts(contexts, task), task, stage)
             (payload_dir / f"{task_id}-{stage}.md").write_text(
                 render_payload(tasks[task_id], stage, clause_list, context_list),
                 encoding="utf-8")
@@ -201,14 +223,19 @@ def main() -> int:
 
     lines = ["Distill selection ablation", ""]
     header = (f"{'arm':10s} {'recall':>7s} {'prec':>7s} {'ctxR':>7s} {'ctxP':>7s} "
-              f"{'exact':>6s} {'chars':>7s} {'hybrid':>7s}")
+              f"{'hCtxR':>6s} {'hCtxP':>6s} {'xClause':>7s} {'xCtx':>6s} {'xBoth':>6s} "
+              f"{'chars':>7s} {'hybrid':>7s}")
     lines.append(header)
     lines.append("-" * len(header))
     for arm, agg in aggregates.items():
         lines.append(
             f"{arm:10s} {agg['clause_recall']:7.3f} {agg['clause_precision']:7.3f} "
             f"{agg['context_recall']:7.3f} {agg['context_precision']:7.3f} "
-            f"{agg['exact']:6.3f} {agg['mean_chars_full']:7d} {agg['mean_chars_hybrid']:7d}")
+            f"{agg['context_recall_historical']:6.3f} "
+            f"{agg['context_precision_historical']:6.3f} "
+            f"{agg['exact_clauses']:7.3f} {agg['exact_contexts']:6.3f} "
+            f"{agg['exact_both']:6.3f} {agg['mean_chars_full']:7d} "
+            f"{agg['mean_chars_hybrid']:7d}")
     lines += ["", f"{'stage':14s} {'arm':10s} {'recall':>7s} {'prec':>7s} {'chars':>7s}"]
     for stage in STAGES:
         for arm in ARMS:
@@ -218,12 +245,16 @@ def main() -> int:
     text = "\n".join(lines)
     (RESULTS / "selection.txt").write_text(text + "\n")
 
-    md = ["| Arm | Clause recall | Clause precision | Context recall | Context precision | Exact set | Mean full chars | Mean hybrid chars |",
-          "|---|---|---|---|---|---|---|---|"]
+    md = ["| Arm | Clause recall | Clause precision | Context recall | Context precision | Historical context recall | Historical context precision | Exact clauses | Exact contexts | Exact both | Mean full chars | Mean hybrid chars |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for arm, agg in aggregates.items():
         md.append(f"| {arm} | {agg['clause_recall']:.3f} | {agg['clause_precision']:.3f} "
                   f"| {agg['context_recall']:.3f} | {agg['context_precision']:.3f} "
-                  f"| {agg['exact']:.3f} | {agg['mean_chars_full']} | {agg['mean_chars_hybrid']} |")
+                  f"| {agg['context_recall_historical']:.3f} "
+                  f"| {agg['context_precision_historical']:.3f} "
+                  f"| {agg['exact_clauses']:.3f} | {agg['exact_contexts']:.3f} "
+                  f"| {agg['exact_both']:.3f} | {agg['mean_chars_full']} "
+                  f"| {agg['mean_chars_hybrid']} |")
     (RESULTS / "selection.md").write_text("\n".join(md) + "\n")
 
     print(text)
