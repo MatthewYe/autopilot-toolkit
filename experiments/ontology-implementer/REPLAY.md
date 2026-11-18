@@ -123,6 +123,14 @@ higher (41,304 vs 25,782, +60.2%). N=2 and the total ranges do not overlap
 result (~1.8k-2.0k tokens); it is not inlined into the system prompt. Raw
 numbers: `results/phase2/tokens.json`.
 
+Why the ontology arm costs more: the plan is only 6.7K characters, but it
+points at full source files. Actual tool-read volume differed: prose-1 16 read
+calls / 136K chars; prose-2 10 / 100K; ontology-1 11 / 88K plus 69 bash calls /
+167K; ontology-2 25 / 229K. These tool results stay in the conversation and are
+reprocessed on every later model call; the ontology runs also made more calls
+(92 and 75 vs 65 and 51). The plan is not the main cost; reading the selected
+sources exhaustively is.
+
 ## Limitations
 
 - The full 30-run protocol (5 tickets x 2 arms x 3 runs, temperature 0, blind
