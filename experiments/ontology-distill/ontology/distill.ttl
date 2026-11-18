@@ -1,0 +1,512 @@
+@prefix d: <https://example.org/autopilot/distill#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# Classes
+d:DistillClause a owl:Class .
+d:ClauseAxis a owl:Class .
+d:Stage a owl:Class .
+d:CheckKind a owl:Class .
+d:ContextCard a owl:Class .
+d:Task a owl:Class .
+
+# Axes
+d:AxisIntake a d:ClauseAxis ; rdfs:label "Intake" .
+d:AxisClarification a d:ClauseAxis ; rdfs:label "Clarification" .
+d:AxisPRD a d:ClauseAxis ; rdfs:label "PRD" .
+d:AxisIssues a d:ClauseAxis ; rdfs:label "Issues" .
+
+# Stages
+d:Intake a d:Stage ; rdfs:label "Intake" .
+d:Clarification a d:Stage ; rdfs:label "Clarification" .
+d:Prd a d:Stage ; rdfs:label "Prd" .
+d:Issues a d:Stage ; rdfs:label "Issues" .
+d:Cross a d:Stage ; rdfs:label "Cross" .
+
+# Check kinds
+d:Runner a d:CheckKind ; rdfs:label "Runner" .
+d:Gate a d:CheckKind ; rdfs:label "Gate" .
+d:Human a d:CheckKind ; rdfs:label "Human" .
+d:Judgement a d:CheckKind ; rdfs:label "Judgement" .
+
+# Properties
+d:clauseId a owl:ObjectProperty .
+d:axis a owl:ObjectProperty .
+d:stage a owl:ObjectProperty .
+d:text a owl:ObjectProperty .
+d:defaultCheck a owl:ObjectProperty .
+d:sourceAnchor a owl:ObjectProperty .
+d:keyword a owl:ObjectProperty .
+d:enforcedBy a owl:ObjectProperty .
+d:checkedBy a owl:ObjectProperty .
+d:contextId a owl:ObjectProperty .
+d:title a owl:ObjectProperty .
+d:path a owl:ObjectProperty .
+d:startLine a owl:ObjectProperty .
+d:endLine a owl:ObjectProperty .
+d:excerpt a owl:ObjectProperty .
+d:taskId a owl:ObjectProperty .
+d:requirement a owl:ObjectProperty .
+d:sourceAnchor a owl:ObjectProperty .
+d:changeKind a owl:ObjectProperty .
+d:surface a owl:ObjectProperty .
+d:runtime a owl:ObjectProperty .
+d:ambiguity a owl:ObjectProperty .
+d:whenStage a owl:ObjectProperty .
+d:whenChangeKind a owl:ObjectProperty .
+d:whenSurface a owl:ObjectProperty .
+d:whenRuntime a owl:ObjectProperty .
+d:whenMultiModule a owl:ObjectProperty .
+d:whenCrossRuntime a owl:ObjectProperty .
+d:whenMultiSlice a owl:ObjectProperty .
+d:whenDomainDocs a owl:ObjectProperty .
+d:whenAdr a owl:ObjectProperty .
+d:whenNewAdr a owl:ObjectProperty .
+d:whenExternalTracker a owl:ObjectProperty .
+d:whenWideRefactor a owl:ObjectProperty .
+d:whenUserFacing a owl:ObjectProperty .
+d:whenHasExistingSeam a owl:ObjectProperty .
+d:whenAmbiguity a owl:ObjectProperty .
+d:asOf a owl:DatatypeProperty .
+
+# Clauses
+d:R01 a d:DistillClause ;
+    d:clauseId "R01" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "The requirement text is captured verbatim and frozen; later stages read the snapshot, not the mutable source." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "docs/adr/0010-distill-snapshots-requirement-inputs.md" ;
+    d:keyword "requirement snapshot freeze" ;
+    d:enforcedBy d:Runner .
+
+d:R02 a d:DistillClause ;
+    d:clauseId "R02" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "Only the stage's authorized executor runs; stages are never skipped, reordered or run early." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "docs/adr/0041-distill-state-machine-owns-workflow-control.md" ;
+    d:keyword "stage order authorized executor" ;
+    d:enforcedBy d:Runner .
+
+d:R03 a d:DistillClause ;
+    d:clauseId "R03" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "Every yield to the user reports run_id, stage, revision and next_action." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "crates/distill-cli/workflows/distill.v1.json" ;
+    d:keyword "run id stage revision next action" ;
+    d:enforcedBy d:Runner .
+
+d:R04 a d:DistillClause ;
+    d:clauseId "R04" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "Only an explicit user instruction authorizes abort, purge or takeover." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "docs/adr/0026-distill-separates-user-and-executor-authority.md" ;
+    d:keyword "abort purge takeover user authority" ;
+    d:enforcedBy d:Runner .
+
+d:R05 a d:DistillClause ;
+    d:clauseId "R05" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Issues ;
+    d:text "Publication receipts name the frozen payload hash and are verified offline before the run advances." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "docs/adr/0023-distill-freezes-publication-payloads.md" ;
+    d:keyword "receipt publication hash confirmed" ;
+    d:enforcedBy d:Runner .
+
+d:R06 a d:DistillClause ;
+    d:clauseId "R06" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "An ambiguous or missing runtime session identity fails closed." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "skills/autopilot/autopilot-distill/dsh/SKILL.md" ;
+    d:keyword "session identity fail closed ambiguous" ;
+    d:enforcedBy d:Runner .
+
+d:R07 a d:DistillClause ;
+    d:clauseId "R07" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Intake ;
+    d:text "Context drift blocks the stage unless a reasoned immaterial acknowledgement or a supersession is recorded." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "docs/adr/0035-distill-blocks-on-worktree-context-drift.md" ;
+    d:keyword "context drift immaterial supersession" ;
+    d:enforcedBy d:Runner .
+
+d:R08 a d:DistillClause ;
+    d:clauseId "R08" ;
+    d:axis d:AxisIntake ;
+    d:stage d:Issues ;
+    d:text "Local publication happens only through the runner, into .scratch/<feature_slug>/." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "skills/autopilot/autopilot-distill/dsh/SKILL.md" ;
+    d:keyword "local publication runner scratch" ;
+    d:enforcedBy d:Runner .
+
+d:C01 a d:DistillClause ;
+    d:clauseId "C01" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "The clarified requirement restates the problem, constraints and success condition without silently resolving open decisions." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/productivity/grilling/SKILL.md" ;
+    d:keyword "clarified requirement restate constraints success" .
+
+d:C02 a d:DistillClause ;
+    d:clauseId "C02" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Every decision taken during clarification is listed explicitly, with the alternative that was rejected." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/autopilot/autopilot-distill/dsh/SKILL.md" ;
+    d:keyword "decision alternative rejected explicit" .
+
+d:C03 a d:DistillClause ;
+    d:clauseId "C03" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Every accepted assumption is listed explicitly and is falsifiable." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/autopilot/autopilot-distill/dsh/SKILL.md" ;
+    d:keyword "assumption falsifiable accepted" .
+
+d:C04 a d:DistillClause ;
+    d:clauseId "C04" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Every material unknown is recorded; none may remain unresolved when clarification completes." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "crates/distill-cli/src/main.rs" ;
+    d:keyword "material unknown unresolved clarification" .
+
+d:C05 a d:DistillClause ;
+    d:clauseId "C05" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Every changed glossary, domain document or ADR is recorded with its worktree-relative path and SHA-256." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "crates/distill-cli/src/main.rs" ;
+    d:keyword "domain document artifact path sha256 glossary adr" ;
+    d:checkedBy d:ClarificationShape ;
+    d:whenDomainDocs "true"^^xsd:boolean .
+
+d:C06 a d:DistillClause ;
+    d:clauseId "C06" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Each round asks the whole current frontier; questions that depend on an open answer wait for the next round." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/productivity/grilling/SKILL.md" ;
+    d:keyword "frontier round question dependency" .
+
+d:C07 a d:DistillClause ;
+    d:clauseId "C07" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Each question is numbered and carries a recommended answer worded so that yes accepts it." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/productivity/grilling/SKILL.md" ;
+    d:keyword "numbered question recommended answer" .
+
+d:C08 a d:DistillClause ;
+    d:clauseId "C08" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Facts are looked up by the agent; the user is never asked for something the environment can answer." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/productivity/grilling/SKILL.md" ;
+    d:keyword "lookup facts user question environment" .
+
+d:C09 a d:DistillClause ;
+    d:clauseId "C09" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Decisions belong to the user; do not act until they confirm a shared understanding." ;
+    d:defaultCheck d:Human ;
+    d:sourceAnchor "skills/upstream/skills/productivity/grilling/SKILL.md" ;
+    d:keyword "user decision shared understanding wait" .
+
+d:C10 a d:DistillClause ;
+    d:clauseId "C10" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Glossary conflicts and fuzzy terms are challenged with a concrete scenario before they enter the spec." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/domain-modeling/SKILL.md" ;
+    d:keyword "glossary conflict fuzzy term scenario" ;
+    d:whenDomainDocs "true"^^xsd:boolean .
+
+d:C11 a d:DistillClause ;
+    d:clauseId "C11" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "A new ADR is proposed only when the decision is hard to reverse, surprising without context, and a real trade-off." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/domain-modeling/SKILL.md" ;
+    d:keyword "adr hard to reverse trade-off" ;
+    d:whenNewAdr "true"^^xsd:boolean .
+
+d:C12 a d:DistillClause ;
+    d:clauseId "C12" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "The clarification records what is explicitly out of scope for this requirement." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "out of scope boundary excluded" .
+
+d:C13 a d:DistillClause ;
+    d:clauseId "C13" ;
+    d:axis d:AxisClarification ;
+    d:stage d:Clarification ;
+    d:text "Under DSH, the session identity is proven from the session trace, never guessed from recency or user-supplied ids." ;
+    d:defaultCheck d:Runner ;
+    d:sourceAnchor "skills/autopilot/autopilot-distill/dsh/SKILL.md" ;
+    d:keyword "dsh session trace identity" ;
+    d:whenRuntime d:Dsh .
+
+d:P01 a d:DistillClause ;
+    d:clauseId "P01" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "Problem Statement describes the user-visible problem and contains no solution." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "problem statement user visible no solution" ;
+    d:checkedBy d:PrdShape .
+
+d:P02 a d:DistillClause ;
+    d:clauseId "P02" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "Solution states the user-visible outcome and leaves no open design decision." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "solution outcome no open decision" ;
+    d:checkedBy d:PrdShape .
+
+d:P03 a d:DistillClause ;
+    d:clauseId "P03" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "User Stories are numbered, in As a / I want / so that form, and cover each affected user." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "user stories numbered as a i want so that" ;
+    d:checkedBy d:PrdShape .
+
+d:P04 a d:DistillClause ;
+    d:clauseId "P04" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "Implementation Decisions name modules, interfaces and contracts; they do not prescribe new source file paths or code." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "implementation decisions module interface contract file path" ;
+    d:checkedBy d:PrdShape .
+
+d:P05 a d:DistillClause ;
+    d:clauseId "P05" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "Testing Decisions name the single highest seam and what makes a good test at that seam." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "testing decisions seam good test" ;
+    d:checkedBy d:PrdShape .
+
+d:P06 a d:DistillClause ;
+    d:clauseId "P06" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "Out of Scope lists the excluded behaviour explicitly." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "out of scope excluded" ;
+    d:checkedBy d:PrdShape .
+
+d:P07 a d:DistillClause ;
+    d:clauseId "P07" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "The testing seam is confirmed with the user before the PRD is published." ;
+    d:defaultCheck d:Human ;
+    d:sourceAnchor "crates/distill-cli/workflows/distill.v1.json" ;
+    d:keyword "testing seam confirmed checkpoint" .
+
+d:P08 a d:DistillClause ;
+    d:clauseId "P08" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "The spec uses glossary vocabulary and does not contradict an accepted ADR without an explicit supersession." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/domain-modeling/SKILL.md" ;
+    d:keyword "glossary vocabulary adr contradiction supersession" ;
+    d:whenDomainDocs "true"^^xsd:boolean .
+
+d:P09 a d:DistillClause ;
+    d:clauseId "P09" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "No interview happens at this stage: the spec synthesizes the clarification already captured." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "no interview synthesize clarification" .
+
+d:P10 a d:DistillClause ;
+    d:clauseId "P10" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "When the change spans runtimes, the spec states the variant plan and the fallback behaviour." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "docs/adr/0007-dual-runtime-skill-variants.md" ;
+    d:keyword "runtime variant fallback plan" ;
+    d:checkedBy d:PrdShape ;
+    d:whenCrossRuntime "true"^^xsd:boolean .
+
+d:P11 a d:DistillClause ;
+    d:clauseId "P11" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "When a public contract changes, the spec states caller impact and the deprecation or migration path." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-spec/SKILL.md" ;
+    d:keyword "contract change caller impact migration deprecation" ;
+    d:checkedBy d:PrdShape ;
+    d:whenChangeKind d:ContractChange .
+
+d:P12 a d:DistillClause ;
+    d:clauseId "P12" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "When skill sources change, the spec names the repository validation and check commands as verification." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "AGENTS.md" ;
+    d:keyword "skill validation check frontmatter" ;
+    d:checkedBy d:PrdShape ;
+    d:whenSurface d:Skills .
+
+d:P13 a d:DistillClause ;
+    d:clauseId "P13" ;
+    d:axis d:AxisPRD ;
+    d:stage d:Prd ;
+    d:text "When CI or release changes, the spec states the trigger and the failure behaviour." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "AGENTS.md" ;
+    d:keyword "ci workflow trigger failure release" ;
+    d:checkedBy d:PrdShape ;
+    d:whenSurface d:Ci .
+
+d:T01 a d:DistillClause ;
+    d:clauseId "T01" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Each issue is a vertical tracer bullet that crosses the layers it changes and is demoable on its own." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "vertical tracer bullet demoable layers" .
+
+d:T02 a d:DistillClause ;
+    d:clauseId "T02" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Each issue fits one fresh context window and can be implemented without the rest of the set." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "context window size independent implement" .
+
+d:T03 a d:DistillClause ;
+    d:clauseId "T03" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Blocking edges are declared only for genuine prerequisites and form a DAG." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "blocking edges prerequisite dag cycle" ;
+    d:checkedBy d:IssueSetShape ;
+    d:whenMultiSlice "true"^^xsd:boolean .
+
+d:T04 a d:DistillClause ;
+    d:clauseId "T04" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Each issue names its parent PRD or spec." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "parent prd spec reference" ;
+    d:checkedBy d:IssueSetShape .
+
+d:T05 a d:DistillClause ;
+    d:clauseId "T05" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "What to build describes user-observable behaviour, not a layer-by-layer task list." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "what to build observable behaviour layer" .
+
+d:T06 a d:DistillClause ;
+    d:clauseId "T06" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Acceptance criteria are concrete, independently verifiable, and each maps to a test or command." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "acceptance criteria verifiable test command" ;
+    d:checkedBy d:IssueSetShape .
+
+d:T07 a d:DistillClause ;
+    d:clauseId "T07" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "A wide refactor is sliced as expand, migrate, contract rather than one big-bang change." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "wide refactor expand migrate contract" ;
+    d:whenWideRefactor "true"^^xsd:boolean .
+
+d:T08 a d:DistillClause ;
+    d:clauseId "T08" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "The user approves issue granularity and blocking edges before publication." ;
+    d:defaultCheck d:Human ;
+    d:sourceAnchor "crates/distill-cli/workflows/distill.v1.json" ;
+    d:keyword "slice breakdown approved checkpoint" .
+
+d:T09 a d:DistillClause ;
+    d:clauseId "T09" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Blockers are published before or together with the issues they block." ;
+    d:defaultCheck d:Gate ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "blocker publish order frontier" ;
+    d:checkedBy d:IssueSetShape ;
+    d:whenMultiSlice "true"^^xsd:boolean .
+
+d:T10 a d:DistillClause ;
+    d:clauseId "T10" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "The issue set covers every PRD user story and decision, and invents no scope the PRD did not decide." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "coverage traceability scope prd story" .
+
+d:T11 a d:DistillClause ;
+    d:clauseId "T11" ;
+    d:axis d:AxisIssues ;
+    d:stage d:Issues ;
+    d:text "Open questions discovered while slicing go back to the PRD instead of being settled inside a ticket." ;
+    d:defaultCheck d:Judgement ;
+    d:sourceAnchor "skills/upstream/skills/engineering/to-tickets/SKILL.md" ;
+    d:keyword "open question back to prd" .

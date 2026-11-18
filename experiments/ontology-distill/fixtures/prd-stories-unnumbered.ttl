@@ -1,0 +1,28 @@
+@prefix d: <https://example.org/autopilot/distill#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+d:prd-121 a d:PrdDraft ;
+    d:section "Further Notes" ;
+    d:section "Implementation Decisions" ;
+    d:section "Out of Scope" ;
+    d:section "Problem Statement" ;
+    d:section "Solution" ;
+    d:section "Testing Decisions" ;
+    d:section "User Stories" ;
+    d:source "corpus/specs/121-expected-set-resolves-skill-files.md" ;
+    d:storyCount 20 ;
+    d:numberedStoryCount 0 ;
+    d:wellFormedStoryCount 20 ;
+    d:hasTestingSeam true ;
+    d:outOfScopeItemCount 5 ;
+    d:codeFenceCount 0 ;
+    d:filePathCount 8 ;
+    d:runtimeMentions 1 ;
+    d:runtimePlan false ;
+    d:mentionsMigration true ;
+    d:mentionsValidationCommand false ;
+    d:mentionsCiTrigger true ;
+    d:crossRuntime false ;
+    d:contractChange true ;
+    d:skillsChange true ;
+    d:ciChange false .

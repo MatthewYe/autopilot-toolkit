@@ -1,0 +1,72 @@
+{
+  "artifacts": [
+    {
+      "id": "prd-0002",
+      "kind": "prd",
+      "path": "corpus/specs/0002-dual-runtime-compatibility.md",
+      "task": "T1",
+      "facts": {
+        "crossRuntime": true,
+        "contractChange": false,
+        "skillsChange": true,
+        "ciChange": false
+      },
+      "reason": "Adds codex/kimi variants; install contract is extended, nothing retired; no CI change."
+    },
+    {
+      "id": "prd-0003",
+      "kind": "prd",
+      "path": "corpus/specs/0003-kimi-code-adaptation.md",
+      "task": "T2",
+      "facts": {
+        "crossRuntime": true,
+        "contractChange": false,
+        "skillsChange": true,
+        "ciChange": false
+      },
+      "reason": "Adds a third runtime variant; additive."
+    },
+    {
+      "id": "prd-0004",
+      "kind": "prd",
+      "path": "corpus/specs/0004-self-contained-tarball-install.md",
+      "task": "T3",
+      "facts": {
+        "crossRuntime": true,
+        "contractChange": true,
+        "skillsChange": true,
+        "ciChange": true
+      },
+      "reason": "Replaces the install contract with a tarball and adds release automation."
+    },
+    {
+      "id": "prd-121",
+      "kind": "prd",
+      "path": "corpus/specs/121-expected-set-resolves-skill-files.md",
+      "task": "T8",
+      "facts": {
+        "crossRuntime": false,
+        "contractChange": true,
+        "skillsChange": true,
+        "ciChange": false
+      },
+      "reason": "Retires the entry-level resolution status (contract change) in the Expected set."
+    },
+    {
+      "id": "issues-121",
+      "kind": "issues",
+      "paths": [
+        "corpus/issues/122.json",
+        "corpus/issues/123.json",
+        "corpus/issues/124.json",
+        "corpus/issues/125.json",
+        "corpus/issues/126.json"
+      ],
+      "task": "T8",
+      "facts": {
+        "multiSlice": true
+      },
+      "reason": "Real expand → migrate → contract sequence for #121."
+    }
+  ]
+}

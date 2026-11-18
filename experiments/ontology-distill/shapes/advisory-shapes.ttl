@@ -1,0 +1,80 @@
+# Advisory shapes for the Distill draft.
+#
+# These rules are real Distill clauses, but no historical artifact in the
+# corpus satisfies all of them (see results/gate.md): PRD 0002 has no fallback
+# plan, PRD 0004 and #121 name no validation command, and every PRD references
+# source paths in Implementation Decisions.  Promoting them to blocking today
+# would reject work humans already approved, so they start as warnings and the
+# report names the exact condition each draft misses.
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix d: <https://example.org/autopilot/distill#> .
+
+d:PrdAdvisoryShape a sh:NodeShape ;
+  sh:targetClass d:PrdDraft ;
+
+  sh:sparql [
+    sh:message "P03: fewer than 80% of stories are shaped 'As a …, I want …, so that …'; the template is drifting." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:storyCount ?n ;
+              d:wellFormedStoryCount ?well .
+        FILTER(?n > 0 && (?well * 10) / ?n < 8)
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P04: Implementation Decisions references source files; describe the contract, not the file plan." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:filePathCount ?n .
+        FILTER(?n > 0)
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P10: the change spans runtimes but the spec states no runtime plan (variants + fallback)." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:crossRuntime true .
+        FILTER NOT EXISTS { $this d:runtimePlan true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P11: the change alters a public contract but names no migration or deprecation path." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:contractChange true .
+        FILTER NOT EXISTS { $this d:mentionsMigration true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P12: skill sources change but the spec names no validation command." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:skillsChange true .
+        FILTER NOT EXISTS { $this d:mentionsValidationCommand true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P13: CI behavior changes but the spec names no CI trigger." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:ciChange true .
+        FILTER NOT EXISTS { $this d:mentionsCiTrigger true }
+      }""" ;
+  ] .

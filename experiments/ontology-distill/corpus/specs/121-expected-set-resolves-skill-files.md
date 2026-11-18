@@ -1,0 +1,83 @@
+# Spec: Expected-set entry resolves its skill files — AgentDefinition variants, file-level failures, validation targets
+
+## Problem Statement
+
+The Expected set was given one owner in #110, but the Expected-set entry it returns only resolves a *directory*. Which files that directory owes the toolkit — the root `SKILL.md`, one per runtime variant, and the two codex variants that ship `agent.toml` instead — is still per-consumer folklore. The friction is concrete:
+
+- `validation-runner` rebuilds the source layout (`source_dir` joined with `SKILL.md`, then with each variant) and privately owns the codex exemption.
+- `check_codex_status` independently re-walks the autopilot skill directories, then de-dupes against the caller's skill list because it cannot trust what it was given.
+- `validation-runner` also shadows the entry with a flattened skill record, so the validation verdicts and the report are two parallel lists kept in step by pairing — nothing enforces the alignment.
+- The drift has already produced a shipped bug: a resolved entry whose `SKILL.md` was absent vanished from validation's report while the gate still reported PASS (issue #118). #118 fixed one consumer; the interface still cannot say what files an entry owns.
+- The toolkit-setup procedure tells an agent to derive the expected names and the per-variant instruction files itself — a third re-derivation of the same facts, in prose.
+
+## Solution
+
+An Expected-set entry resolves the **skill files** it owns, and those files carry the failure vocabulary. The entry exposes one list: the root skill file, one per runtime variant, and an `AgentDefinition` for each variant that ships an `agent.toml` instead of a `SKILL.md`. The entry-level resolution status retires; "failed entry" is derived from "any owned skill file missing".
+
+Consumers stop rebuilding the layout. `validation-runner` builds one list of targets that carries identity and result together, so the report cannot misalign with the verdicts and a missing file always FAILs. `check_codex_status` becomes a pure projection of the file list. `dev` and `pack` keep their current behaviour but read the file-level facts. The codex exemption stops being folklore and becomes data.
+
+## User Stories
+
+1. As a toolkit maintainer, I want each Expected-set entry to resolve the skill files it owns, so that no consumer rebuilds the source layout from `source_dir`.
+2. As a toolkit maintainer, I want each skill file to record its variant, so that reports can name the variant that failed without re-deriving it.
+3. As a toolkit maintainer, I want each skill file to record whether it is a SKILL.md or an agent definition, so that the codex `agent.toml` exemption is data instead of a special case in a consumer.
+4. As a toolkit maintainer, I want a variant directory with neither file to be a missing skill file, so that placeholder directories fail loudly.
+5. As a toolkit maintainer, I want the entry-level resolution status to retire, so that one fact has one failure vocabulary instead of two.
+6. As a toolkit maintainer, I want an entry whose provenance is malformed to still appear as a failed entry, so that it cannot vanish from reports.
+7. As a toolkit maintainer, I want `upstream`, `vendor`, and `autopilot` entries to use the same file model, so that validation stops branching on the Skill source.
+8. As a CI reviewer, I want validation to FAIL when a skill file is missing, so that the gate cannot pass on a broken checkout — the #118 class of bug is closed at the interface.
+9. As a CI reviewer, I want validation targets and results to be one list, so that the report cannot misalign verdicts with skills.
+10. As a CI reviewer, I want the codex variant status to be derived from enumerated facts, so that it cannot contradict the entry list it is printed next to.
+11. As a toolkit maintainer, I want `dev` to keep warning and skipping a failed entry, so that a partial checkout stays usable.
+12. As a toolkit maintainer, I want `pack` to fail and name every missing skill file, so that a release never ships quietly short of the Expected set.
+13. As a release engineer, I want the tarball layout unchanged, so that this deepening does not change what users install.
+14. As an agent running toolkit-setup, I want to read the resolved facts about each entry instead of re-deriving the expected names and per-variant files myself, so that the procedure stops being a fourth dialect.
+15. As a test author, I want the five entry states (fully resolved, missing directory, missing root SKILL.md, malformed `skillPath`, `agent.toml` variant) tested at the enumerator's interface, so that new consumers inherit the coverage.
+16. As a test author, I want the existing entry-state matrix to move to the enumerator interface rather than being duplicated, so that the same behaviour is not asserted in two places.
+17. As a future explorer, I want the term "Skill file" in `CONTEXT.md`, so that design conversations can name the thing the entry owns.
+18. As a future explorer, I want an ADR recording why failure moved from the directory to the file, so that this is not re-litigated.
+19. As a maintainer, I want the deliberately changed outputs listed in the PR, so that behavior-preservation review can see exactly what moved.
+20. As a maintainer, I want the runtime variant list to stay single-sourced, so that adding a runtime remains one change.
+
+## Implementation Decisions
+
+- **The entry owns its skill files.** The Expected-set entry exposes its skill files. Each skill file carries: its variant (absent for the root fallback), its resolved path, its kind (`Skill` for a `SKILL.md`, `AgentDefinition` for an `agent.toml`), and its own resolution status. `CONTEXT.md` already defines this as **Skill file**.
+- **Entry-level resolution retires.** An entry is a failed entry when any skill file it owns is missing. Provenance that cannot ground a file (a `skillPath` not ending in `/SKILL.md`) yields a missing root skill file anchored at the entry's source root. Rejected: keeping a second, directory-level status alongside the file-level one — two failure vocabularies for one fact drift.
+- **One model for all three Skill sources.** `autopilot`, `vendor`, and `upstream` entries resolve the same way. Upstream stays agnostic by policy; its file list simply holds the root skill file.
+- **`agent.toml` is an artifact, not a gap.** A variant that ships an `agent.toml` and no `SKILL.md` yields a resolved `AgentDefinition` file. A variant directory with neither file yields a missing `Skill` file that FAILs validation. In this tree exactly two variants are file-less by design (`autopilot-implementer/codex`, `autopilot-reviewer/codex`).
+- **Deterministic file order.** Root fallback first, then variants in the existing runtime-variant order. Part of the interface contract, matching the entry ordering guarantee from #110.
+- **Strictness stays at the consumer.** `dev` warns and skips a failed entry; `pack` fails and names the missing files; validation FAILs. The enumerator reports facts only; it takes no strictness parameter (the #110 decision, unchanged).
+- **Layout split stays intact.** Source-tree layout (which files an entry owns) lives in the enumerator. Installed-tree policy (router, instruction renaming, runtime directories, fallback priority) stays in `deploy` per ADR-0036. Only the runtime variant list remains shared.
+- **Validation stops shadowing the entry.** Validation builds one list of targets that carries the entry identity, the resolved skill file path, and the result together; the report iterates that list. The current flattened skill record and the skills/results parallel arrays retire. Rejected: keeping the parallel arrays and only swapping the failure source — the pairing invariant stays unenforced.
+- **`check_codex_status` becomes a projection.** It renders from the enumerated file list. It no longer walks the filesystem and no longer needs the caller's skill list to de-dupe.
+- **Deliberate behavior changes (two).** (a) `check_codex_status` stops emitting the placeholder-directory INFO line — it is unreachable through the shipped pipeline, where such a directory already FAILs validation. (b) Entry-level resolution and its reason strings leave the interface; `dev`, `pack`, and validation now derive failure from skill files. Everything else keeps behaviour: `dev` policy, `pack` strictness, tarball layout, installed layout, lock format, and the four existing entry-state verdicts.
+- **Seams picked.** Primary seam: the enumerator interface in `skill-index` (existing). Secondary seam: the whole-pipeline validation function (existing). No new seam is introduced. The toolkit-setup suite migrates onto the enumerator; no parallel model is kept.
+- **Docs land with the spec.** `CONTEXT.md` gains the Skill file term (landed); ADR-0045 records the decision, the two rejected alternatives, and the deliberate behavior changes (landed).
+- **Touch points, in dependency order.** Enumerator interface (entry + file list + classification) → consumers (`dev`, `pack`) → validation (targets, projection, tests) → toolkit-setup suite migration → documentation of the two behaviour changes.
+
+## Testing Decisions
+
+- Good tests here give a fixture project tree (temp directory with lock files and skill sources) and assert observable outcomes through a public interface: which files an entry owns, which failed, what verdict the pipeline produced, and what the report says. No assertions on internal structure, no assertions on private helpers.
+- **Primary seam — the enumerator.** A new suite asserts the five entry states as skill-file facts: fully resolved, missing source directory, missing root `SKILL.md`, malformed `skillPath`, and a codex variant shipping an `agent.toml`. Prior art: the fixture-based enumeration tests in the `skill-index` crate and the repo-tree enumeration in the toolkit-setup suite.
+- **Migrate, don't duplicate.** `tests/test_toolkit_setup.rs` currently reads the entry-level resolution status; it moves to skill-file facts. The existing entry-state matrix in `validation-runner` moves to the enumerator seam, and the validation suite keeps only the end-to-end assertions (verdict + report text can locate the failing file).
+- **Secondary seam — the validation pipeline.** Keep asserting through the whole-pipeline function that each entry state produces the expected verdict and that the report names the file. Prior art: the seven existing pipeline tests, which already build fixture trees.
+- **Codex status.** Its tests become projection tests over an enumerated file list; the placeholder INFO assertion is deleted with the line.
+- **Deploy behaviour.** `dev` warning/skip and `pack` failure keep their existing tests, plus one new `pack` test for "directory exists but the root `SKILL.md` is missing" — the #118 state at the release gate. Prior art: the in-crate fixture tests for `dev` and the packaging contract suite.
+- **Behaviour referee.** `tests/test_install.rs` and the packaging contract suite stay green; where a fixture mirrors the old entry-level status, it migrates without changing the asserted outcome.
+
+## Out of Scope
+
+- Typing Skill source as an enum instead of string literals (architecture-review candidate B).
+- The rust-script file inventory duplicated across the cache-refresh script and CI (candidate D).
+- One shared test-support fixture module across suites (candidate C).
+- The remaining #110 watchlist: fallback-variant priority quirk, dev summary double-count, leftover debug prints, the duplicated `--json` requirement, the two validation parsers, the double storage scan, and the duplicate read-side report oracle.
+- Any change to installed layout, tarball layout, or lock-file format.
+
+## Further Notes
+
+- Source: architecture review 2026-09-11, candidate A ("Make the Expected-set entry carry its resolved skill files"), confirmed through a two-round grilling session.
+- Direct predecessor: #118 — the same class of bug, fixed at one consumer because the interface could not express it. This spec moves the fix to the interface.
+- Deletion test that motivated the deepening: delete the entry's file list today and each consumer re-grows its own layout rules; delete it after this work and the missing-file bug returns in every consumer.
+- ADRs: builds on 0044 (single owner for the Expected set), 0036 (single discoverable router), 0042 (vendor source), and 0045 (landed with this spec: entry resolves its skill files, failure lives on the file).
+- Vocabulary: Expected set, Expected-set entry, Skill file, Skill source, Skill variant, failed entry — per `CONTEXT.md`.
+- Landed alongside the spec: `CONTEXT.md` term and ADR-0045.
