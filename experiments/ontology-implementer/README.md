@@ -60,12 +60,12 @@ Selection over T122–T126 (mean):
 Report gate: 15/15 fixtures matched; valid exit 0; 14 invalid exit 1; 0 false rejects.
 
 Phase 2 pilot (T126, 2 runs per arm, `deepseek-flash`): all four runs passed the
-hidden-test overlay, structural check, and report contract. The prose runs used
-the default parallel test configuration; the ontology runs used
+hidden-test overlay, structural check, and report contract. All final runs used
 `--test-threads=1` after an earlier parallel `ontology-1` attempt hit a known
-`shared` `PROJECT_ROOT` race. The result is null:
-both arms implemented the contract and passed. This is 4 runs on one ticket, not
-the pre-registered 30-run protocol.
+`shared` `PROJECT_ROOT` race. Both arms received the same parent spec
+(`corpus/issue-121.json`); only the ontology arm received the injection plan.
+The result is null: both arms implemented the contract and passed. This is 4
+runs on one ticket, not the pre-registered 30-run protocol.
 
 ## What this does and does not show
 

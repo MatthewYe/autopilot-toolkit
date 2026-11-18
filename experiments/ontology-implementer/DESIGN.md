@@ -491,15 +491,16 @@ sanitized worktree，`deepseek-flash`，2 臂 × 2 次。计划中的 context �
 
 | run | arm | `cargo test --workspace` | serial rerun | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | — (parallel) | pass | pass | DONE |
-| prose-2 | prose | 0 | — (parallel) | pass | pass | DONE |
+| prose-1 | prose | 0 | 0 | pass | pass | DONE |
+| prose-2 | prose | 0 | 0 | pass | pass | DONE |
 | ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
 | ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 四次的 `toolkit_setup`、`skill_check`、`validation/run.rs`、`clippy -D warnings` 都是 0。
-prose 两跑使用默认并行配置；ontology 两跑因更早的 ontology-1 并行尝试撞到
+四次最终评估都使用 `--test-threads=1`；更早的 ontology-1 并行尝试撞到
 `shared::tests::load_skill_lock_from_temp_project` 的 `PROJECT_ROOT` 环境变量竞态（exit 101），
-串行 overlay 通过。不是实现差异。
+串行 overlay 通过。不是实现差异。strict 对照里 prose 两跑也拿到了 `corpus/issue-121.json`，
+与 ontology 臂任务信息一致，只差注入 plan。
 
 结论：
 
@@ -519,18 +520,20 @@ prose 两跑使用默认并行配置；ontology 两跑因更早的 ontology-1 �
 
 | run | model calls | input | output | cache read | total | non-cached |
 |---|---:|---:|---:|---:|---:|---:|
-| prose-1 | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
-| prose-2 | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
+| prose-1 | 67 | 84,678 | 25,309 | 2,848,512 | 2,958,499 | 109,987 |
+| prose-2 | 47 | 102,907 | 23,985 | 2,078,720 | 2,205,612 | 126,892 |
 | ontology-1 | 92 | 99,172 | 38,122 | 4,159,744 | 4,297,038 | 137,294 |
 | ontology-2 | 75 | 221,614 | 44,485 | 3,796,224 | 4,062,323 | 266,099 |
-| prose avg | 58 | 105,352 | 25,782 | 2,974,848 | 3,105,982 | 131,134 |
+| prose avg | 57 | 93,793 | 24,647 | 2,463,616 | 2,582,056 | 118,440 |
 | ontology avg | 84 | 160,393 | 41,304 | 3,977,984 | 4,179,681 | 201,696 |
 
-ontology 臂平均 total 高 34.6%（4.18M vs 3.11M），非缓存也高 53.8%
-（201,696 vs 131,134），output 高 60.2%（41,304 vs 25,782）；N=2 且 total 区间不重叠（prose 最大 3.38M < ontology 最小 4.06M）。6,767 字符的 plan 只读一次
-（约 1.8k–2.0k tokens），但两臂工具步数不同（ontology 84 次 vs prose 58 次），
-不能把差异归因于注入本身。因此不能声称“本体注入更省 token”。原始数字在
-`results/phase2/tokens.json`。
+strict 同信息对照（两臂都拿到 `corpus/issue-121.json`）下，ontology 臂平均 total
+高 61.9%（4.18M vs 2.58M），非缓存高 70.3%（201,696 vs 118,440），output 高
+67.6%（41,304 vs 24,647）；N=2 且 total 区间不重叠（prose 最大 2.96M <
+ontology 最小 4.06M）。6,767 字符的 plan 只读一次（约 1.8k–2.0k tokens），
+但两臂 model calls 不同（ontology 84 次 vs prose 57 次），不能把差异归因于
+注入文本本身；主要是 plan 指向的源码阅读和更多调用。因此不能声称
+“本体注入更省 token”。原始数字在 `results/phase2/tokens.json`。
 
 ---
 

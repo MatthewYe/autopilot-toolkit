@@ -3,9 +3,10 @@
 This directory is the Phase 2 harness for the implementer proposal. It runs
 the same ticket through two arms in isolated, history-free worktrees:
 
-- **prose**: the repository's `autopilot-implementer/SKILL.md` only.
-- **ontology**: the same skill plus the selected clause/context plan
-  (`results/plan-T126.md`, advisory; prose stays authoritative).
+- **prose**: the repository's `autopilot-implementer/SKILL.md`, `TASK.md`, and the
+  same parent spec (`corpus/issue-121.json`); no plan.
+- **ontology**: the same skill, task, and parent spec plus the selected
+  clause/context plan (`results/plan-T126.md`, advisory; prose stays authoritative).
 
 The agent never sees the merged diff, PR body, or hidden checks. The worktree
 is a `git archive` of the ticket's base commit with a fresh single-commit git
@@ -32,17 +33,18 @@ Deviations from the registered protocol:
 
 ```
 replay/T126/
-  prose-1/{TASK.md,repo/}
-  prose-2/{TASK.md,repo/}
+  prose-1/{TASK.md,repo/}          # repo/corpus/issue-121.json
+  prose-2/{TASK.md,repo/}          # repo/corpus/issue-121.json
   ontology-1/{TASK.md,ONTOLOGY_PLAN.md,repo/}
   ontology-2/{TASK.md,ONTOLOGY_PLAN.md,repo/}
-  gold/repo/            # e3818a8, for check calibration only
+  gold/repo/                       # e3818a8, for check calibration only
 ```
 
-`TASK.md` is the GitHub issue body, no PR metadata. `ONTOLOGY_PLAN.md` is the
-deterministic plan from `scripts/render_plan.py`. Every plan excerpt is read from
-the base commit `98270ef` with `git show`, not from the merged worktree; the
-merged PR diff and post-merge tests are not part of the plan.
+`TASK.md` is the GitHub issue body, no PR metadata. Both arms receive the same
+parent spec at `repo/corpus/issue-121.json`; only the ontology arm receives
+`ONTOLOGY_PLAN.md`. Every plan excerpt is read from the base commit `98270ef`
+with `git show`, not from the merged worktree; the merged PR diff and post-merge
+tests are not part of the plan or the prepared base.
 
 ## Commands
 
@@ -79,19 +81,20 @@ temporary copy; the agent worktree is not modified.
 
 | run | arm | `cargo test --workspace` | serial | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | — (parallel) | pass | pass | DONE |
-| prose-2 | prose | 0 | — (parallel) | pass | pass | DONE |
+| prose-1 | prose | 0 | 0 | pass | pass | DONE |
+| prose-2 | prose | 0 | 0 | pass | pass | DONE |
 | ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
 | ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 All four also passed `toolkit_setup`, `scripts/check.rs`, `validation/run.rs`,
 and `clippy --workspace --all-targets -- -D warnings` (all exit 0).
 
-Prose runs used the default parallel test configuration. The ontology runs
-used `--test-threads=1` after an earlier parallel ontology-1 run hit the known
-`shared::tests::load_skill_lock_from_temp_project` `PROJECT_ROOT` env race
-(exit 101), but the serial overlay run passed. This is a harness flake, not an
-implementation difference.
+All four final runs used `--test-threads=1`. An earlier parallel ontology-1
+attempt hit the known `shared::tests::load_skill_lock_from_temp_project`
+`PROJECT_ROOT` env race (exit 101), but the serial overlay run passed. This is a
+harness flake, not an implementation difference. The strict prose reruns also
+received `corpus/issue-121.json`, so both arms have the same task information;
+only the injection plan differs.
 
 Interpretation: the pilot validates the harness and produces a null result on
 this ticket — both arms implement the contract, pass hidden tests, keep the
@@ -109,27 +112,26 @@ processed-token count, not a billed-cost count. `non-cached` is
 
 | run | arm | model calls | input | output | cache read | total | non-cached |
 |---|---|---:|---:|---:|---:|---:|---:|
-| prose-1 | prose | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
-| prose-2 | prose | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
+| prose-1 | prose | 67 | 84,678 | 25,309 | 2,848,512 | 2,958,499 | 109,987 |
+| prose-2 | prose | 47 | 102,907 | 23,985 | 2,078,720 | 2,205,612 | 126,892 |
 | ontology-1 | ontology | 92 | 99,172 | 38,122 | 4,159,744 | 4,297,038 | 137,294 |
 | ontology-2 | ontology | 75 | 221,614 | 44,485 | 3,796,224 | 4,062,323 | 266,099 |
-| **prose avg** | | **58** | **105,352** | **25,782** | **2,974,848** | **3,105,982** | **131,134** |
+| **prose avg** | | **57** | **93,793** | **24,647** | **2,463,616** | **2,582,056** | **118,440** |
 | **ontology avg** | | **84** | **160,393** | **41,304** | **3,977,984** | **4,179,681** | **201,696** |
 
-Ontology total processed tokens are higher (4.18M vs 3.11M, +34.6%), and
-non-cached input+output is also higher (201,696 vs 131,134, +53.8%); output is
-higher (41,304 vs 25,782, +60.2%). N=2 and the total ranges do not overlap
-(prose max 3.38M < ontology min 4.06M), so this is not evidence of a token win. The plan is 6,767 characters (7,077 bytes) and is read once as a tool
-result (~1.8k-2.0k tokens); it is not inlined into the system prompt. Raw
-numbers: `results/phase2/tokens.json`.
+Ontology total processed tokens are higher (4.18M vs 2.58M, +61.9%), and
+non-cached input+output is also higher (201,696 vs 118,440, +70.3%); output is
+higher (41,304 vs 24,647, +67.6%). N=2 and the total ranges do not overlap
+(prose max 2.96M < ontology min 4.06M), so this is not evidence of a token win.
+The plan is 6,767 characters (7,077 bytes) and is read once as a tool result
+(~1.8k-2.0k tokens); it is not inlined into the system prompt. Raw numbers:
+`results/phase2/tokens.json`.
 
 Why the ontology arm costs more: the plan is only 6.7K characters, but it
-points at full source files. Actual tool-read volume differed: prose-1 16 read
-calls / 136K chars; prose-2 10 / 100K; ontology-1 11 / 88K plus 69 bash calls /
-167K; ontology-2 25 / 229K. These tool results stay in the conversation and are
-reprocessed on every later model call; the ontology runs also made more calls
-(92 and 75 vs 65 and 51). The plan is not the main cost; reading the selected
-sources exhaustively is.
+points at full source files. Tool-result volume was 0.46M/0.76M characters for
+ontology-1/2 vs 0.41M/0.45M for prose-1/2, and the ontology runs made more
+model calls (92/75 vs 67/47). The plan is not the main cost; reading the
+selected sources and the extra calls are.
 
 ## Limitations
 
