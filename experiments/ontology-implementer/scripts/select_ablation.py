@@ -34,6 +34,22 @@ def text_of(task: dict, issue_body: str) -> str:
                      str(task['multiModule'])]).lower()
 
 
+def generic_contexts(contexts, task):
+    """All contexts available at this ticket's base.
+
+    A generic arm must not count another ticket's version of the same source
+    file: those excerpts are not in this ticket's prepared repo.  Keep global
+    contexts (no forTask) and contexts explicitly scoped to this task.
+    """
+    out = []
+    for c in contexts.values():
+        tasks = c.get('conditions', {}).get('forTask') or []
+        if tasks and task['id'] not in tasks and task['iri'] not in tasks:
+            continue
+        out.append(c)
+    return sorted(out, key=lambda c: c['id'])
+
+
 def keyword_select(clauses, contexts, task, text):
     cs = [c for c in clauses.values() if any(k.lower() in text for k in KEYWORDS.get(c['id'], []))]
     xs = [c for c in contexts.values()
@@ -70,7 +86,7 @@ def main():
         arms = {}
         arms['none'] = ([], [])
         arms['generic'] = (sorted(clauses.values(), key=lambda c: c['id']),
-                           sorted(contexts.values(), key=lambda c: c['id']))
+                           generic_contexts(contexts, task))
         arms['keyword'] = keyword_select(clauses, contexts, task, text)
         arms['ontology'] = select(clauses, contexts, task)
 

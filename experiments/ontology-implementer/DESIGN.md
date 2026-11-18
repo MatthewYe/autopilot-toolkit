@@ -272,7 +272,7 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 
 | 模式 | 内容 | 平均字符（5 task） |
 |---|---|---|
-| full | 所有 clause 全文 + 所有 context 全文 | 26361（generic） |
+| full | 所有 clause 全文 + 所有该 ticket 基线可用的 context 全文 | 9,534（generic 均值） |
 | ids | 只给 clause/context ID | 218（ontology） |
 | compact | clause ID + context 标题 | 242（ontology） |
 | hybrid | clause 全文 + context 路径/行号指针 | **1,735（ontology 估算）** |
@@ -297,7 +297,7 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 | `BlockedShape` | BLOCKED 时 hypotheses ≥ 2 |
 | `NeedsContextShape` | NEEDS_CONTEXT 时 missingContext 非空 |
 | `TddEvidenceShape` | 每个 production changed file 都有 `hasTestEvidence true` |
-| `RetryScopeShape` | retry 必须是 CriticalAndImportant；CriticalOnly 是反例 |
+| `RetryScopeShape` | retry 必须恰好声明一个 scope，且为 CriticalAndImportant；CriticalOnly、缺失、双值都是反例 |
 | `SpecMappingShape` | specLinked 时 specMapping 非空 |
 
 ### 6.2 为什么 gate 不检查代码
@@ -310,9 +310,11 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 
 `results/gate.txt`：
 
-- 15 个 fixture：1 valid + 14 invalid。
-- 15/15 符合预期；valid 退出 0；14 个 invalid 全部退出 1；0 个 false reject。
+- 16 个 fixture：1 valid + 15 invalid。
+- 16/16 符合预期；valid 退出 0；15 个 invalid 全部退出 1；0 个 false reject。
 - 覆盖：缺 check、非法 status、DONE 带 not-run、UNVERIFIED 无方法、BLOCKED 只有 1 个假设、changed files 空、production 无 TDD 证据、retry scope 错误、toolchain=false 却 DONE、spec-linked 无 specMapping、NEEDS_CONTEXT 无 missing fact。
+
+**报告解析与 gate 互补。** `report_contract.py` 只在 fenced code block 之外寻找正式字段，`STATUS` 必须恰好出现一次且值严格匹配；正文示例里的 `STATUS: DONE` 不能覆盖正式的错误状态，重复或矛盾声明直接失败。gate 看到的则是 TTL 中的事实，不依赖正文例子。
 
 **这证明 gate 能拒绝“报告层面的伪完成”，不证明代码正确。**
 
@@ -344,7 +346,7 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 | 臂 | clause recall | clause precision | context recall | context precision | exact runs | hybrid 估算 | 实际 rendered |
 |---|---|---|---|---|---|---|---|
 | none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
-| generic | 1.00 | 0.676 | 1.00 | 0.296 | 0/5 | 3,195 | 12,016 |
+| generic | 1.00 | 0.676 | 1.00 | 1.00 | 0/5 | 2,527 | 7,573 |
 | keyword | 0.368 | 0.940 | 0.144 | 1.00 | 0/5 | 650 | 2,141 |
 | **ontology** | **1.00** | **0.984** | **1.00** | **1.00** | **3/5** | **1,735** | **5,807** |
 
@@ -360,9 +362,9 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 
 - ontology 的 clause recall 100%，precision 98.4%；两次多选分别是 T122 的 I33（行为保持）和 T124 的 I31（回滚测试），都是“条件命中但人工 gold 认为不必要”的边界情况。
 - context 选择 37/37，precision/recall 100%。
-- generic 虽然 recall 100%，但 precision 0.676/0.296，注入 26K 字符，模型需要自己过滤。
+- generic 虽然 recall 100%，但 clause precision 0.676、context precision 1.00，注入约 9.5K 字符，模型仍需自己过滤 clause。
 - keyword 精度高但 recall 只有 36.8%/16.4%，漏掉大量必须条款。
-- 实际 rendered payload 五票均值 5,807 字符，比 generic 的 12,016 少 51.7%；hybrid 估算 1,735 vs 3,195，少 45.7%；同 generic 全量文本均值（8,753 vs 26,361）少 66.8%，同时保持 100% clause recall。
+- 实际 rendered payload 五票均值 5,807 字符，比 generic 的 7,573 少 23.3%；hybrid 估算 1,735 vs 2,527，少 31.4%；generic 全量文本均值 9,534，ontology 8,753，少 8.2%，同时保持 100% clause recall。
 
 ### 7.4 这个实验证明了什么
 
@@ -582,7 +584,7 @@ flowchart TD
 | 是否改模型行为 | 先不改 | 报告契约可独立验证，风险最低 | Phase 0 |
 | 是否形式化 TDD | 否 | 创造性循环，无可判定 ground truth | 只用护栏 |
 | 选择方式 | 本体条件 | 5 维条件组合，generic/keyword 效果差 | 采用 |
-| 注入方式 | rendered | 5,807 vs 12,016 字符，clause recall 100% | 采用 |
+| 注入方式 | rendered | 5,807 vs 7,573 字符，clause recall 100% | 采用 |
 | gate 语义 | SHACL + fail closed | 退出码 0/1/2；2 不当通过 | 采用 |
 | 验证 | 真实回放 + hidden tests | 唯一能证明代码质量提升的方法 | Phase 2 必做 |
 | 生产接入 | shadow → canary | 先证明不恶化，再扩大 | 未执行 |
@@ -669,11 +671,11 @@ temperature=0 降低方差；每个 ticket N=3，配对比较同一 ticket 的�
 
 ### Q15. canonical 和 DSH 的 retry 差异怎么处理？
 
-ADR 0039 §4 规定 `Critical` 和 `Important` 都强制 RETRY、都必须修，这是规范文本。旧 canonical `SKILL.md` 的 “Only fix the Critical issues” 是 drift，不能编码成合法范围。两个 clause 仍按 runtime 分开（I11 canonical、I12 DSH），但都要求 `CriticalAndImportant`；Report gate 的 `RetryScopeShape` 只接受 `CriticalAndImportant`，`CriticalOnly` 作为反例。
+ADR 0039 §4 规定 `Critical` 和 `Important` 都强制 RETRY、都必须修，这是规范文本。旧 canonical `SKILL.md` 的 “Only fix the Critical issues” 是 drift，不能编码成合法范围。两个 clause 仍按 runtime 分开（I11 canonical、I12 DSH），但都要求 `CriticalAndImportant`；Report gate 的 `RetryScopeShape` 要求 retry 恰好声明一个 scope 且为 `CriticalAndImportant`，`CriticalOnly`、缺失和双值都作为反例。
 
 ### Q16. hybrid 注入 1749 字符，会不会还是太长？
 
-实际 rendered payload 5,807 字符，比 generic 12,016 少 51.7%；hybrid 估算 1,735，比 generic 估算 3,195 少 45.7%，但比 keyword 的 650 多。rendered 约 1.5k–2k tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
+实际 rendered payload 5,807 字符，比 generic 7,573 少 23.3%；hybrid 估算 1,735，比 generic 估算 2,527 少 31.4%，但比 keyword 的 650 多。rendered 约 1.5k–2k tokens（中英混合），对现代模型可接受。真正的问题是“模型是否读”，不是“能不能放下”。完整 Phase 2 应按 clause 统计遵守率；如果某条 clause 太长导致忽略，缩短它，而不是删掉。
 
 ### Q17. 维护成本会不会超过收益？
 
@@ -807,7 +809,7 @@ python3 scripts/run_gate.py
 | 聚合指标 | `results/aggregate.json` |
 | 注入字符 | `results/injection.json` |
 | 实际注入载荷样例 | `results/plan-T122.md` … `plan-T126.md` |
-| 15/15 gate | `results/gate.txt` |
+| 16/16 gate | `results/gate.txt` |
 | 真实基线 | GitHub PR #127、#153、#154、#155 |
 | 原型设计原则 | `ontology-agent-lab` 的 O1–O15 / G1–G15 |
 

@@ -184,7 +184,17 @@ SELECT $this WHERE {
   # ROUND 0 is the first implementation.  Any retry (ROUND >= 1) must declare
   # CriticalAndImportant; a missing retryScope is also a violation.
   FILTER(?round >= 1)
-  FILTER NOT EXISTS { $this ar:retryScope ar:CriticalAndImportant }
+  OPTIONAL {
+    SELECT $this (COUNT(?scope) AS ?scopeCount) WHERE {
+      $this ar:retryScope ?scope .
+    }
+    GROUP BY $this
+  }
+  BIND(COALESCE(?scopeCount, 0) AS ?count)
+  # A retry must declare exactly one scope, and that scope must be the one
+  # ADR 0039 requires.  This rejects a missing scope, two values, and a wrong
+  # value, rather than only checking that the right value appears once.
+  FILTER(?count != 1 || NOT EXISTS { $this ar:retryScope ar:CriticalAndImportant })
 }
 """
     ] .

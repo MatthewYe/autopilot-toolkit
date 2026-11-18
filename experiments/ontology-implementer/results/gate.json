@@ -41,7 +41,7 @@
         "result_path": "https://example.org/autopilot/implementer#status",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#InConstraintComponent",
-        "source_shape": "_:ffeb46288ad38d904f412e470a95d944"
+        "source_shape": "_:f5c532ca646b07cace06b674584b17da"
       }
     ]
   },
@@ -160,7 +160,7 @@
         "result_path": "https://example.org/autopilot/implementer#changedFile",
         "severity": "Violation",
         "source_constraint_component": "http://www.w3.org/ns/shacl#MinCountConstraintComponent",
-        "source_shape": "_:c373051ab141ec364e831d0d949d5ef9"
+        "source_shape": "_:dfe82b8c4b488a0950a38e2ad2184917"
       }
     ]
   },
@@ -202,6 +202,24 @@
   },
   {
     "fixture": "invalid-retry-scope-missing",
+    "expected": 1,
+    "exit_code": 1,
+    "conforms": false,
+    "passed": true,
+    "violations": [
+      {
+        "constraint": "sparql",
+        "focus_node": "https://example.org/autopilot/implementer#Report",
+        "message": "retry scope does not match the task runtime",
+        "node_shape": "https://example.org/autopilot/implementer#RetryScopeShape",
+        "severity": "Violation",
+        "source_constraint_component": "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
+        "source_shape": "https://example.org/autopilot/implementer#RetryScopeShape"
+      }
+    ]
+  },
+  {
+    "fixture": "invalid-retry-scope-double",
     "expected": 1,
     "exit_code": 1,
     "conforms": false,

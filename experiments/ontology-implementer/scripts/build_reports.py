@@ -41,7 +41,9 @@ def report(name: str, *, status='DONE', round_=0, toolchain='true', retry='Criti
     out.append(f'  ar:round "{round_}"^^xsd:integer ;')
     out.append(f'  ar:toolchain {toolchain} ;')
     if retry:
-        out.append(f'  ar:retryScope ar:{retry} ;')
+        scopes = retry if isinstance(retry, (list, tuple)) else [retry]
+        for scope in scopes:
+            out.append(f'  ar:retryScope ar:{scope} ;')
     if spec:
         out.append('  ar:specMapping "AC1 -> spec item 1; AC2 -> spec item 2" ;')
     out.append(f'  ar:hypotheses "{hypotheses}"^^xsd:integer ;')
@@ -98,6 +100,8 @@ def main():
     report('invalid-tdd-missing', tdd=False)
     report('invalid-retry-scope', round_=1, retry='CriticalOnly')
     report('invalid-retry-scope-missing', round_=2, retry=None)
+    report('invalid-retry-scope-double', round_=1,
+           retry=['CriticalOnly', 'CriticalAndImportant'])
     report('invalid-toolchain-done', toolchain='false')
     report('invalid-spec-mapping', spec=False)
     report('invalid-needs-context-empty', status='NEEDS_CONTEXT', missing=None)

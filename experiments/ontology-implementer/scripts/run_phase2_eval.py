@@ -162,6 +162,14 @@ def main() -> None:
             "hidden_tests_commit": HIDDEN_TESTS_COMMIT,
         })
         result_path.write_text(json.dumps(result, indent=2))
+        consistency = subprocess.run(
+            ["python3", str(ROOT / "scripts" / "check_phase2_consistency.py"), str(result_path)],
+            text=True, capture_output=True,
+        )
+        print(consistency.stdout.strip())
+        if consistency.returncode != 0:
+            print(consistency.stderr.strip())
+            raise SystemExit(f"result/diff mismatch for {run}")
         print(f"{run}: report={report['pass']} structural={structural['pass']}")
 
 

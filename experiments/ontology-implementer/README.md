@@ -11,7 +11,7 @@ decision tree and validation protocol.
 - `data/contexts.ttl`: 25 context cards with source pointers and excerpts.
 - `data/gold.json`: hand-assigned gold clause/context sets.
 - `shapes/report-shapes.ttl`: 10 SHACL shapes for the `IMPLEMENTER_REPORT` contract.
-- `fixtures/`: 15 report fixtures (1 valid, 14 invalid).
+- `fixtures/`: 16 report fixtures (1 valid, 15 invalid).
 - `corpus/`: GitHub issues #121–#126 and PR #127 diff.
 - `scripts/`: artifact builder, selector, report builder, gate runner, summaries.
 - `results/`: selection, injection, aggregate, gate, and rendered plan outputs (`plan-T*.md`).
@@ -53,11 +53,11 @@ Selection over T122–T126 (mean):
 | arm | clause recall | clause precision | context recall | context precision | exact | hybrid est. | rendered |
 |---|---|---|---|---|---|---|---|
 | none | 0.00 | 0.00 | 0.00 | 0.00 | 0/5 | 0 | 540 |
-| generic | 1.00 | 0.676 | 1.00 | 0.296 | 0/5 | 3,195 | 12,016 |
+| generic | 1.00 | 0.676 | 1.00 | 1.00 | 0/5 | 2,527 | 7,573 |
 | keyword | 0.368 | 0.940 | 0.144 | 1.00 | 0/5 | 650 | 2,141 |
 | ontology | 1.00 | 0.984 | 1.00 | 1.00 | 3/5 | 1,735 | 5,807 |
 
-Report gate: 15/15 fixtures matched; valid exit 0; 14 invalid exit 1; 0 false rejects.
+Report gate: 16/16 fixtures matched; valid exit 0; 15 invalid exit 1; 0 false rejects.
 
 Phase 2 pilot (T126, 2 runs per arm, `deepseek-flash`): all four runs passed the
 hidden-test overlay, structural check, and report contract. All final runs used
@@ -73,8 +73,8 @@ Shows:
 
 - Conditions over real ticket facts select the applicable clauses and context cards.
 - Ontology selection has much higher precision than "inject everything" and much
-  higher recall than keyword matching, with 45.7% fewer characters than generic in the hybrid estimate; the actual
-  rendered plans are 51.7% smaller than the generic payload.
+  higher recall than keyword matching, with 31.4% fewer characters than generic in the hybrid estimate; the actual
+  rendered plans are 23.3% smaller than the generic payload.
 - A SHACL gate can enforce the report/status/retry/spec contract deterministically.
 
 Does not show:

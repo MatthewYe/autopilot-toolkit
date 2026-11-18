@@ -52,12 +52,18 @@ def main() -> None:
             "hidden_test_pass": (serial == 0) if serial is not None else parallel == 0,
         }
         required = ["toolkit_setup", "skill_check", "validation", "clippy"]
-        ws_ok = (serial == 0) or (parallel == 0)
+        # Presence is whether the check recorded an exit code.  A non-zero
+        # exit is an executed failure, not a missing record, and must stay
+        # distinguishable in the summary.
+        ws_present = isinstance(ws, dict) and "exit" in ws
+        ws_exit = ws.get("exit") if ws_present else None
+        ws_ok = ws_exit == 0
         checks_ok = ws_ok and all(row.get(k) == 0 for k in required)
         row["checks_ok"] = checks_ok
-        row["checks_missing"] = ([] if ws_ok else ["workspace_tests"]) + [
-            k for k in required if row.get(k) is None
-        ]
+        row["checks_missing"] = ([k for k in required if row.get(k) is None]
+                                 + ([] if ws_present else ["workspace_tests"]))
+        row["checks_failed"] = ([k for k in required if row.get(k) not in (None, 0)]
+                                + ([] if not ws_present or ws_exit == 0 else ["workspace_tests"]))
         row["full_pass"] = bool(
             row["hidden_test_pass"] and row["structural"] and row["report_contract"] and checks_ok
         )

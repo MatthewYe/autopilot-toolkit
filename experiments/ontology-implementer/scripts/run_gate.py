@@ -20,6 +20,7 @@ EXPECTED = {
     'invalid-tdd-missing': 1,
     'invalid-retry-scope': 1,
     'invalid-retry-scope-missing': 1,
+    'invalid-retry-scope-double': 1,
     'invalid-toolchain-done': 1,
     'invalid-spec-mapping': 1,
     'invalid-needs-context-empty': 1,
