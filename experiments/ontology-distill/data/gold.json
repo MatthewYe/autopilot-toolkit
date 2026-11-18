@@ -1,5 +1,5 @@
 {
-  "rubric": "Hand-labelled minimal sufficient pack per task and stage. Clause gold comes from the requirement's facts and the merged artifact: a clause is gold when leaving it out would plausibly have produced a defect in that artifact. Context gold is the set of sources the merged artifact actually cites or visibly follows. Labels were assigned before running the ontology arm; the labelling bias is discussed in ABLATION.md.",
+  "rubric": "Hand-labelled minimal sufficient pack per task and stage. Clause gold comes from the requirement's facts and the merged artifact: a clause is gold when leaving it out would plausibly have produced a defect in that artifact. Context gold is the set of sources a current re-run should consult, i.e. the merged artifact's cited or visibly followed sources, excluding the task's own post-hoc decision documents (those record the answer, not the input). Labels were assigned before running the ontology arm; the labelling bias is discussed in ABLATION.md. The main gold is not time-filtered: a current re-run may legitimately consult documents that postdate the artifact. The historical subset (cards introduced on or before asOf) is reported separately as a diagnostic; it is not added to the main denominator.",
   "tasks": {
     "T1": {
       "Clarification": {
@@ -396,9 +396,7 @@
         "contexts": [
           "CTX_TOSPEC",
           "CTX_GLOSSARY",
-          "CTX_TRACKER",
-          "CTX_ADR52",
-          "CTX_UPSTREAM"
+          "CTX_TRACKER"
         ]
       },
       "Issues": {

@@ -54,14 +54,12 @@ When a public contract changes, the spec states caller impact and the deprecatio
 
 When skill sources change, the spec names the repository validation and check commands as verification.
 
-## Context pointers (7)
+## Context pointers (6)
 
 - `docs/adr/0013-distill-adapts-skills-without-modifying-them.md:1-14` — ADR 0013: adapt skills without modifying them
   > # Distill adapts skills without modifying them Distill-owned stage executor adapters wrap existing natural-language skills with stable input, completion-evidence, and artifact-validation contracts. The vendored `grill-wi
 - `docs/adr/0044-single-owner-for-the-expected-set.md:1-14` — ADR 0044: single owner for the Expected set
   > # ADR 0044: Single Owner for the Expected Set > Implements spec [#110](https://github.com/MatthewYe/autopilot-toolkit/issues/110) > (one owner for the Expected set). Builds on ADR 0001 (selfcheck derives the expected > s
-- `docs/adr/0045-expected-set-entry-resolves-its-skill-files.md:1-14` — ADR 0045: entries resolve their skill files
-  > # ADR 0045: An Expected-set Entry Resolves Its Skill Files > Builds on ADR 0044 (single owner for the Expected set) and ADR 0036 (single > discoverable router). Sharpens the term recorded as **Skill file** in > `CONTEXT.
 - `docs/agents/domain.md:1-35` — Domain docs configuration
   > # Domain Docs How the engineering skills should consume this repo's domain documentation when exploring the codebase. ## Before exploring, read these - **`GLOSSARY.md`** at the repo root; if absent, read legacy **`CONTEX
 - `GLOSSARY.md:1-40` — Repository glossary (canonical vocabulary)

@@ -127,6 +127,17 @@ def main() -> int:
     tasks = {task["id"]: task for task in tasks_raw.values()}
     gold = json.loads((ROOT / "data" / "gold.json").read_text())
 
+    # The two cases raised in review: their own decision documents must never
+    # reach an arm.  Kept explicit so a data regression fails loudly.
+    posthoc_cases = {
+        "T6": {"CTX_ADR52", "CTX_UPSTREAM"},
+        "T8": {"CTX_ADR45"},
+    }
+    for task_id, expected in posthoc_cases.items():
+        missing = expected - set(tasks[task_id].get("excludesContexts", []))
+        if missing:
+            raise SystemExit(f"{task_id} does not exclude post-hoc decisions: {sorted(missing)}")
+
     rows = []
     for task_id in sorted(tasks):
         task = tasks[task_id]
@@ -142,6 +153,11 @@ def main() -> int:
                 clause_list, context_list = fn(clauses, pool, task, stage)
                 clause_ids = sorted(c["id"] for c in clause_list)
                 context_ids = sorted(c["id"] for c in context_list)
+                leaked = sorted(set(context_ids) & set(task.get("excludesContexts", [])))
+                if leaked:
+                    raise SystemExit(
+                        f"{task_id}/{stage}/{arm} selected post-hoc decisions: {leaked}"
+                    )
                 c_recall, c_precision, c_hit, c_sel, c_gold = metrics(
                     clause_ids, expected["clauses"])
                 x_recall, x_precision, x_hit, x_sel, x_gold = metrics(
@@ -255,6 +271,9 @@ def main() -> int:
                   f"| {agg['exact_clauses']:.3f} | {agg['exact_contexts']:.3f} "
                   f"| {agg['exact_both']:.3f} | {agg['mean_chars_full']} "
                   f"| {agg['mean_chars_hybrid']} |")
+    md += ["",
+           "Post-hoc decision exclusions verified in every arm: T6 drops `CTX_ADR52` and "
+           "`CTX_UPSTREAM`; T8 drops `CTX_ADR45`. The target artifact remains excluded too."]
     (RESULTS / "selection.md").write_text("\n".join(md) + "\n")
 
     print(text)

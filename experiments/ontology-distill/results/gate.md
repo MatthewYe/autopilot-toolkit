@@ -1,6 +1,6 @@
 # Gate results
 
-Fixtures: **21/21** as expected.
+Fixtures: **23/23** as expected.
 
 ## Fixtures
 
@@ -9,6 +9,7 @@ Fixtures: **21/21** as expected.
 | `graph-empty` | blocking | reject | reject | 1 | yes |
 | `issues-cycle` | blocking | reject | reject | 1 | yes |
 | `issues-dangling` | blocking | reject | reject | 1 | yes |
+| `issues-empty-blocked-by` | blocking | reject | reject | 1 | yes |
 | `issues-missing-parent` | blocking | reject | reject | 1 | yes |
 | `issues-no-ac` | blocking | reject | reject | 1 | yes |
 | `issues-no-blocked-by` | blocking | reject | reject | 1 | yes |
@@ -25,6 +26,7 @@ Fixtures: **21/21** as expected.
 | `prd-missing-problem` | blocking | reject | reject | 1 | yes |
 | `prd-no-out-of-scope` | blocking | reject | reject | 1 | yes |
 | `prd-no-seam` | blocking | reject | reject | 1 | yes |
+| `prd-short-problem` | blocking | pass | pass | 0 | yes |
 | `prd-stories-unnumbered` | blocking | reject | reject | 1 | yes |
 | `prd-valid` | blocking | pass | pass | 0 | yes |
 

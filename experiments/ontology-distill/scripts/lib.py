@@ -202,6 +202,7 @@ SELECT ?id ?p ?v WHERE {{
         "hasExistingSeam": "hasExistingSeam",
         "asOf": "asOf",
         "targetArtifact": "targetArtifact",
+        "excludesContext": "excludesContexts",
     }
     for row in store.query(
         f"""PREFIX d: <{PREFIX}>
@@ -269,14 +270,17 @@ def matches(conditions: dict, task: dict, stage: str) -> bool:
 
 
 def eligible_contexts(contexts: dict, task: dict) -> dict:
-    """Drop the task's own target artifact before any arm selects contexts.
+    """Drop the task's own output before any arm selects contexts.
 
-    A replay that can read the accepted answer is not a replay.  The filter
-    lives here, not in the ontology arm, so ``stage`` and ``generic`` pay the
-    same price.
+    The target artifact and the task's post-hoc decision documents record the
+    accepted answer, so a replay that can read them is not a replay.  The
+    filter lives here, not in the ontology arm, so ``stage`` and ``generic``
+    pay the same price.
     """
     target = task.get("targetArtifact")
-    return {cid: card for cid, card in contexts.items() if card["path"] != target}
+    excluded = set(task.get("excludesContexts", []))
+    return {cid: card for cid, card in contexts.items()
+            if card["path"] != target and cid not in excluded}
 
 
 def historical(contexts: dict, ids: list[str], task: dict) -> list[str]:

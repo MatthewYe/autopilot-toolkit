@@ -50,10 +50,8 @@ No interview happens at this stage: the spec synthesizes the clarification alrea
 
 When CI or release changes, the spec states the trigger and the failure behaviour.
 
-## Context pointers (6)
+## Context pointers (4)
 
-- `docs/adr/0052-upstream-pin-and-drift-check.md:1-14` — ADR 0052: upstream pin and drift check
-  > # ADR 0052: Record the Upstream Ref as a Machine-Verifiable Pin > Extends [ADR 0037](0037-upstream-sync-full-replacement.md) (the snapshot is > replaced verbatim) and [ADR 0049](0049-typed-lock-write-path-and-upstream-sy
 - `docs/agents/domain.md:1-35` — Domain docs configuration
   > # Domain Docs How the engineering skills should consume this repo's domain documentation when exploring the codebase. ## Before exploring, read these - **`GLOSSARY.md`** at the repo root; if absent, read legacy **`CONTEX
 - `GLOSSARY.md:1-40` — Repository glossary (canonical vocabulary)
@@ -62,5 +60,3 @@ When CI or release changes, the spec states the trigger and the failure behaviou
   > --- name: to-spec description: \"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\" disable-model-invocation: true --- 
 - `docs/agents/issue-tracker.md:1-38` — Issue tracker configuration
   > # Issue tracker: GitHub Issues and PRDs for this repo live as GitHub issues on `MatthewYe/autopilot-toolkit`. Use the `gh` CLI for all operations. ## Conventions - **Create an issue**: `gh issue create --title \"...\" --
-- `docs/agents/upstream-sync.md:1-40` — Upstream sync procedure
-  > # Upstream Sync Runbook How to replace the vendored snapshot at `skills/upstream/` with a newer [mattpocock/skills](https://github.com/mattpocock/skills) revision. Audience: a maintainer or an agent running a one-shot sy

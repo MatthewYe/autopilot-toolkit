@@ -70,6 +70,7 @@ d:whenHasExistingSeam a owl:ObjectProperty .
 d:whenAmbiguity a owl:ObjectProperty .
 d:introducedAt a owl:ObjectProperty .
 d:targetArtifact a owl:ObjectProperty .
+d:excludesContext a owl:ObjectProperty .
 d:dependenciesDeclared a owl:ObjectProperty .
 d:asOf a owl:DatatypeProperty .
 

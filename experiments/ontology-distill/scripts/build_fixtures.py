@@ -52,6 +52,24 @@ def _empty_section(text: str, heading: str) -> str:
     return "\n".join(out) + "\n"
 
 
+def _replace_section_body(text: str, heading: str, body: str) -> str:
+    """Keep the level-2 heading, replace its body up to the next heading."""
+    out, replace = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if replace:
+                out.extend(body.splitlines())
+                out.append("")
+                replace = False
+            replace = line.strip() == f"## {heading}"
+            out.append(line)
+        elif not replace:
+            out.append(line)
+    if replace:
+        out.extend(body.splitlines())
+    return "\n".join(out) + "\n"
+
+
 def _issue_payloads() -> list[dict]:
     return [
         json.loads((ROOT / "corpus" / "issues" / f"{n}.json").read_text())
@@ -105,7 +123,24 @@ def build() -> dict:
              "blocking", False,
              f"#121 with the body of '{section}' emptied: P01/P02 must reject.")
 
+    short_problem = extract_prd_text(
+        _replace_section_body(_prd_source_text(), "Problem Statement",
+                              "Short but nonempty."),
+        {}, "prd-short-problem", "mutated #121 markdown")
+    emit("prd-short-problem", prd_ttl(short_problem), "blocking", True,
+         "#121 with a 19-character but non-whitespace Problem body: P01 must accept it.")
+
     payloads = _issue_payloads()
+    empty_blocked = _issue_payloads()
+    empty_blocked[0] = copy.deepcopy(empty_blocked[0])
+    empty_blocked[0]["body"] = _empty_section(empty_blocked[0]["body"] or "",
+                                             "Blocked by")
+    empty_declared = extract_issues_from_payloads(
+        empty_blocked, {"multiSlice": True}, "issues-empty-blocked-by",
+        "mutated #122 set")
+    emit("issues-empty-blocked-by", issues_ttl(empty_declared), "blocking", False,
+         "#122 keeps the 'Blocked by' heading but empties its body: the declaration is absent and T03 must reject.")
+
     payloads[0] = _drop_blocked_by(payloads[0])
     undeclared = extract_issues_from_payloads(
         payloads, {"multiSlice": True}, "issues-no-blocked-by", "mutated #122 set")

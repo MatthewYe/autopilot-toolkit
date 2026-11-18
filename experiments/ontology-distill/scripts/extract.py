@@ -111,7 +111,7 @@ def extract_prd_text(text: str, facts: dict, artifact_id: str, source: str) -> d
     )
     lowered = text.lower()
     runtime_plan = runtime_mentions >= 2 and "fallback" in lowered
-    empty_sections = sorted(name for name in sections if len(sections[name]) < 20)
+    empty_sections = sorted(name for name in sections if not sections[name].strip())
     return {
         "kind": "prd",
         "id": artifact_id,
@@ -206,7 +206,9 @@ def extract_issues_from_payloads(payloads: list[dict], facts: dict,
             [m for m in map(STORY_RE.match, criteria.splitlines()) if m]
         )
         blocked = _blocked_numbers(sections.get("Blocked by", ""))
-        declared.append("Blocked by" in sections)
+        # A heading with an empty body declares nothing; treat it like a
+        # missing section so T03 blocks instead of assuming no edges.
+        declared.append(bool(sections.get("Blocked by", "").strip()))
         issues.append(
             {
                 "number": number,

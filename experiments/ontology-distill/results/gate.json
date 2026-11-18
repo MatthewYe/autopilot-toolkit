@@ -43,6 +43,20 @@
       ]
     },
     {
+      "fixture": "issues-empty-blocked-by",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#122 keeps the 'Blocked by' heading but empties its body: the declaration is absent and T03 must reject.",
+      "messages": [
+        "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating."
+      ]
+    },
+    {
       "fixture": "issues-missing-parent",
       "tier": "blocking",
       "expected": "reject",
@@ -261,6 +275,18 @@
       "messages": [
         "P05: 'Testing Decisions' names no testing seam."
       ]
+    },
+    {
+      "fixture": "prd-short-problem",
+      "tier": "blocking",
+      "expected": "pass",
+      "expected_advisories": 0,
+      "actual": "pass",
+      "actual_advisories": 0,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with a 19-character but non-whitespace Problem body: P01 must accept it.",
+      "messages": []
     },
     {
       "fixture": "prd-stories-unnumbered",

@@ -263,9 +263,18 @@ CONTEXTS = [
      "docs/agents/triage-labels.md", 1, 15, ["Issues"], {}),
 ]
 
+# Context cards that record the task's own solution rather than reusable input.
+# They postdate the task and would leak the accepted answer into a replay, so
+# every selection arm drops them.  General documents from later dates stay:
+# they are input a current re-run could legitimately consult.
+POSTHOC = {
+    "T6": ["CTX_ADR52", "CTX_UPSTREAM"],
+    "T8": ["CTX_ADR45"],
+}
+
 # First commit date of each card's file, from `git log --follow --format=%aI
-# --reverse -- <path>`.  Selection may only use documents that already existed
-# on the task date; otherwise a replay leaks later decisions into the answer.
+# --reverse -- <path>`.  Used by the historical-context metric; selection
+# additionally drops the task's own post-hoc decisions (POSTHOC above).
 INTRODUCED = {
     "skills/upstream/skills/productivity/grilling/SKILL.md": "2026-07-27",
     "skills/upstream/skills/engineering/domain-modeling/SKILL.md": "2026-09-10",
@@ -443,7 +452,7 @@ def build_ontology() -> str:
                  "whenMultiModule", "whenCrossRuntime", "whenMultiSlice",
                  "whenDomainDocs", "whenAdr", "whenNewAdr", "whenExternalTracker",
                  "whenWideRefactor", "whenUserFacing", "whenHasExistingSeam",
-                 "whenAmbiguity", "introducedAt", "targetArtifact",
+                 "whenAmbiguity", "introducedAt", "targetArtifact", "excludesContext",
                  "dependenciesDeclared"]:
         lines.append(f"d:{prop} a owl:ObjectProperty .")
     lines.append("d:asOf a owl:DatatypeProperty .")
@@ -532,6 +541,8 @@ def build_tasks() -> str:
         lines.append(f"    d:ambiguity d:{facts['ambiguity']} ;")
         for key in BOOLEAN_FACTS:
             lines.append(f"    d:{key} {boollit(facts[key])} ;")
+        for context_id in POSTHOC.get(task_id, []):
+            lines.append(f"    d:excludesContext d:{context_id} ;")
         lines[-1] = lines[-1].rstrip(" ;") + " ."
         lines.append("")
     return "\n".join(lines)

@@ -20,6 +20,13 @@
     "tier": "blocking",
     "undetermined": false
   },
+  "issues-empty-blocked-by": {
+    "advisory_count": 0,
+    "note": "#122 keeps the 'Blocked by' heading but empties its body: the declaration is absent and T03 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
   "issues-missing-parent": {
     "advisory_count": 0,
     "note": "Mutation of #122-#126: T04 must reject the set.",
@@ -129,6 +136,13 @@
     "advisory_count": 0,
     "note": "Mutation of #121: P05 must reject the draft.",
     "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-short-problem": {
+    "advisory_count": 0,
+    "note": "#121 with a 19-character but non-whitespace Problem body: P01 must accept it.",
+    "pass": true,
     "tier": "blocking",
     "undetermined": false
   },

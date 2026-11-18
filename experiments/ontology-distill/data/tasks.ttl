@@ -166,7 +166,9 @@ d:T6 a d:Task ;
     d:externalTracker "true"^^xsd:boolean ;
     d:wideRefactor "false"^^xsd:boolean ;
     d:userFacing "false"^^xsd:boolean ;
-    d:hasExistingSeam "true"^^xsd:boolean .
+    d:hasExistingSeam "true"^^xsd:boolean ;
+    d:excludesContext d:CTX_ADR52 ;
+    d:excludesContext d:CTX_UPSTREAM .
 
 d:T7 a d:Task ;
     d:taskId "T7" ;
@@ -222,4 +224,5 @@ d:T8 a d:Task ;
     d:externalTracker "true"^^xsd:boolean ;
     d:wideRefactor "true"^^xsd:boolean ;
     d:userFacing "false"^^xsd:boolean ;
-    d:hasExistingSeam "true"^^xsd:boolean .
+    d:hasExistingSeam "true"^^xsd:boolean ;
+    d:excludesContext d:CTX_ADR45 .
