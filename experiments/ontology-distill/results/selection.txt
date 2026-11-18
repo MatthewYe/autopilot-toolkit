@@ -1,0 +1,26 @@
+Distill selection ablation
+
+arm         recall    prec    ctxR    ctxP  hCtxR  hCtxP xClause   xCtx  xBoth   chars  hybrid
+----------------------------------------------------------------------------------------------
+none         0.000   0.000   0.000   0.000  0.000  0.000   0.000  0.000  0.000     433     433
+generic      1.000   0.281   1.000   0.263  1.000  0.190   0.000  0.000  0.000   12365    6881
+stage        1.000   0.845   1.000   0.610  1.000  0.438   0.042  0.042  0.000    5423    2854
+keyword      0.095   0.476   0.396   0.608  0.306  0.370   0.000  0.000  0.000    1898     961
+ontology     1.000   1.000   1.000   0.859  1.000  0.630   1.000  0.417  0.417    3952    2265
+
+stage          arm         recall    prec   chars
+Clarification  none         0.000   0.000     438
+Clarification  generic      1.000   0.307   12371
+Clarification  stage        1.000   0.875    5176
+Clarification  keyword      0.010   0.125    1589
+Clarification  ontology     1.000   1.000    4622
+Prd            none         0.000   0.000     428
+Prd            generic      1.000   0.284   12361
+Prd            stage        1.000   0.808    6998
+Prd            keyword      0.129   0.552    2537
+Prd            ontology     1.000   1.000    4051
+Issues         none         0.000   0.000     431
+Issues         generic      1.000   0.253   12364
+Issues         stage        1.000   0.852    4095
+Issues         keyword      0.146   0.750    1569
+Issues         ontology     1.000   1.000    3184

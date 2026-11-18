@@ -1,0 +1,378 @@
+{
+  "fixtures": [
+    {
+      "fixture": "graph-empty",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": true,
+      "ok": true,
+      "note": "A graph with no focus node makes SHACL conformance undetermined; the gate must fail closed instead of treating it as a pass.",
+      "messages": [
+        "SHACL conformance is undetermined: no focus node matched a shape."
+      ]
+    },
+    {
+      "fixture": "issues-cycle",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #122-#126: T03 must reject the set.",
+      "messages": [
+        "T03: the blocked-by graph contains a cycle."
+      ]
+    },
+    {
+      "fixture": "issues-dangling",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #122-#126: T03 must reject the set.",
+      "messages": [
+        "T03: a 'Blocked by' entry points at an issue outside the published set."
+      ]
+    },
+    {
+      "fixture": "issues-empty-blocked-by",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#122 keeps the 'Blocked by' heading but empties its body: the declaration is absent and T03 must reject.",
+      "messages": [
+        "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating."
+      ]
+    },
+    {
+      "fixture": "issues-missing-parent",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #122-#126: T04 must reject the set.",
+      "messages": [
+        "T04: an issue has no 'Parent' reference to its spec."
+      ]
+    },
+    {
+      "fixture": "issues-no-ac",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #122-#126: T06 must reject the set.",
+      "messages": [
+        "T06: an issue has no acceptance criteria."
+      ]
+    },
+    {
+      "fixture": "issues-no-blocked-by",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#122 loses its 'Blocked by' section: the DAG is unverifiable and T03 must reject.",
+      "messages": [
+        "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating."
+      ]
+    },
+    {
+      "fixture": "issues-valid",
+      "tier": "blocking",
+      "expected": "pass",
+      "expected_advisories": 0,
+      "actual": "pass",
+      "actual_advisories": 0,
+      "undetermined": false,
+      "ok": true,
+      "note": "Real #122-#126 set: parents, acceptance criteria and DAG all hold.",
+      "messages": []
+    },
+    {
+      "fixture": "prd-advisory-ci",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P13 reports exactly one warning.",
+      "messages": [
+        "P13: CI behavior changes but the spec names no CI trigger."
+      ]
+    },
+    {
+      "fixture": "prd-advisory-clean",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 0,
+      "actual": "pass",
+      "actual_advisories": 0,
+      "undetermined": false,
+      "ok": true,
+      "note": "No advisory rule applies.",
+      "messages": []
+    },
+    {
+      "fixture": "prd-advisory-files",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P04 reports exactly one warning.",
+      "messages": [
+        "P04: Implementation Decisions references source files; describe the contract, not the file plan."
+      ]
+    },
+    {
+      "fixture": "prd-advisory-migration",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P11 reports exactly one warning.",
+      "messages": [
+        "P11: the change alters a public contract but names no migration or deprecation path."
+      ]
+    },
+    {
+      "fixture": "prd-advisory-runtime",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P10 reports exactly one warning.",
+      "messages": [
+        "P10: the change spans runtimes but the spec states no runtime plan (variants + fallback)."
+      ]
+    },
+    {
+      "fixture": "prd-advisory-stories",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P03 reports exactly one warning.",
+      "messages": [
+        "P03: fewer than 80% of stories are shaped 'As a …, I want …, so that …'; the template is drifting."
+      ]
+    },
+    {
+      "fixture": "prd-advisory-validation",
+      "tier": "advisory",
+      "expected": "pass",
+      "expected_advisories": 1,
+      "actual": "1 warn",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Advisory case: P12 reports exactly one warning.",
+      "messages": [
+        "P12: skill sources change but the spec names no validation command."
+      ]
+    },
+    {
+      "fixture": "prd-empty-problem",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with the body of 'Problem Statement' emptied: P01/P02 must reject.",
+      "messages": [
+        "P01: the draft has no non-empty 'Problem Statement' section."
+      ]
+    },
+    {
+      "fixture": "prd-empty-solution",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with the body of 'Solution' emptied: P01/P02 must reject.",
+      "messages": [
+        "P02: the draft has no non-empty 'Solution' section."
+      ]
+    },
+    {
+      "fixture": "prd-missing-problem",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #121: P01 must reject the draft.",
+      "messages": [
+        "P01: the draft has no non-empty 'Problem Statement' section."
+      ]
+    },
+    {
+      "fixture": "prd-no-out-of-scope",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #121: P06 must reject the draft.",
+      "messages": [
+        "P06: 'Out of Scope' is missing or empty."
+      ]
+    },
+    {
+      "fixture": "prd-no-seam",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #121: P05 must reject the draft.",
+      "messages": [
+        "P05: 'Testing Decisions' names no testing seam."
+      ]
+    },
+    {
+      "fixture": "prd-short-problem",
+      "tier": "blocking",
+      "expected": "pass",
+      "expected_advisories": 0,
+      "actual": "pass",
+      "actual_advisories": 0,
+      "undetermined": false,
+      "ok": true,
+      "note": "#121 with a 19-character but non-whitespace Problem body: P01 must accept it.",
+      "messages": []
+    },
+    {
+      "fixture": "prd-stories-unnumbered",
+      "tier": "blocking",
+      "expected": "reject",
+      "expected_advisories": 0,
+      "actual": "reject",
+      "actual_advisories": 1,
+      "undetermined": false,
+      "ok": true,
+      "note": "Mutation of #121: P03 must reject the draft.",
+      "messages": [
+        "P03: not every story is numbered."
+      ]
+    },
+    {
+      "fixture": "prd-valid",
+      "tier": "blocking",
+      "expected": "pass",
+      "expected_advisories": 0,
+      "actual": "pass",
+      "actual_advisories": 0,
+      "undetermined": false,
+      "ok": true,
+      "note": "Real #121 spec: all structural invariants hold.",
+      "messages": []
+    }
+  ],
+  "replay": [
+    {
+      "artifact": "prd-0002",
+      "task": "T1",
+      "reason": "Adds codex/kimi variants; install contract is extended, nothing retired; no CI change.",
+      "blocking_pass": true,
+      "blocking_messages": [],
+      "advisory_count": 2,
+      "advisory_messages": [
+        "P10: the change spans runtimes but the spec states no runtime plan (variants + fallback).",
+        "P04: Implementation Decisions references source files; describe the contract, not the file plan."
+      ]
+    },
+    {
+      "artifact": "prd-0003",
+      "task": "T2",
+      "reason": "Adds a third runtime variant; additive.",
+      "blocking_pass": true,
+      "blocking_messages": [],
+      "advisory_count": 2,
+      "advisory_messages": [
+        "P10: the change spans runtimes but the spec states no runtime plan (variants + fallback).",
+        "P04: Implementation Decisions references source files; describe the contract, not the file plan."
+      ]
+    },
+    {
+      "artifact": "prd-0004",
+      "task": "T3",
+      "reason": "Replaces the install contract with a tarball and adds release automation.",
+      "blocking_pass": true,
+      "blocking_messages": [],
+      "advisory_count": 3,
+      "advisory_messages": [
+        "P12: skill sources change but the spec names no validation command.",
+        "P04: Implementation Decisions references source files; describe the contract, not the file plan.",
+        "P03: fewer than 80% of stories are shaped 'As a …, I want …, so that …'; the template is drifting."
+      ]
+    },
+    {
+      "artifact": "prd-121",
+      "task": "T8",
+      "reason": "Retires the entry-level resolution status (contract change) in the Expected set.",
+      "blocking_pass": true,
+      "blocking_messages": [],
+      "advisory_count": 2,
+      "advisory_messages": [
+        "P12: skill sources change but the spec names no validation command.",
+        "P04: Implementation Decisions references source files; describe the contract, not the file plan."
+      ]
+    },
+    {
+      "artifact": "issues-121",
+      "task": "T8",
+      "reason": "Real expand → migrate → contract sequence for #121.",
+      "blocking_pass": true,
+      "blocking_messages": [],
+      "advisory_count": 0,
+      "advisory_messages": []
+    }
+  ]
+}

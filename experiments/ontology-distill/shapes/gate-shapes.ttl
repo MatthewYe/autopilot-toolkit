@@ -1,0 +1,142 @@
+# Blocking gate shapes for the Distill draft.
+#
+# These are structural invariants that every accepted artifact in the corpus
+# already satisfies.  A violation blocks the checkpoint: the draft is rejected
+# before the human is asked to approve it, so approval never covers a document
+# that later fails a mechanical check.
+#
+# Semantic quality is deliberately absent.  "Stories are the right stories",
+# "the seam is the highest useful one" and "the slices are well sized" are
+# human or judgement checks, not text checks.
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix d: <https://example.org/autopilot/distill#> .
+
+d:PrdShape a sh:NodeShape ;
+  sh:targetClass d:PrdDraft ;
+
+  sh:sparql [
+    sh:message "P01: the draft has no non-empty 'Problem Statement' section." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft .
+        FILTER (
+          NOT EXISTS { $this d:section "Problem Statement" } ||
+          EXISTS { $this d:emptySection "Problem Statement" }
+        )
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P02: the draft has no non-empty 'Solution' section." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft .
+        FILTER (
+          NOT EXISTS { $this d:section "Solution" } ||
+          EXISTS { $this d:emptySection "Solution" }
+        )
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P03: 'User Stories' is empty; the spec must carry at least one story." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft .
+        OPTIONAL { $this d:storyCount ?n }
+        FILTER(!BOUND(?n) || ?n = 0)
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P03: not every story is numbered." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft ;
+              d:storyCount ?n ;
+              d:numberedStoryCount ?numbered .
+        FILTER(?numbered != ?n)
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P05: 'Testing Decisions' names no testing seam." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft .
+        FILTER NOT EXISTS { $this d:hasTestingSeam true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "P06: 'Out of Scope' is missing or empty." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:PrdDraft .
+        OPTIONAL { $this d:outOfScopeItemCount ?n }
+        FILTER(!BOUND(?n) || ?n = 0)
+      }""" ;
+  ] .
+
+d:IssueShape a sh:NodeShape ;
+  sh:targetClass d:Issue ;
+
+  sh:sparql [
+    sh:message "T04: an issue has no 'Parent' reference to its spec." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:Issue .
+        FILTER NOT EXISTS { $this d:hasParent true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "T06: an issue has no acceptance criteria." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:Issue ;
+              d:acCount ?n .
+        FILTER(?n = 0)
+      }""" ;
+  ] .
+
+d:IssueSetShape a sh:NodeShape ;
+  sh:targetClass d:IssueSet ;
+
+  sh:sparql [
+    sh:message "T03: issue dependency information is missing (no 'Blocked by' section); supply tracker-native edges before gating." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:IssueSet .
+        FILTER NOT EXISTS { $this d:dependenciesDeclared true }
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "T03: the blocked-by graph contains a cycle." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:IssueSet ;
+              d:hasCycle true .
+      }""" ;
+  ] ;
+
+  sh:sparql [
+    sh:message "T03: a 'Blocked by' entry points at an issue outside the published set." ;
+    sh:select """
+      PREFIX d: <https://example.org/autopilot/distill#>
+      SELECT $this WHERE {
+        $this a d:IssueSet ;
+              d:hasDanglingBlocker true .
+      }""" ;
+  ] .

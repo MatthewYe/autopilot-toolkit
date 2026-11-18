@@ -1,0 +1,44 @@
+@prefix d: <https://example.org/autopilot/distill#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+d:issues-121 a d:IssueSet ;
+    d:dependenciesDeclared true ;
+    d:hasCycle false ;
+    d:hasDanglingBlocker false ;
+    d:multiSlice true ;
+    d:issue d:issue-122, d:issue-123, d:issue-124, d:issue-125, d:issue-126 .
+
+d:issue-122 a d:Issue ;
+    d:issueNumber 122 ;
+    d:hasParent true ;
+    d:acCount 8 ;
+    d:hasBuild true ;
+    d:blockedBy () .
+
+d:issue-123 a d:Issue ;
+    d:issueNumber 123 ;
+    d:hasParent false ;
+    d:acCount 7 ;
+    d:hasBuild true ;
+    d:blockedBy d:issue-122 .
+
+d:issue-124 a d:Issue ;
+    d:issueNumber 124 ;
+    d:hasParent true ;
+    d:acCount 5 ;
+    d:hasBuild true ;
+    d:blockedBy d:issue-122 .
+
+d:issue-125 a d:Issue ;
+    d:issueNumber 125 ;
+    d:hasParent true ;
+    d:acCount 4 ;
+    d:hasBuild true ;
+    d:blockedBy d:issue-122 .
+
+d:issue-126 a d:Issue ;
+    d:issueNumber 126 ;
+    d:hasParent true ;
+    d:acCount 5 ;
+    d:hasBuild true ;
+    d:blockedBy d:issue-123, d:issue-124, d:issue-125 .

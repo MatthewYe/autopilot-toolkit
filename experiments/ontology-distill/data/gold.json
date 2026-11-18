@@ -1,0 +1,569 @@
+{
+  "rubric": "Hand-labelled minimal sufficient pack per task and stage. Clause gold comes from the requirement's facts and the merged artifact: a clause is gold when leaving it out would plausibly have produced a defect in that artifact. Context gold is the set of sources a current re-run should consult, i.e. the merged artifact's cited or visibly followed sources, excluding the task's own post-hoc decision documents (those record the answer, not the input). Labels were assigned before running the ontology arm; the labelling bias is discussed in ABLATION.md. The main gold is not time-filtered: a current re-run may legitimately consult documents that postdate the artifact. The historical subset (cards introduced on or before asOf) is reported separately as a diagnostic; it is not added to the main denominator.",
+  "tasks": {
+    "T1": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P10",
+          "P11",
+          "P12"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR7",
+          "CTX_ADR13"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T09",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR13"
+        ]
+      }
+    },
+    "T2": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P10",
+          "P12"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR7",
+          "CTX_ADR13",
+          "CTX_ADR36"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T09",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR13"
+        ]
+      }
+    },
+    "T3": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_GLOSSARY",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P09",
+          "P10",
+          "P12"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_TRACKER",
+          "CTX_ADR7",
+          "CTX_ADR8"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T09",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY"
+        ]
+      }
+    },
+    "T4": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR40",
+          "CTX_ADR41"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR41"
+        ]
+      }
+    },
+    "T5": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P11"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR9",
+          "CTX_ADR40",
+          "CTX_ADR41"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR41"
+        ]
+      }
+    },
+    "T6": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P13"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_TRACKER"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY"
+        ]
+      }
+    },
+    "T7": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C12",
+          "C13"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P10",
+          "P12"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR7",
+          "CTX_ADR13",
+          "CTX_ADR36"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T08",
+          "T09",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR13"
+        ]
+      }
+    },
+    "T8": {
+      "Clarification": {
+        "clauses": [
+          "C01",
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C07",
+          "C08",
+          "C09",
+          "C10",
+          "C11",
+          "C12"
+        ],
+        "contexts": [
+          "CTX_GRIL",
+          "CTX_DOMSKILL",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_WORKFLOW",
+          "CTX_ADR10",
+          "CTX_ADR26",
+          "CTX_ADR30"
+        ]
+      },
+      "Prd": {
+        "clauses": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P11",
+          "P12"
+        ],
+        "contexts": [
+          "CTX_TOSPEC",
+          "CTX_GLOSSARY",
+          "CTX_DOMAIN",
+          "CTX_TRACKER",
+          "CTX_ADR44"
+        ]
+      },
+      "Issues": {
+        "clauses": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T07",
+          "T08",
+          "T09",
+          "T10",
+          "T11"
+        ],
+        "contexts": [
+          "CTX_TOTICK",
+          "CTX_TRIAGE",
+          "CTX_TRACKER",
+          "CTX_GLOSSARY",
+          "CTX_ADR44"
+        ]
+      }
+    }
+  }
+}

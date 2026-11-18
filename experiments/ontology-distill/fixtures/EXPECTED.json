@@ -1,0 +1,163 @@
+{
+  "graph-empty": {
+    "advisory_count": 0,
+    "note": "A graph with no focus node makes SHACL conformance undetermined; the gate must fail closed instead of treating it as a pass.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": true
+  },
+  "issues-cycle": {
+    "advisory_count": 0,
+    "note": "Mutation of #122-#126: T03 must reject the set.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-dangling": {
+    "advisory_count": 0,
+    "note": "Mutation of #122-#126: T03 must reject the set.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-empty-blocked-by": {
+    "advisory_count": 0,
+    "note": "#122 keeps the 'Blocked by' heading but empties its body: the declaration is absent and T03 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-missing-parent": {
+    "advisory_count": 0,
+    "note": "Mutation of #122-#126: T04 must reject the set.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-no-ac": {
+    "advisory_count": 0,
+    "note": "Mutation of #122-#126: T06 must reject the set.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-no-blocked-by": {
+    "advisory_count": 0,
+    "note": "#122 loses its 'Blocked by' section: the DAG is unverifiable and T03 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "issues-valid": {
+    "advisory_count": 0,
+    "note": "Real #122-#126 set: parents, acceptance criteria and DAG all hold.",
+    "pass": true,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-advisory-ci": {
+    "advisory_count": 1,
+    "note": "Advisory case: P13 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-clean": {
+    "advisory_count": 0,
+    "note": "No advisory rule applies.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-files": {
+    "advisory_count": 1,
+    "note": "Advisory case: P04 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-migration": {
+    "advisory_count": 1,
+    "note": "Advisory case: P11 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-runtime": {
+    "advisory_count": 1,
+    "note": "Advisory case: P10 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-stories": {
+    "advisory_count": 1,
+    "note": "Advisory case: P03 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-advisory-validation": {
+    "advisory_count": 1,
+    "note": "Advisory case: P12 reports exactly one warning.",
+    "pass": true,
+    "tier": "advisory",
+    "undetermined": false
+  },
+  "prd-empty-problem": {
+    "advisory_count": 0,
+    "note": "#121 with the body of 'Problem Statement' emptied: P01/P02 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-empty-solution": {
+    "advisory_count": 0,
+    "note": "#121 with the body of 'Solution' emptied: P01/P02 must reject.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-missing-problem": {
+    "advisory_count": 0,
+    "note": "Mutation of #121: P01 must reject the draft.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-no-out-of-scope": {
+    "advisory_count": 0,
+    "note": "Mutation of #121: P06 must reject the draft.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-no-seam": {
+    "advisory_count": 0,
+    "note": "Mutation of #121: P05 must reject the draft.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-short-problem": {
+    "advisory_count": 0,
+    "note": "#121 with a 19-character but non-whitespace Problem body: P01 must accept it.",
+    "pass": true,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-stories-unnumbered": {
+    "advisory_count": 0,
+    "note": "Mutation of #121: P03 must reject the draft.",
+    "pass": false,
+    "tier": "blocking",
+    "undetermined": false
+  },
+  "prd-valid": {
+    "advisory_count": 0,
+    "note": "Real #121 spec: all structural invariants hold.",
+    "pass": true,
+    "tier": "blocking",
+    "undetermined": false
+  }
+}
