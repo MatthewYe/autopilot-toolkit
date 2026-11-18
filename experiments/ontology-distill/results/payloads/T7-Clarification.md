@@ -58,7 +58,7 @@ The clarification records what is explicitly out of scope for this requirement.
 
 Under DSH, the session identity is proven from the session trace, never guessed from recency or user-supplied ids.
 
-## Context pointers (10)
+## Context pointers (9)
 
 - `docs/adr/0010-distill-snapshots-requirement-inputs.md:1-14` — ADR 0010: snapshot the requirement input
   > # Distill snapshots requirement inputs Every Distill run captures an immutable snapshot of its original requirement inputs, including user text, uploaded file contents, and fetched link contents with provenance and conte
@@ -70,8 +70,6 @@ Under DSH, the session identity is proven from the session trace, never guessed 
   > # Domain Docs How the engineering skills should consume this repo's domain documentation when exploring the codebase. ## Before exploring, read these - **`GLOSSARY.md`** at the repo root; if absent, read legacy **`CONTEX
 - `skills/upstream/skills/engineering/domain-modeling/SKILL.md:1-50` — Domain modeling: glossary and ADR discipline
   > --- name: domain-modeling description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR. --- # Domain Modeling Activel
-- `docs/agents/runtimes/dsh.md:1-60` — DSH runtime contract
-  > # DSH（DeepSeek Harness）支持 本文面向\"想让本仓库的 skill 在 DSH 下好用\"的读者：skill 作者、变体维护者，以及在 DSH 里跑 autopilot 工作流的用户。 结论基于 **DSH desktop 0.2.0-rc.2** 包内源码（`dsh-skill`、`dsh-skill-filesystem`、 `dsh-tool-skill`）的调研。DSH 升级后请按第 5 节重新验收。 ##
 - `GLOSSARY.md:1-40` — Repository glossary (canonical vocabulary)
   > # Autopilot Toolkit A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 41 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`
 - `skills/upstream/skills/productivity/grilling/SKILL.md:1-30` — Grilling: frontier rounds and question format

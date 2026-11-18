@@ -131,6 +131,7 @@ def main() -> int:
     # reach an arm.  Kept explicit so a data regression fails loudly.
     posthoc_cases = {
         "T6": {"CTX_ADR52", "CTX_UPSTREAM"},
+        "T7": {"CTX_DSHDOC"},
         "T8": {"CTX_ADR45"},
     }
     for task_id, expected in posthoc_cases.items():
@@ -273,7 +274,8 @@ def main() -> int:
                   f"| {agg['mean_chars_hybrid']} |")
     md += ["",
            "Post-hoc decision exclusions verified in every arm: T6 drops `CTX_ADR52` and "
-           "`CTX_UPSTREAM`; T8 drops `CTX_ADR45`. The target artifact remains excluded too."]
+           "`CTX_UPSTREAM`; T7 drops `CTX_DSHDOC`; T8 drops `CTX_ADR45`. The target "
+           "artifact remains excluded too."]
     (RESULTS / "selection.md").write_text("\n".join(md) + "\n")
 
     print(text)

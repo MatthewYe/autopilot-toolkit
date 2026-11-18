@@ -23,72 +23,72 @@
       "clause_recall": 1.0,
       "clause_precision": 0.2815,
       "context_recall": 1.0,
-      "context_precision": 0.2647,
+      "context_precision": 0.2629,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.1888,
+      "context_precision_historical": 0.1901,
       "combined_recall": 1.0,
-      "combined_precision": 0.275,
+      "combined_precision": 0.2742,
       "exact_clauses": 0.0,
       "exact_contexts": 0.0,
       "exact_both": 0.0,
-      "mean_chars_full": 12401,
-      "mean_chars_hybrid": 6888,
+      "mean_chars_full": 12365,
+      "mean_chars_hybrid": 6881,
       "mean_clause_chars": 3338,
-      "mean_context_chars": 8933
+      "mean_context_chars": 8888
     },
     "stage": {
       "runs": 24,
       "clause_recall": 1.0,
       "clause_precision": 0.845,
       "context_recall": 1.0,
-      "context_precision": 0.6115,
+      "context_precision": 0.6101,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.4337,
+      "context_precision_historical": 0.4383,
       "combined_recall": 1.0,
-      "combined_precision": 0.726,
+      "combined_precision": 0.7254,
       "exact_clauses": 0.0417,
       "exact_contexts": 0.0417,
       "exact_both": 0.0,
-      "mean_chars_full": 5447,
-      "mean_chars_hybrid": 2860,
+      "mean_chars_full": 5423,
+      "mean_chars_hybrid": 2854,
       "mean_clause_chars": 1113,
-      "mean_context_chars": 4188
+      "mean_context_chars": 4158
     },
     "keyword": {
       "runs": 24,
       "clause_recall": 0.095,
       "clause_precision": 0.4757,
-      "context_recall": 0.4018,
-      "context_precision": 0.6153,
+      "context_recall": 0.396,
+      "context_precision": 0.6083,
       "context_recall_historical": 0.3065,
-      "context_precision_historical": 0.3632,
-      "combined_recall": 0.2093,
-      "combined_precision": 0.6598,
+      "context_precision_historical": 0.3701,
+      "combined_recall": 0.2061,
+      "combined_precision": 0.6546,
       "exact_clauses": 0.0,
       "exact_contexts": 0.0,
       "exact_both": 0.0,
-      "mean_chars_full": 1908,
+      "mean_chars_full": 1898,
       "mean_chars_hybrid": 961,
       "mean_clause_chars": 107,
-      "mean_context_chars": 1530
+      "mean_context_chars": 1514
     },
     "ontology": {
       "runs": 24,
       "clause_recall": 1.0,
       "clause_precision": 1.0,
       "context_recall": 1.0,
-      "context_precision": 0.8605,
+      "context_precision": 0.8593,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.6246,
+      "context_precision_historical": 0.6301,
       "combined_recall": 1.0,
-      "combined_precision": 0.9413,
+      "combined_precision": 0.941,
       "exact_clauses": 1.0,
       "exact_contexts": 0.4167,
       "exact_both": 0.4167,
-      "mean_chars_full": 3976,
-      "mean_chars_hybrid": 2270,
+      "mean_chars_full": 3952,
+      "mean_chars_hybrid": 2265,
       "mean_clause_chars": 931,
-      "mean_context_chars": 2768
+      "mean_context_chars": 2737
     }
   },
   "per_stage": {
@@ -101,22 +101,22 @@
       "generic": {
         "clause_recall": 1.0,
         "clause_precision": 0.3074,
-        "mean_chars_full": 12406
+        "mean_chars_full": 12371
       },
       "stage": {
         "clause_recall": 1.0,
         "clause_precision": 0.875,
-        "mean_chars_full": 5212
+        "mean_chars_full": 5176
       },
       "keyword": {
         "clause_recall": 0.0104,
         "clause_precision": 0.125,
-        "mean_chars_full": 1625
+        "mean_chars_full": 1589
       },
       "ontology": {
         "clause_recall": 1.0,
         "clause_precision": 1.0,
-        "mean_chars_full": 4658
+        "mean_chars_full": 4622
       }
     },
     "Prd": {
@@ -128,22 +128,22 @@
       "generic": {
         "clause_recall": 1.0,
         "clause_precision": 0.2838,
-        "mean_chars_full": 12396
+        "mean_chars_full": 12361
       },
       "stage": {
         "clause_recall": 1.0,
         "clause_precision": 0.8077,
-        "mean_chars_full": 7034
+        "mean_chars_full": 6998
       },
       "keyword": {
         "clause_recall": 0.1288,
         "clause_precision": 0.5521,
-        "mean_chars_full": 2530
+        "mean_chars_full": 2537
       },
       "ontology": {
         "clause_recall": 1.0,
         "clause_precision": 1.0,
-        "mean_chars_full": 4086
+        "mean_chars_full": 4051
       }
     },
     "Issues": {
@@ -155,7 +155,7 @@
       "generic": {
         "clause_recall": 1.0,
         "clause_precision": 0.2534,
-        "mean_chars_full": 12400
+        "mean_chars_full": 12364
       },
       "stage": {
         "clause_recall": 1.0,
@@ -4323,7 +4323,6 @@
         "CTX_ADR9",
         "CTX_DOMAIN",
         "CTX_DOMSKILL",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_GRIL",
         "CTX_PRD4",
@@ -4337,18 +4336,18 @@
       "clause_recall": 1.0,
       "clause_precision": 0.3243,
       "context_recall": 1.0,
-      "context_precision": 0.4,
+      "context_precision": 0.375,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.32,
+      "context_precision_historical": 0.3333,
       "combined_recall": 1.0,
-      "combined_precision": 0.3548,
+      "combined_precision": 0.3443,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 12572,
-      "chars_hybrid": 6947,
+      "chars_full": 12287,
+      "chars_hybrid": 6887,
       "clause_chars": 3338,
-      "context_chars": 9114
+      "context_chars": 8751
     },
     {
       "task": "T7",
@@ -4375,7 +4374,6 @@
         "CTX_ADR30",
         "CTX_DOMAIN",
         "CTX_DOMSKILL",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_GRIL",
         "CTX_TRACKER",
@@ -4386,16 +4384,16 @@
       "context_recall": 1.0,
       "context_precision": 1.0,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.8,
+      "context_precision_historical": 0.8889,
       "combined_recall": 1.0,
-      "combined_precision": 0.9565,
+      "combined_precision": 0.9545,
       "exact_clauses": false,
       "exact_contexts": true,
       "exact_both": false,
-      "chars_full": 5220,
-      "chars_hybrid": 2970,
+      "chars_full": 4934,
+      "chars_hybrid": 2909,
       "clause_chars": 1276,
-      "context_chars": 3677
+      "context_chars": 3314
     },
     {
       "task": "T7",
@@ -4405,24 +4403,23 @@
       "context_ids": [
         "CTX_ADR30",
         "CTX_DOMAIN",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY"
       ],
       "clause_recall": 0.0,
       "clause_precision": 0.0,
-      "context_recall": 0.4,
+      "context_recall": 0.3333,
       "context_precision": 1.0,
       "context_recall_historical": 0.25,
-      "context_precision_historical": 0.5,
-      "combined_recall": 0.1818,
+      "context_precision_historical": 0.6667,
+      "combined_recall": 0.1429,
       "combined_precision": 1.0,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 1634,
-      "chars_hybrid": 734,
+      "chars_full": 1349,
+      "chars_hybrid": 674,
       "clause_chars": 0,
-      "context_chars": 1449
+      "context_chars": 1086
     },
     {
       "task": "T7",
@@ -4448,7 +4445,6 @@
         "CTX_ADR30",
         "CTX_DOMAIN",
         "CTX_DOMSKILL",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_GRIL",
         "CTX_TRACKER",
@@ -4459,16 +4455,16 @@
       "context_recall": 1.0,
       "context_precision": 1.0,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.8,
+      "context_precision_historical": 0.8889,
       "combined_recall": 1.0,
       "combined_precision": 1.0,
       "exact_clauses": true,
       "exact_contexts": true,
       "exact_both": true,
-      "chars_full": 5079,
-      "chars_hybrid": 2829,
+      "chars_full": 4793,
+      "chars_hybrid": 2768,
       "clause_chars": 1162,
-      "context_chars": 3677
+      "context_chars": 3314
     },
     {
       "task": "T7",
@@ -4551,7 +4547,6 @@
         "CTX_ADR9",
         "CTX_DOMAIN",
         "CTX_DOMSKILL",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_GRIL",
         "CTX_PRD4",
@@ -4565,18 +4560,18 @@
       "clause_recall": 1.0,
       "clause_precision": 0.2973,
       "context_recall": 1.0,
-      "context_precision": 0.32,
+      "context_precision": 0.2917,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.24,
+      "context_precision_historical": 0.25,
       "combined_recall": 1.0,
-      "combined_precision": 0.3065,
+      "combined_precision": 0.2951,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 12562,
-      "chars_hybrid": 6937,
+      "chars_full": 12277,
+      "chars_hybrid": 6877,
       "clause_chars": 3338,
-      "context_chars": 9114
+      "context_chars": 8751
     },
     {
       "task": "T7",
@@ -4609,7 +4604,6 @@
         "CTX_ADR8",
         "CTX_ADR9",
         "CTX_DOMAIN",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_PRD4",
         "CTX_TOSPEC",
@@ -4619,18 +4613,18 @@
       "clause_recall": 1.0,
       "clause_precision": 0.8462,
       "context_recall": 1.0,
-      "context_precision": 0.4706,
+      "context_precision": 0.4375,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.3529,
+      "context_precision_historical": 0.375,
       "combined_recall": 1.0,
-      "combined_precision": 0.6333,
+      "combined_precision": 0.6207,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 7199,
-      "chars_hybrid": 3374,
+      "chars_full": 6914,
+      "chars_hybrid": 3314,
       "clause_chars": 1148,
-      "context_chars": 6166
+      "context_chars": 5803
     },
     {
       "task": "T7",
@@ -4644,25 +4638,25 @@
         "CTX_ADR13",
         "CTX_ADR36",
         "CTX_ADR44",
+        "CTX_ADR45",
         "CTX_ADR7",
-        "CTX_ADR8",
-        "CTX_DSHDOC"
+        "CTX_ADR8"
       ],
       "clause_recall": 0.1818,
       "clause_precision": 1.0,
-      "context_recall": 0.5,
-      "context_precision": 0.6667,
+      "context_recall": 0.4286,
+      "context_precision": 0.5,
       "context_recall_historical": 0.5,
       "context_precision_historical": 0.5,
-      "combined_recall": 0.3158,
-      "combined_precision": 0.75,
+      "combined_recall": 0.2778,
+      "combined_precision": 0.625,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 2602,
-      "chars_hybrid": 1252,
+      "chars_full": 2658,
+      "chars_hybrid": 1308,
       "clause_chars": 195,
-      "context_chars": 2173
+      "context_chars": 2172
     },
     {
       "task": "T7",
@@ -4689,7 +4683,6 @@
         "CTX_ADR7",
         "CTX_ADR8",
         "CTX_DOMAIN",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_PRD4",
         "CTX_TOSPEC",
@@ -4698,18 +4691,18 @@
       "clause_recall": 1.0,
       "clause_precision": 1.0,
       "context_recall": 1.0,
-      "context_precision": 0.6667,
+      "context_precision": 0.6364,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.5,
+      "context_precision_historical": 0.5455,
       "combined_recall": 1.0,
-      "combined_precision": 0.8261,
+      "combined_precision": 0.8182,
       "exact_clauses": true,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 5375,
-      "chars_hybrid": 2675,
+      "chars_full": 5090,
+      "chars_hybrid": 2615,
       "clause_chars": 966,
-      "context_chars": 4350
+      "context_chars": 3987
     },
     {
       "task": "T7",
@@ -4792,7 +4785,6 @@
         "CTX_ADR9",
         "CTX_DOMAIN",
         "CTX_DOMSKILL",
-        "CTX_DSHDOC",
         "CTX_GLOSSARY",
         "CTX_GRIL",
         "CTX_PRD4",
@@ -4806,18 +4798,18 @@
       "clause_recall": 1.0,
       "clause_precision": 0.2703,
       "context_recall": 1.0,
-      "context_precision": 0.2,
+      "context_precision": 0.2083,
       "context_recall_historical": 1.0,
-      "context_precision_historical": 0.16,
+      "context_precision_historical": 0.1667,
       "combined_recall": 1.0,
-      "combined_precision": 0.2419,
+      "combined_precision": 0.2459,
       "exact_clauses": false,
       "exact_contexts": false,
       "exact_both": false,
-      "chars_full": 12565,
-      "chars_hybrid": 6940,
+      "chars_full": 12280,
+      "chars_hybrid": 6880,
       "clause_chars": 3338,
-      "context_chars": 9114
+      "context_chars": 8751
     },
     {
       "task": "T7",

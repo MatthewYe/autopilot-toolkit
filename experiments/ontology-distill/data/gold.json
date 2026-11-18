@@ -443,8 +443,7 @@
           "CTX_WORKFLOW",
           "CTX_ADR10",
           "CTX_ADR26",
-          "CTX_ADR30",
-          "CTX_DSHDOC"
+          "CTX_ADR30"
         ]
       },
       "Prd": {
@@ -468,8 +467,7 @@
           "CTX_TRACKER",
           "CTX_ADR7",
           "CTX_ADR13",
-          "CTX_ADR36",
-          "CTX_DSHDOC"
+          "CTX_ADR36"
         ]
       },
       "Issues": {

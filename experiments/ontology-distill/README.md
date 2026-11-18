@@ -51,22 +51,22 @@ Selection over 24 task-stages:
 | arm | clause R | clause P | context R | context P | exact clauses | mean chars |
 |---|---|---|---|---|---|---|
 | none | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 433 |
-| generic | 1.000 | 0.281 | 1.000 | 0.265 | 0.000 | 12401 |
-| stage | 1.000 | 0.845 | 1.000 | 0.612 | 0.042 | 5447 |
-| keyword | 0.095 | 0.476 | 0.402 | 0.615 | 0.000 | 1908 |
-| ontology | 1.000 | 1.000 | 1.000 | 0.861 | 1.000 | 3976 |
+| generic | 1.000 | 0.281 | 1.000 | 0.263 | 0.000 | 12365 |
+| stage | 1.000 | 0.845 | 1.000 | 0.610 | 0.042 | 5423 |
+| keyword | 0.095 | 0.476 | 0.396 | 0.608 | 0.000 | 1898 |
+| ontology | 1.000 | 1.000 | 1.000 | 0.859 | 1.000 | 3952 |
 
 `mean chars` is the actual `render_payload` length; every pack has a 433-char
-fixed header, so the incremental clause+context payload drops from 5014 to
-3543 (−29.3%), or −27.0% including the header. Each task's own target artifact
+fixed header, so the incremental clause+context payload drops from 4990 to
+3519 (−29.5%), or −27.1% including the header. Each task's own target artifact
 and its post-hoc decision documents (T6: ADR 0052 and the upstream-sync
-procedure; T8: ADR 0045) are excluded from candidates in every arm, with the
-latter also removed from the PRD gold. Exact context sets match in 10/24 packs
+procedure; T7: the DSH runtime document; T8: ADR 0045) are excluded from
+candidates in every arm and removed from the gold. Exact context sets match in 10/24 packs
 (0.417), reported separately because the clause set is the primary unit.
 
 Clause precision 1.000 is **not** independent evidence: the gold labels and the
 `when*` conditions were written by the same author from the same facts. The
-comparison worth reading is the delta over the stage pack (characters −27.0% at
+comparison worth reading is the delta over the stage pack (characters −27.1% at
 higher context precision); lexical retrieval's recall of 0.095 is the negative
 control.
 

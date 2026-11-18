@@ -197,7 +197,8 @@ d:T7 a d:Task ;
     d:externalTracker "true"^^xsd:boolean ;
     d:wideRefactor "false"^^xsd:boolean ;
     d:userFacing "true"^^xsd:boolean ;
-    d:hasExistingSeam "false"^^xsd:boolean .
+    d:hasExistingSeam "false"^^xsd:boolean ;
+    d:excludesContext d:CTX_DSHDOC .
 
 d:T8 a d:Task ;
     d:taskId "T8" ;

@@ -263,12 +263,13 @@ CONTEXTS = [
      "docs/agents/triage-labels.md", 1, 15, ["Issues"], {}),
 ]
 
-# Context cards that record the task's own solution rather than reusable input.
-# They postdate the task and would leak the accepted answer into a replay, so
-# every selection arm drops them.  General documents from later dates stay:
-# they are input a current re-run could legitimately consult.
+# Context cards that the task itself produced, rather than reusable input.
+# They postdate the task (or ship with it) and would leak the accepted answer
+# into a replay, so every selection arm drops them.  Decision records that the
+# task consumed as input, and general documents from later dates, stay.
 POSTHOC = {
     "T6": ["CTX_ADR52", "CTX_UPSTREAM"],
+    "T7": ["CTX_DSHDOC"],
     "T8": ["CTX_ADR45"],
 }
 

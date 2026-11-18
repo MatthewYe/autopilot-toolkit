@@ -54,7 +54,7 @@ When the change spans runtimes, the spec states the variant plan and the fallbac
 
 When skill sources change, the spec names the repository validation and check commands as verification.
 
-## Context pointers (12)
+## Context pointers (11)
 
 - `docs/adr/0013-distill-adapts-skills-without-modifying-them.md:1-14` — ADR 0013: adapt skills without modifying them
   > # Distill adapts skills without modifying them Distill-owned stage executor adapters wrap existing natural-language skills with stable input, completion-evidence, and artifact-validation contracts. The vendored `grill-wi
@@ -70,8 +70,6 @@ When skill sources change, the spec names the repository validation and check co
   > # ADR 0008: Self-Contained Tarball Install with Bootstrap Symlinks > Superseded for runtime-coupled skill layout and bootstrap behavior by > [ADR 0036](0036-single-discoverable-runtime-router.md). The self-contained > ta
 - `docs/agents/domain.md:1-35` — Domain docs configuration
   > # Domain Docs How the engineering skills should consume this repo's domain documentation when exploring the codebase. ## Before exploring, read these - **`GLOSSARY.md`** at the repo root; if absent, read legacy **`CONTEX
-- `docs/agents/runtimes/dsh.md:1-60` — DSH runtime contract
-  > # DSH（DeepSeek Harness）支持 本文面向\"想让本仓库的 skill 在 DSH 下好用\"的读者：skill 作者、变体维护者，以及在 DSH 里跑 autopilot 工作流的用户。 结论基于 **DSH desktop 0.2.0-rc.2** 包内源码（`dsh-skill`、`dsh-skill-filesystem`、 `dsh-tool-skill`）的调研。DSH 升级后请按第 5 节重新验收。 ##
 - `GLOSSARY.md:1-40` — Repository glossary (canonical vocabulary)
   > # Autopilot Toolkit A skill-pack repo targeting Reasonix, Codex, and Kimi Code. Ships 41 skills — 32 upstream (from mattpocock/skills, tracked in `.skill-lock.json`), 1 vendor (third-party, tracked in `.vendor-lock.json`
 - `docs/prd/0004-self-contained-tarball-install.md:1-30` — PRD 0004: install exemplar
