@@ -58,8 +58,9 @@ Selection over 24 task-stages:
 
 Clause precision 1.000 is **not** independent evidence: the gold labels and the
 `when*` conditions were written by the same author from the same facts. The
-independent signal is the delta over the stage pack (precision +0.155, characters
-−30%) and the failure of lexical retrieval (recall 0.095).
+comparison worth reading is the delta over the stage pack (characters −30% at
+higher context precision); lexical retrieval's recall of 0.095 is the negative
+control.
 
 Gate: 18/18 fixtures as expected; replay of 5 human-approved artifacts has
 **0 blocking failures**. Six rule checks (story form, file paths, runtime plan, migration note,
