@@ -314,32 +314,3 @@ def metrics(selected: list[str], gold: list[str]) -> tuple[float, float, int, in
     recall = hit / len(gold_set) if gold_set else 1.0
     precision = hit / len(selected_set) if selected_set else (1.0 if not gold_set else 0.0)
     return recall, precision, hit, len(selected_set), len(gold_set)
-
-
-def chars(clauses, contexts, mode: str) -> int:
-    """Payload size under four rendering conventions.
-
-    full    - clause text plus context excerpt (the actual injection payload)
-    ids     - IDs only (cheapest possible pack)
-    compact - clause IDs plus context title/path
-    hybrid  - clause text plus context pointer only (no excerpt)
-    """
-    clause_text = sum(len(c["text"]) + len(c["id"]) + 6 for c in clauses)
-    context_excerpt = sum(len(x["excerpt"]) + len(x["path"]) + 12 for x in contexts)
-    context_pointer = sum(len(x["path"]) + len(str(x["start"])) + len(str(x["end"])) + 8
-                          for x in contexts)
-    ids = sum(len(c["id"]) + 1 for c in clauses) + sum(len(x["id"]) + 1 for x in contexts)
-    if mode == "full":
-        return clause_text + context_excerpt
-    if mode == "ids":
-        return ids
-    if mode == "compact":
-        return sum(len(c["id"]) + 1 for c in clauses) + context_pointer
-    if mode == "hybrid":
-        return clause_text + context_pointer
-    raise ValueError(mode)
-
-
-def estimate_tokens(char_count: int) -> int:
-    """Rough English-token estimate; used only for relative payload comparison."""
-    return (char_count + 3) // 4
