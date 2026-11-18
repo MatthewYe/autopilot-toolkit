@@ -52,8 +52,9 @@ merged PR diff and post-merge tests are not part of the plan.
 python3 scripts/prepare_replay.py
 
 # evaluate one run (snapshot the agent diff/report, overlay hidden tests in a
-# temporary copy, persist checks + structural result + report text)
-python3 scripts/run_phase2_eval.py --runs prose-1
+# temporary copy, persist checks + structural result + report text). Serial
+# workspace tests avoid the shared PROJECT_ROOT env race.
+REPLAY_TEST_THREADS=1 python3 scripts/run_phase2_eval.py --runs prose-1
 
 # structural hidden check for T126 (also run inside the command above)
 python3 scripts/check_t126_contract.py replay/T126/prose-1/repo
@@ -74,18 +75,19 @@ temporary copy; the agent worktree is not modified.
 
 | run | arm | `cargo test --workspace` | serial | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | — | pass | pass | DONE |
-| prose-2 | prose | 0 | — | pass | pass | DONE |
-| ontology-1 | ontology | 101 | 0 | pass | pass | DONE |
-| ontology-2 | ontology | 0 | — | pass | pass | DONE |
+| prose-1 | prose | 0 | 0 | pass | pass | DONE |
+| prose-2 | prose | 0 | 0 | pass | pass | DONE |
+| ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
+| ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 All four also passed `toolkit_setup`, `scripts/check.rs`, `validation/run.rs`,
 and `clippy --workspace --all-targets -- -D warnings` (all exit 0).
 
-ontology-1's parallel `cargo test` failed on the known
-`shared::tests::load_skill_lock_from_temp_project` `PROJECT_ROOT` env race; the
-serial rerun (`cargo test --workspace -- --test-threads=1`) passed all 23
-suites. This is a harness flake, not an implementation difference.
+All hidden-test evaluations were run with `--test-threads=1`; an earlier
+parallel ontology-1 run hit the known
+`shared::tests::load_skill_lock_from_temp_project` `PROJECT_ROOT` env race
+(exit 101), but the serial overlay run passed. This is a harness flake, not an
+implementation difference.
 
 Interpretation: the pilot validates the harness and produces a null result on
 this ticket — both arms implement the contract, pass hidden tests, keep the
@@ -105,19 +107,18 @@ processed-token count, not a billed-cost count. `non-cached` is
 |---|---|---:|---:|---:|---:|---:|---:|
 | prose-1 | prose | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
 | prose-2 | prose | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
-| ontology-1 | ontology | 48 | 99,577 | 24,500 | 1,928,704 | 2,052,781 | 124,077 |
-| ontology-2 | ontology | 58 | 90,871 | 22,535 | 2,767,744 | 2,881,150 | 113,406 |
+| ontology-1 | ontology | 85 | 109,509 | 32,394 | 4,296,832 | 4,438,735 | 141,903 |
+| ontology-2 | ontology | 75 | 60,302 | 21,449 | 3,860,736 | 3,942,487 | 81,751 |
 | **prose avg** | | **58** | **105,352** | **25,782** | **2,974,848** | **3,105,982** | **131,134** |
-| **ontology avg** | | **53** | **95,224** | **23,517** | **2,348,224** | **2,466,965** | **118,741** |
+| **ontology avg** | | **80** | **84,906** | **26,922** | **4,078,784** | **4,190,611** | **111,827** |
 
-The ontology arm averages 20.6% fewer total processed tokens and 9.5% fewer
-non-cached tokens, but this is N=2 and the ranges overlap
-(ontology 2.05-2.88M total vs prose 2.83-3.38M). The plan is 6,767 characters (7,077 bytes)
-and is read once as a tool result (~1.8k-2.0k tokens); the first model call
-differs by only +60 input tokens because the plan is not inlined into the
-system prompt. The difference is therefore mostly fewer exploration/tool
-steps, not a direct injection saving, and it is not evidence of a cost win.
-Raw numbers: `results/phase2/tokens.json`.
+Ontology total processed tokens are higher (4.19M vs 3.11M, +34.9%), while
+non-cached input+output is lower (111,827 vs 131,134, -14.7%); output is
+slightly higher (26,922 vs 25,782, +4.4%). N=2 and the total ranges overlap
+(ontology 3.94-4.44M vs prose 2.83-3.38M), so this is not evidence of a token
+win. The plan is 6,767 characters (7,077 bytes) and is read once as a tool
+result (~1.8k-2.0k tokens); it is not inlined into the system prompt. Raw
+numbers: `results/phase2/tokens.json`.
 
 ## Limitations
 

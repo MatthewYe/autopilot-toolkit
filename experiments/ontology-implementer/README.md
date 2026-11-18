@@ -51,8 +51,9 @@ Selection over T122–T126 (mean):
 Report gate: 13/13 fixtures matched; valid exit 0; 12 invalid exit 1; 0 false rejects.
 
 Phase 2 pilot (T126, 2 runs per arm, `deepseek-flash`): all four runs passed the
-hidden-test overlay, structural check, and report contract. `ontology-1` needed a
-serial rerun for a known `shared` `PROJECT_ROOT` test race. The result is null:
+hidden-test overlay, structural check, and report contract. All hidden-test runs
+used `--test-threads=1`; an earlier parallel `ontology-1` attempt hit a known
+`shared` `PROJECT_ROOT` race. The result is null:
 both arms implemented the contract and passed. This is 4 runs on one ticket, not
 the pre-registered 30-run protocol.
 

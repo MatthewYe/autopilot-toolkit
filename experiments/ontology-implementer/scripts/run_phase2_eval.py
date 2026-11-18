@@ -44,7 +44,7 @@ def changed_paths(repo: Path) -> list[str]:
         path = line[3:]
         if " -> " in path:
             path = path.split(" -> ", 1)[1]
-        if path:
+        if path and path != "IMPLEMENTER_REPORT.md":
             out.append(path)
     return out
 
@@ -93,6 +93,15 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix=f"t126-{run}-") as td:
             overlay_repo = Path(td) / "repo"
             copy_without_git(repo, overlay_repo)
+            # The overlay copy has no history; some workspace tests call
+            # `git rev-parse`. Initialize a throwaway repo so those tests see a
+            # real commit without copying the agent's .git directory.
+            subprocess.run(["git", "init", "-q"], cwd=overlay_repo, check=True)
+            subprocess.run(["git", "add", "-A"], cwd=overlay_repo, check=True)
+            subprocess.run([
+                "git", "-c", "user.name=replay", "-c", "user.email=replay@example.invalid",
+                "commit", "-qm", "overlay",
+            ], cwd=overlay_repo, check=True)
             subprocess.run(
                 ["python3", str(ROOT / "scripts/overlay_hidden_t126.py"), str(overlay_repo)],
                 check=True,

@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
 
+WORKSPACE_TEST = ["cargo", "test", "--workspace", "--no-fail-fast"]
+if os.environ.get("REPLAY_TEST_THREADS") == "1":
+    WORKSPACE_TEST += ["--", "--test-threads=1"]
+
 CHECKS = [
-    ("workspace_tests", ["cargo", "test", "--workspace", "--no-fail-fast"], 2400),
+    ("workspace_tests", WORKSPACE_TEST, 2400),
     ("toolkit_setup_tests", ["rust-script", "--test", "tests/test_toolkit_setup.rs"], 900),
     ("skill_check", ["rust-script", "scripts/check.rs"], 900),
     ("validation", ["rust-script", "validation/run.rs"], 900),

@@ -481,7 +481,7 @@ excerpt 全部从 T126 base commit `98270ef` 读取（`git show`），不读当�
 - 如果 30 次内没有达到主指标，停止，不扩大样本“碰运气”。
 - 如果 gate 在 Phase A 就有高 false reject，先修 gate，不进入 Phase B。
 
-### Phase 2 pilot 实际结果（2026-11-17，T126）
+### Phase 2 pilot 实际结果（2026-11-18，T126）
 
 pilot 用真实 ticket T126（退役 `ExpectedSetEntry.resolution`，base `98270ef`，merged `e3818a8`），
 sanitized worktree，`deepseek-flash`，2 臂 × 2 次。隐藏检查是 merged 测试套件 + 结构性检查
@@ -490,14 +490,15 @@ sanitized worktree，`deepseek-flash`，2 臂 × 2 次。隐藏检查是 merged 
 
 | run | arm | `cargo test --workspace` | serial rerun | structural | report | status |
 |---|---|---|---|---|---|---|
-| prose-1 | prose | 0 | — | pass | pass | DONE |
-| prose-2 | prose | 0 | — | pass | pass | DONE |
-| ontology-1 | ontology | 101 | 0 | pass | pass | DONE |
-| ontology-2 | ontology | 0 | — | pass | pass | DONE |
+| prose-1 | prose | 0 | 0 | pass | pass | DONE |
+| prose-2 | prose | 0 | 0 | pass | pass | DONE |
+| ontology-1 | ontology | 0 | 0 | pass | pass | DONE |
+| ontology-2 | ontology | 0 | 0 | pass | pass | DONE |
 
 四次的 `toolkit_setup`、`skill_check`、`validation/run.rs`、`clippy -D warnings` 都是 0。
-ontology-1 的并行失败是 `shared::tests::load_skill_lock_from_temp_project` 的 `PROJECT_ROOT`
-环境变量竞态（已知 flake，单独/串行通过）；不是实现差异。
+所有隐藏测试都用 `--test-threads=1` 串行跑；更早的 ontology-1 并行尝试撞到
+`shared::tests::load_skill_lock_from_temp_project` 的 `PROJECT_ROOT` 环境变量竞态（exit 101），
+串行 overlay 通过。不是实现差异。
 
 结论：
 
@@ -519,16 +520,17 @@ ontology-1 的并行失败是 `shared::tests::load_skill_lock_from_temp_project`
 |---|---:|---:|---:|---:|---:|---:|
 | prose-1 | 65 | 117,380 | 30,789 | 3,230,848 | 3,379,017 | 148,169 |
 | prose-2 | 51 | 93,324 | 20,775 | 2,718,848 | 2,832,947 | 114,099 |
-| ontology-1 | 48 | 99,577 | 24,500 | 1,928,704 | 2,052,781 | 124,077 |
-| ontology-2 | 58 | 90,871 | 22,535 | 2,767,744 | 2,881,150 | 113,406 |
+| ontology-1 | 85 | 109,509 | 32,394 | 4,296,832 | 4,438,735 | 141,903 |
+| ontology-2 | 75 | 60,302 | 21,449 | 3,860,736 | 3,942,487 | 81,751 |
 | prose avg | 58 | 105,352 | 25,782 | 2,974,848 | 3,105,982 | 131,134 |
-| ontology avg | 53 | 95,224 | 23,517 | 2,348,224 | 2,466,965 | 118,741 |
+| ontology avg | 80 | 84,906 | 26,922 | 4,078,784 | 4,190,611 | 111,827 |
 
-ontology 臂平均 total 少 20.6%、非缓存少 9.5%，但 N=2 且区间重叠
-（ontology 2.05–2.88M vs prose 2.83–3.38M）；差异主要来自更少的探索/工具步骤，
-不是注入本身直接省出来的。6,767 字符的 plan 只读一次（约 1.8k–2.0k tokens），
-首轮 model call 仅多 60 input tokens，因为 plan 通过工具读取而非内联进 system prompt。
-因此不能据此声称“本体注入更省 token”。原始数字在 `results/phase2/tokens.json`。
+ontology 臂平均 total 反而高 34.9%（4.19M vs 3.11M），非缓存少 14.7%
+（111,827 vs 131,134），output 略高 4.4%（26,922 vs 25,782）；N=2 且 total 区间重叠
+（ontology 3.94–4.44M vs prose 2.83–3.38M）。6,767 字符的 plan 只读一次
+（约 1.8k–2.0k tokens），但两臂的工具步数不同（ontology 80 次 vs prose 58 次），
+不能把差异归因于注入本身。因此不能声称“本体注入更省 token”。原始数字在
+`results/phase2/tokens.json`。
 
 ---
 
